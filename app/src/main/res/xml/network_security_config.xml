@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Everywhere else (the production HTTPS gateway included) cleartext stays denied. -->
+    <base-config cleartextTrafficPermitted="false" />
+    <!-- Allow plain HTTP only to the emulator loopback for local dev; production uses HTTPS. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

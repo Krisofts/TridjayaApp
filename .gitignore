@@ -1,0 +1,29 @@
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Gradle build outputs (all modules)
+build/
+app/build/
+baselineprofile/build/
+
+# Release signing — never commit the keystore or its credentials.
+keystore.properties
+*.jks
+*.keystore
+
+# Firebase config (contains project keys; app builds without it — add per-machine).
+# Remove this line if you intend to commit google-services.json to the repo.
+app/google-services.json
+
+# Local dev artifacts
+serve.log
+*.log

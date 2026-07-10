@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules (android:fullBackupContent, used on API < 31).
+  Exclude the EncryptedSharedPreferences file: its AES master key lives in the Android
+  Keystore, which is NEVER backed up. Restoring the encrypted blob onto a new device would
+  leave an undecryptable file (crash/AEADBadTagException on first read). Login is cheap to
+  redo, so we simply drop it from backups.
+-->
+<full-backup-content>
+    <!-- Legacy EncryptedSharedPreferences store (pre-DataStore; kept for one-time migration). -->
+    <exclude domain="sharedpref" path="tridjaya_secure_prefs.xml" />
+    <!-- Encrypted session DataStore: its AES key lives in the Keystore (never backed up), so a
+         restored blob would be undecryptable. Exclude it — the user just re-logs in. -->
+    <exclude domain="file" path="datastore/tridjaya_session.pb" />
+</full-backup-content>

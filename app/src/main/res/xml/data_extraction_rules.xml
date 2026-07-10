@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup / transfer rules for API 31+ (android:dataExtractionRules).
+  Same reasoning as backup_rules.xml: the encrypted token store is tied to a Keystore key that
+  does not travel with a cloud backup or a device transfer, so exclude it from both to avoid
+  restoring an undecryptable blob. The user just re-logs in on the new device.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="tridjaya_secure_prefs.xml" />
+        <exclude domain="file" path="datastore/tridjaya_session.pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="tridjaya_secure_prefs.xml" />
+        <exclude domain="file" path="datastore/tridjaya_session.pb" />
+    </device-transfer>
+</data-extraction-rules>

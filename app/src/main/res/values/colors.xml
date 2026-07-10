@@ -1,0 +1,6 @@
+<resources>
+    <color name="ic_launcher_background">#0D47A1</color>
+    <!-- Matches the app's Compose `background` (#FAF5FF) so the cold-start window and the
+         Compose splash share one colour — no white flash before the splash appears. -->
+    <color name="splash_background">#FAF5FF</color>
+</resources>

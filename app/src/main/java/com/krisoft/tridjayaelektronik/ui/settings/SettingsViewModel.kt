@@ -1,0 +1,77 @@
+package com.krisoft.tridjayaelektronik.ui.settings
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.krisoft.tridjayaelektronik.data.AuthResult
+import com.krisoft.tridjayaelektronik.data.model.UserDto
+import com.krisoft.tridjayaelektronik.data.update.UpdateManager
+import com.krisoft.tridjayaelektronik.data.update.UpdateStatus
+import com.krisoft.tridjayaelektronik.domain.auth.GetProfileUseCase
+import com.krisoft.tridjayaelektronik.domain.auth.LogoutUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+data class SettingsUiState(
+    val isLoading: Boolean = true,
+    val user: UserDto? = null,
+    val errorMessage: String? = null,
+    val checkingUpdate: Boolean = false,
+    /** Non-null while an update-available dialog should be shown (from a manual "Cek Pembaruan"). */
+    val updateAvailable: UpdateStatus.Available? = null,
+    /** Transient toast text (e.g. "sudah versi terbaru"), consumed once shown. */
+    val updateMessage: String? = null
+)
+
+@HiltViewModel
+class SettingsViewModel @Inject constructor(
+    private val getProfileUseCase: GetProfileUseCase,
+    private val logoutUseCase: LogoutUseCase,
+    private val updateManager: UpdateManager
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(SettingsUiState())
+    val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    val versionName: String get() = updateManager.currentVersionName
+    val versionCode: Int get() = updateManager.currentVersionCode
+
+    init {
+        loadProfile()
+    }
+
+    fun checkUpdate() {
+        _uiState.update { it.copy(checkingUpdate = true, updateAvailable = null, updateMessage = null) }
+        viewModelScope.launch {
+            when (val status = updateManager.check()) {
+                is UpdateStatus.Available -> _uiState.update { it.copy(checkingUpdate = false, updateAvailable = status) }
+                else -> _uiState.update { it.copy(checkingUpdate = false, updateMessage = "Aplikasi sudah versi terbaru") }
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() = _uiState.update { it.copy(updateAvailable = null) }
+    fun consumeUpdateMessage() = _uiState.update { it.copy(updateMessage = null) }
+
+    fun loadProfile() {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        viewModelScope.launch {
+            when (val result = getProfileUseCase()) {
+                is AuthResult.Success -> {
+                    _uiState.update { it.copy(isLoading = false, user = result.data) }
+                }
+                is AuthResult.Failure -> {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
+                }
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch { logoutUseCase() }
+    }
+}
