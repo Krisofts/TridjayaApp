@@ -2,7 +2,9 @@ package com.krisoft.tridjayaelektronik.domain.home
 
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
-import com.krisoft.tridjayaelektronik.data.InventoryRepository
+import com.krisoft.tridjayaelektronik.data.SalesRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import javax.inject.Inject
 
 private const val RANKING_TOP_N = 5
@@ -10,11 +12,15 @@ private const val RANKING_TOP_N = 5
 /** Combines profile + dashboard cache into the Home screen's data, top-N truncated for the ranking previews. */
 class GetHomeDashboardUseCase @Inject constructor(
     private val authRepository: AuthRepository,
-    private val inventoryRepository: InventoryRepository
+    private val salesRepository: SalesRepository
 ) {
-    suspend operator fun invoke(forceRefresh: Boolean = false): HomeDashboardResult {
-        val profileResult = authRepository.profile()
-        val dashboardResult = inventoryRepository.homeDashboard(forceRefresh)
+    suspend operator fun invoke(forceRefresh: Boolean = false): HomeDashboardResult = coroutineScope {
+        // Dua operasi jaringan independen — jalankan bersamaan supaya cold-load Home tidak
+        // membayar latensi profile + dashboard secara berurutan.
+        val profileDeferred = async { authRepository.profile() }
+        val dashboardDeferred = async { salesRepository.homeDashboard(forceRefresh) }
+        val profileResult = profileDeferred.await()
+        val dashboardResult = dashboardDeferred.await()
 
         val user = (profileResult as? AuthResult.Success)?.data
         val dashboard = (dashboardResult as? AuthResult.Success)?.data
@@ -27,7 +33,7 @@ class GetHomeDashboardUseCase @Inject constructor(
             null
         }
 
-        return HomeDashboardResult(
+        HomeDashboardResult(
             user = user,
             kpi = dashboard?.kpi,
             target = dashboard?.target,

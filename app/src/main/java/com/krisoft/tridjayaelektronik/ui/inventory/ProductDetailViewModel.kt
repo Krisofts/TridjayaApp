@@ -20,6 +20,8 @@ data class ProductDetailUiState(
     val product: ProductAggregate? = null,
     val branches: List<BranchStockEntity> = emptyList(),
     val installment: InstallmentResult? = null,
+    /** Simulasi kredit dari harga FRESH SALE — non-null hanya untuk barang deadstock. */
+    val promoInstallment: InstallmentResult? = null,
     val salesName: String? = null,
     val salesWhatsapp: String? = null,
     val errorMessage: String? = null
@@ -52,6 +54,7 @@ class ProductDetailViewModel @Inject constructor(
                         product = result.product,
                         branches = result.branches,
                         installment = result.installment,
+                        promoInstallment = result.promoInstallment,
                         salesName = result.salesName,
                         salesWhatsapp = result.salesWhatsapp
                     )

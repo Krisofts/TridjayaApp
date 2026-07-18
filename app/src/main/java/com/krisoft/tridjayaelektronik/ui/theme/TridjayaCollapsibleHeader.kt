@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,12 +18,11 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,20 +33,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /**
- * Collapsing large-title header, ported from Rhythm's `CollapsibleHeaderScreen`
- * (github.com/cromaguy/Rhythm). A [LargeTopAppBar] whose title interpolates 32sp (expanded)
- * → 24sp (collapsed) as the content scrolls, with an optional circular back button and a
- * trailing [actions] slot for round icon buttons. Content fades + slides up on first show,
- * matching Rhythm's entrance animation (alpha over 400ms, 30px rise over 450ms after a 50ms
- * delay). Drops into place of a screen's own Scaffold.
+ * Static (non-collapsing) large-title header. Was a scroll-collapsing [LargeTopAppBar]
+ * (Rhythm-style, title shrinking 32sp→24sp as content scrolled) — removed at the user's request
+ * so every screen using this component gets a fixed-height app bar that never collapses/shrinks
+ * on scroll. Keeps the same external API (title/onBack/actions/content slot) so no call site
+ * anywhere in the app needed to change. Content still fades + slides up on first show, matching
+ * Rhythm's entrance animation (alpha over 400ms, 30px rise over 450ms after a 50ms delay).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,9 +55,6 @@ fun TridjayaCollapsibleHeader(
     actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
     content: @Composable (Modifier) -> Unit
 ) {
-    val topAppBarState = rememberTopAppBarState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
-
     // Entrance animation — content fades in and rises slightly on first composition.
     var showContent by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -80,22 +73,18 @@ fun TridjayaCollapsibleHeader(
     )
 
     Scaffold(
-        modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            val collapsedFraction = scrollBehavior.state.collapsedFraction
-            val fontSize = (24 + (32 - 24) * (1 - collapsedFraction)).sp
             Column {
                 Spacer(modifier = Modifier.height(10.dp))
-                LargeTopAppBar(
+                TopAppBar(
                     title = {
                         Text(
                             text = title,
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = fontSize
-                            ),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(start = 14.dp)
@@ -131,7 +120,6 @@ fun TridjayaCollapsibleHeader(
                             content = actions
                         )
                     },
-                    scrollBehavior = scrollBehavior,
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background,
                         scrolledContainerColor = MaterialTheme.colorScheme.background

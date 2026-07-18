@@ -6,6 +6,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.LeadSummary
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
+import com.krisoft.tridjayaelektronik.domain.leads.GetAssigneesUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.GetLeadsUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.GetPipelinesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +27,12 @@ data class LeadsListUiState(
     val summary: LeadSummary? = null,
     /** stageId → stage name, resolved from the pipeline definitions, to label each lead's current stage. */
     val stageNames: Map<Long, String> = emptyMap(),
+    /** stageId → posisi tahap dalam pipeline-nya, untuk menghitung probabilitas closing. */
+    val stageProgress: Map<Long, StageProgress> = emptyMap(),
+    /** UUID karyawan → nama, dari daftar assignee — untuk menampilkan penginput/penanggung jawab. */
+    val employeeNames: Map<String, String> = emptyMap(),
+    val myId: String? = null,
+    val myName: String? = null,
     val errorMessage: String? = null
 )
 
@@ -39,10 +46,13 @@ data class LeadsListUiState(
 class LeadsListViewModel @Inject constructor(
     private val getLeadsUseCase: GetLeadsUseCase,
     private val getPipelinesUseCase: GetPipelinesUseCase,
+    private val getAssigneesUseCase: GetAssigneesUseCase,
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(LeadsListUiState())
+    private val _uiState = MutableStateFlow(
+        LeadsListUiState(myId = authRepository.currentUserId, myName = authRepository.currentUserName)
+    )
     val uiState: StateFlow<LeadsListUiState> = _uiState.asStateFlow()
 
     private val _search = MutableStateFlow("")
@@ -61,18 +71,37 @@ class LeadsListViewModel @Inject constructor(
             }
         }
         loadStageNames()
+        loadEmployeeNames()
         // Flush any leads created offline in a previous session before/while refreshing.
         viewModelScope.launch { getLeadsUseCase.syncPending() }
         syncIfStale()
     }
 
-    /** Resolve stageId → stage name from all pipelines, so each lead card can show its current stage. */
+    /** Resolve stageId → stage name + posisi tahap from all pipelines. */
     private fun loadStageNames() {
         viewModelScope.launch {
             val result = getPipelinesUseCase()
             if (result is AuthResult.Success) {
-                val map = result.data.flatMap { it.stages }.associate { it.id to it.nama }
-                _uiState.update { it.copy(stageNames = map) }
+                val names = result.data.flatMap { it.stages }.associate { it.id to it.nama }
+                val progress = buildMap {
+                    result.data.forEach { pipeline ->
+                        val sorted = pipeline.stages.sortedBy { it.urutan }
+                        sorted.forEachIndexed { index, stage ->
+                            put(stage.id, StageProgress(index, sorted.size))
+                        }
+                    }
+                }
+                _uiState.update { it.copy(stageNames = names, stageProgress = progress) }
+            }
+        }
+    }
+
+    /** UUID → nama karyawan (dari daftar assignee yang sudah di-cache) untuk label penginput/PJ. */
+    private fun loadEmployeeNames() {
+        viewModelScope.launch {
+            val result = getAssigneesUseCase()
+            if (result is AuthResult.Success) {
+                _uiState.update { state -> state.copy(employeeNames = result.data.associate { it.id to it.name }) }
             }
         }
     }

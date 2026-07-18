@@ -231,13 +231,28 @@ private fun DestinationContent(
     onSettingsClick: () -> Unit,
     onSettingsBack: () -> Unit,
     onCloseSearch: () -> Unit,
+    onQuickAccessInventory: () -> Unit,
+    onQuickAccessLeads: () -> Unit,
+    inventoryOpenListSignal: Int,
     homeNav: NavHostController,
     inventoryNav: NavHostController,
     leadsNav: NavHostController
 ) {
     when (destination) {
-        AppDestination.HOME -> HomeNavHost(onSettingsClick = onSettingsClick, navController = homeNav)
-        AppDestination.INVENTORY -> InventoryNavHost(navController = inventoryNav, onCloseSearch = onCloseSearch)
+        AppDestination.HOME -> HomeNavHost(
+            onSettingsClick = onSettingsClick,
+            onQuickAccessInventory = onQuickAccessInventory,
+            onQuickAccessLeads = onQuickAccessLeads,
+            navController = homeNav
+        )
+        AppDestination.INVENTORY -> InventoryNavHost(
+            navController = inventoryNav,
+            onCloseSearch = onCloseSearch,
+            openListSignal = inventoryOpenListSignal,
+            // Same "leave this tab, land on Home" semantics as closing search — reused here for
+            // quick-access entries where there's nothing left in this tab's own back stack to pop.
+            onExitToHome = onCloseSearch
+        )
         AppDestination.LEADS -> LeadsNavHost(navController = leadsNav)
         AppDestination.SETTINGS -> SettingsScreen(onBack = onSettingsBack)
     }
@@ -248,6 +263,9 @@ private fun DestinationContent(
 private fun MainScreen() {
     val destinations = AppDestination.bottomNavItems
     var selected by remember { mutableStateOf(destinations.first()) }
+    // Bumped by Home's "Akses Cepat" Inventory tile — see the LaunchedEffect inside
+    // InventoryNavHost for why the actual navigate() call lives there, not here.
+    var inventoryOpenListTrigger by remember { mutableStateOf(0) }
 
     // Hoisted so we can watch each tab's inner route and hide the floating nav on detail screens.
     val homeNav = rememberNavController()
@@ -354,6 +372,12 @@ private fun MainScreen() {
                                 onSettingsClick = { selected = AppDestination.SETTINGS },
                                 onSettingsBack = { selected = AppDestination.HOME },
                                 onCloseSearch = { selected = AppDestination.HOME },
+                                onQuickAccessInventory = {
+                                    selected = AppDestination.INVENTORY
+                                    inventoryOpenListTrigger++
+                                },
+                                onQuickAccessLeads = { selected = AppDestination.LEADS },
+                                inventoryOpenListSignal = inventoryOpenListTrigger,
                                 homeNav = homeNav,
                                 inventoryNav = inventoryNav,
                                 leadsNav = leadsNav

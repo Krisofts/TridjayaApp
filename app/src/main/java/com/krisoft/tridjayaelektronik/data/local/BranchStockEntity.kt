@@ -25,5 +25,10 @@ data class BranchStockEntity(
     val merk: String,
     val harga: Double,
     val stok: Double,
-    val kodeCabang: String
+    val kodeCabang: String,
+    val gambar: String? = null,
+    /** Umur stok (hari) per dealer, dari SP GetAgingStock — null = belum ada baris aging. */
+    val umurHari: Long? = null,
+    /** Kondisi turunan backend: "layak" | "deadstock" (umur >= 90 hari). */
+    val kondisi: String? = null
 )

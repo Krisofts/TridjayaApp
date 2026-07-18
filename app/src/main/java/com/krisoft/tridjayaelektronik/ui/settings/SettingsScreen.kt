@@ -23,7 +23,6 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.WorkOutline
 import androidx.compose.material.icons.automirrored.rounded.Chat
@@ -49,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.krisoft.tridjayaelektronik.ui.login.ChangePasswordScreen
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.Material3SettingsGroup
 import com.krisoft.tridjayaelektronik.ui.theme.Material3SettingsItem
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
@@ -233,16 +233,14 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = state.errorMessage ?: "")
+                        ExpressiveErrorState(
+                            message = state.errorMessage ?: "Tidak bisa memuat profil.",
+                            onRetry = viewModel::loadProfile,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         Material3SettingsGroup(
                             items = listOf(
-                                Material3SettingsItem(
-                                    icon = Icons.Rounded.Refresh,
-                                    isHighlighted = true,
-                                    title = { Text("Coba lagi") },
-                                    onClick = viewModel::loadProfile
-                                ),
                                 Material3SettingsItem(
                                     icon = Icons.Rounded.Logout,
                                     iconBackgroundTint = MaterialTheme.colorScheme.errorContainer,

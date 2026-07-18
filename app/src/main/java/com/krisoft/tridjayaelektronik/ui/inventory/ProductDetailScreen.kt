@@ -12,16 +12,18 @@ import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
 import android.widget.Toast
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,15 +41,21 @@ import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,14 +65,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -72,19 +77,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.krisoft.tridjayaelektronik.R
 import com.krisoft.tridjayaelektronik.data.export.FlyerImageExporter
 import com.krisoft.tridjayaelektronik.data.local.BranchStockEntity
+import com.krisoft.tridjayaelektronik.data.local.DEADSTOCK_MIN_DAYS
 import com.krisoft.tridjayaelektronik.data.local.DealerAlias
 import com.krisoft.tridjayaelektronik.data.local.ProductAggregate
 import com.krisoft.tridjayaelektronik.data.local.RegionAlias
 import com.krisoft.tridjayaelektronik.data.pricing.InstallmentResult
+import com.krisoft.tridjayaelektronik.ui.theme.AgingBadge
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextButton
-import com.krisoft.tridjayaelektronik.ui.theme.TridjayaHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -101,14 +107,11 @@ fun ProductDetailScreen(
     val scope = rememberCoroutineScope()
     var flyerBounds by remember { mutableStateOf<Rect?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
+    var flyerStyle by remember { mutableStateOf(FlyerCustomStyle()) }
+    var showFlyerSheet by remember { mutableStateOf(false) }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TridjayaHeader(title = "Detail Produk", onBack = onBack)
-        }
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+    TridjayaCollapsibleHeader(title = "Detail Produk", onBack = onBack) { contentModifier ->
+        Box(modifier = contentModifier) {
             when {
                 state.isLoading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -131,6 +134,18 @@ fun ProductDetailScreen(
                 else -> {
                     val product = state.product!!
                     var isGeneratingOnly by remember { mutableStateOf(false) }
+                    // Mode FRESH SALE utk barang deadstock: harga flyer otomatis -10% (dibulatkan
+                    // ke ribuan), cicilan/DP ikut dihitung ulang dari harga promo.
+                    val isDeadstock = (product.maxUmurHari ?: 0L) >= DEADSTOCK_MIN_DAYS
+                    var freshSale by remember { mutableStateOf(false) }
+                    val flyerProduct = remember(product, freshSale) {
+                        if (freshSale) product.copy(harga = freshSalePrice(product.harga)) else product
+                    }
+                    // Tanpa fallback ke cicilan harga asli: bila cicilan promo tak tersedia,
+                    // lebih baik flyer tampil tanpa blok cicilan daripada harga -10% disandingkan
+                    // dengan DP/tenor yang dihitung dari harga penuh.
+                    val flyerInstallment = if (freshSale) state.promoInstallment else state.installment
+                    val flyerPromo = if (freshSale) FlyerPromo(product.harga, FRESH_SALE_PERCENT) else null
 
                     Column(modifier = Modifier.fillMaxSize()) {
                         Column(
@@ -142,13 +157,77 @@ fun ProductDetailScreen(
                             // Flyer first so it's fully on-screen when captured (PixelCopy grabs its
                             // current visible bounds); the info/credit/stock cards sit below it.
                             Spacer(modifier = Modifier.height(8.dp))
-                            ProductFlyer(
-                                product = product,
-                                installment = state.installment,
-                                salesName = state.salesName,
-                                salesWhatsapp = state.salesWhatsapp,
-                                modifier = Modifier.onGloballyPositioned { flyerBounds = it.boundsInRoot() }
-                            )
+                            if (isDeadstock) {
+                                FreshSaleToggleCard(
+                                    enabled = freshSale,
+                                    originalPrice = product.harga,
+                                    onToggle = { freshSale = it }
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+                            // Mode FRESH SALE mengganti SELURUH daftar desain dengan satu desain
+                            // cuci gudang khusus — bukan menempel sticker di desain biasa.
+                            val designs = if (freshSale) listOf(FRESH_SALE_DESIGN) else FLYER_DESIGNS
+                            val pagerState = rememberPagerState { designs.size }
+                            LaunchedEffect(freshSale) { pagerState.scrollToPage(0) }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Desain: ${(designs.getOrNull(pagerState.currentPage) ?: designs.last()).name}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "${(pagerState.currentPage + 1).coerceAtMost(designs.size)}/${designs.size}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                IconButton(onClick = { showFlyerSheet = true }) {
+                                    Icon(
+                                        Icons.Rounded.Tune,
+                                        contentDescription = "Kustomisasi flyer",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            HorizontalPager(state = pagerState, pageSpacing = 12.dp) { page ->
+                                // Only the visible page reports capture bounds — "Buat Gambar"/
+                                // "Kirim WA" always exports the design currently on screen.
+                                val boundsModifier = if (page == pagerState.currentPage) {
+                                    Modifier.onGloballyPositioned { flyerBounds = it.boundsInRoot() }
+                                } else Modifier
+                                ProductFlyer(
+                                    product = flyerProduct,
+                                    installment = if (flyerStyle.showInstallment) flyerInstallment else null,
+                                    salesName = state.salesName,
+                                    salesWhatsapp = state.salesWhatsapp,
+                                    design = designs[page],
+                                    style = flyerStyle,
+                                    modifier = boundsModifier,
+                                    promo = flyerPromo
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                repeat(designs.size) { index ->
+                                    val selected = index == pagerState.currentPage
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(horizontal = 3.dp)
+                                            .size(if (selected) 8.dp else 6.dp)
+                                            .background(
+                                                if (selected) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.outlineVariant,
+                                                CircleShape
+                                            )
+                                    )
+                                }
+                            }
 
                             Spacer(modifier = Modifier.height(18.dp))
                             DetailSectionLabel("Informasi Produk")
@@ -234,7 +313,10 @@ fun ProductDetailScreen(
                                         }
                                     }
                                 }
-                                state.installment?.let { installment ->
+                                // Salin mengikuti cicilan yang SEDANG tampil di flyer — saat mode
+                                // FRESH SALE aktif, teks yang disalin harus harga/DP/tenor promo,
+                                // bukan struktur kredit harga asli (biar tidak beda dgn flyer WA).
+                                flyerInstallment?.let { installment ->
                                     ExpressiveTextButton(
                                         onClick = { copyStrukturKredit(context, installment.strukturKredit) },
                                         modifier = Modifier.fillMaxWidth()
@@ -251,12 +333,195 @@ fun ProductDetailScreen(
             }
         }
     }
+
+    if (showFlyerSheet) {
+        FlyerCustomizeSheet(
+            style = flyerStyle,
+            onStyleChange = { flyerStyle = it },
+            onDismiss = { showFlyerSheet = false }
+        )
+    }
+}
+
+/** Bottom sheet with the flyer text-styling controls (font, sizes, alignment, effects). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FlyerCustomizeSheet(
+    style: FlyerCustomStyle,
+    onStyleChange: (FlyerCustomStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Kustomisasi Flyer",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                ExpressiveTextButton(onClick = { onStyleChange(FlyerCustomStyle()) }) {
+                    Text("Reset")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text("Jenis Huruf", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FlyerFont.entries.forEach { font ->
+                    FilterChip(
+                        selected = style.fontChoice == font,
+                        onClick = { onStyleChange(style.copy(fontChoice = font)) },
+                        label = { Text(font.label, fontFamily = font.family) },
+                        shape = RoundedCornerShape(50)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Posisi Teks Judul", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlyerAlign.entries.forEach { align ->
+                    FilterChip(
+                        selected = style.titleAlign == align,
+                        onClick = { onStyleChange(style.copy(titleAlign = align)) },
+                        label = { Text(align.label) },
+                        shape = RoundedCornerShape(50)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Ukuran Judul  (${(style.titleScale * 100).toInt()}%)",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Slider(
+                value = style.titleScale,
+                onValueChange = { onStyleChange(style.copy(titleScale = it)) },
+                valueRange = 0.8f..1.3f
+            )
+
+            Text(
+                text = "Ukuran Harga  (${(style.priceScale * 100).toInt()}%)",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Slider(
+                value = style.priceScale,
+                onValueChange = { onStyleChange(style.copy(priceScale = it)) },
+                valueRange = 0.8f..1.3f
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Bayangan Teks",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = style.textShadow,
+                    onCheckedChange = { onStyleChange(style.copy(textShadow = it)) }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Huruf Kapital",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = style.uppercase,
+                    onCheckedChange = { onStyleChange(style.copy(uppercase = it)) }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Tampilkan Cicilan",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "DP, tenor per bulan & harga pembanding",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = style.showInstallment,
+                    onCheckedChange = { onStyleChange(style.copy(showInstallment = it)) }
+                )
+            }
+        }
+    }
 }
 
 private fun copyStrukturKredit(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("Struktur Kredit", text))
     Toast.makeText(context, "Struktur kredit berhasil disalin", Toast.LENGTH_SHORT).show()
+}
+
+/** Kartu toggle mode FRESH SALE — hanya tampil untuk barang deadstock (umur stok >= 180 hari).
+ *  Saat aktif, flyer memakai harga -10% + sticker DISKON GEDE dan cicilan promo. */
+@Composable
+private fun FreshSaleToggleCard(
+    enabled: Boolean,
+    originalPrice: Double,
+    onToggle: (Boolean) -> Unit
+) {
+    val accent = Color(0xFFE11D48)
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (enabled) accent.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "🔥 Mode FRESH SALE",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Black,
+                    color = if (enabled) accent else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = if (enabled) {
+                        "Flyer promo aktif — harga spesial ${formatRupiah(freshSalePrice(originalPrice))}"
+                    } else {
+                        "Barang lama (deadstock) — nyalakan untuk flyer harga spesial otomatis"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
 }
 
 @Composable
@@ -387,10 +652,18 @@ private fun BranchStockCard(branches: List<BranchStockEntity>) {
             branches.forEachIndexed { index, branch ->
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = DealerAlias.label(branch.kodeDealer), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = DealerAlias.label(branch.kodeDealer),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Aging stok per dealer (kolom Kondisi web Stok All Cabang).
+                    branch.umurHari?.let { umur ->
+                        AgingBadge(umur)
+                        Spacer(modifier = Modifier.width(10.dp))
+                    }
                     Text(
                         text = "${branch.stok.toInt()} unit",
                         style = MaterialTheme.typography.bodyMedium,
@@ -464,256 +737,6 @@ private fun View.findActivity(): Activity? {
         ctx = ctx.baseContext
     }
     return null
-}
-
-/** Flyer brand palette — deliberately fixed (not MaterialTheme-driven) so the shared image always
- * reads the same regardless of the user's app theme/dark-mode, matching the reference poster design. */
-private object FlyerColors {
-    val background = Color(0xFFE8F2FF)
-    val brandBlue = Color(0xFF1E63E9)
-    val brandBlueLight = Color(0xFF6FA3F5)
-    val darkNavy = Color(0xFF15294D)
-    val priceBoxBg = Color(0xFFFFFFFF)
-    val priceBoxLabel = Color(0xFF6B7A90)
-    val priceStrike = Color(0xFF33415C)
-    val promoPillBg = Color(0xFFFFC93C)
-    val promoPillText = Color(0xFF3A2E00)
-    val imagePlaceholderBg = Color(0xFFD8E6FF)
-    val glassBg = Color(0x8CFFFFFF)
-    val glassBorder = Color(0xB3FFFFFF)
-}
-
-/** Poster/flyer-styled product summary — this exact region is what gets captured and shared to WhatsApp. */
-@Composable
-private fun ProductFlyer(
-    product: ProductAggregate,
-    installment: InstallmentResult?,
-    salesName: String?,
-    salesWhatsapp: String?,
-    modifier: Modifier = Modifier
-) {
-    val imageHeight = 190.dp
-    val overlapAmount = 34.dp
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(FlyerColors.background, RoundedCornerShape(20.dp))
-            .padding(16.dp)
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.logo_header),
-            contentDescription = "Tridjaya Elektronik",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth().height(44.dp)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = product.merk.ifBlank { "TRIDJAYA" }.uppercase(),
-            style = MaterialTheme.typography.headlineMedium.copy(
-                brush = Brush.verticalGradient(listOf(FlyerColors.brandBlueLight, FlyerColors.brandBlue))
-            ),
-            fontWeight = FontWeight.Black
-        )
-        Text(
-            text = product.nama.uppercase(),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = FlyerColors.darkNavy
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "STOK TERBATAS • BERGARANSI RESMI",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.sp,
-            color = FlyerColors.priceBoxLabel
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Image, with the price cards overlapping its bottom edge (frosted-glass look).
-        Box(modifier = Modifier.fillMaxWidth()) {
-            FlyerImagePlaceholder(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(imageHeight)
-                    .align(Alignment.TopCenter)
-            )
-
-            Column(modifier = Modifier.fillMaxWidth().padding(top = imageHeight - overlapAmount)) {
-                if (installment != null) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FlyerPriceBox(label = "Harga Toko Lain", value = installment.tokoLainPrice, modifier = Modifier.weight(1f))
-                        FlyerPriceBox(label = "Harga Normal", value = installment.normalPrice, modifier = Modifier.weight(1f))
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(FlyerColors.glassBg, RoundedCornerShape(16.dp))
-                        .border(1.dp, FlyerColors.glassBorder, RoundedCornerShape(16.dp))
-                        .padding(vertical = 14.dp, horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .background(FlyerColors.promoPillBg, RoundedCornerShape(50))
-                                .padding(horizontal = 14.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "Harga Promo",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = FlyerColors.promoPillText
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = formatRupiah(product.harga),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Black,
-                            color = FlyerColors.brandBlue
-                        )
-                    }
-
-                    if (installment != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "DP Hanya",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = FlyerColors.priceBoxLabel
-                            )
-                            Text(
-                                text = formatPriceOnly(installment.dpAmount),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = FlyerColors.brandBlue
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (installment != null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                installment.tenors.forEach { tenor ->
-                    TenorChip(months = tenor.months, amount = tenor.monthlyAmount, modifier = Modifier.weight(1f))
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-        Text(
-            text = if (salesName.isNullOrBlank()) "Hubungi sales kami sekarang!" else "Info & Pemesanan: $salesName",
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-            color = FlyerColors.darkNavy,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-        if (!salesWhatsapp.isNullOrBlank()) {
-            Text(
-                text = "WhatsApp: $salesWhatsapp",
-                style = MaterialTheme.typography.labelSmall,
-                color = FlyerColors.priceBoxLabel,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        Text(
-            text = "TikTok: @rajanyaelektronik  •  FB: Tridjaya Elektronik",
-            style = MaterialTheme.typography.labelSmall,
-            color = FlyerColors.priceBoxLabel,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = "Kode: ${product.kode} • Harga dapat berubah sewaktu-waktu",
-            style = MaterialTheme.typography.labelSmall,
-            color = FlyerColors.priceBoxLabel,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-/** Reserves the product-photo slot in the flyer. No image data exists yet — this placeholder is
- * where a real product photo (e.g. via Coil AsyncImage) will render once that's wired up. */
-@Composable
-private fun FlyerImagePlaceholder(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(FlyerColors.imagePlaceholderBg, RoundedCornerShape(16.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "Foto\nProduk",
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = FlyerColors.brandBlue.copy(alpha = 0.5f),
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun FlyerPriceBox(label: String, value: Int, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(FlyerColors.glassBg, RoundedCornerShape(10.dp))
-            .border(1.dp, FlyerColors.glassBorder, RoundedCornerShape(10.dp))
-            .padding(vertical = 8.dp, horizontal = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = FlyerColors.priceBoxLabel,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = formatPriceOnly(value),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            color = FlyerColors.priceStrike,
-            textDecoration = TextDecoration.LineThrough,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun TenorChip(months: Int, amount: Int, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(FlyerColors.brandBlue, RoundedCornerShape(8.dp))
-            .padding(vertical = 8.dp, horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "$months Bulan",
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.85f)
-        )
-        Text(
-            text = formatPriceOnly(amount),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            textAlign = TextAlign.Center
-        )
-    }
 }
 
 private fun formatRupiah(value: Double): String {

@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -31,8 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.krisoft.tridjayaelektronik.data.model.BranchPerformanceItemDto
-import com.krisoft.tridjayaelektronik.data.model.SalesPerformanceItemDto
+import com.krisoft.tridjayaelektronik.data.model.LeaderboardBranchItemDto
+import com.krisoft.tridjayaelektronik.data.model.LeaderboardSalesItemDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
@@ -41,6 +41,8 @@ import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 @Composable
 fun RankingListScreen(
     onBack: () -> Unit,
+    onBranchClick: (LeaderboardBranchItemDto) -> Unit = {},
+    onSalesClick: (LeaderboardSalesItemDto) -> Unit = {},
     viewModel: RankingListViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -78,11 +80,11 @@ fun RankingListScreen(
                     ) {
                         if (viewModel.kind == RankingKind.BRANCH) {
                             itemsIndexed(state.branches, key = { _, branch -> branch.kodeDealer }) { index, branch ->
-                                BranchRow(rank = index + 1, branch = branch)
+                                BranchRow(rank = index + 1, branch = branch, onClick = { onBranchClick(branch) })
                             }
                         } else {
-                            itemsIndexed(state.sales, key = { _, sales -> sales.kodePegawai }) { index, sales ->
-                                SalesRow(rank = index + 1, sales = sales)
+                            itemsIndexed(state.sales, key = { _, sales -> sales.sourceCode }) { index, sales ->
+                                SalesRow(rank = index + 1, sales = sales, onClick = { onSalesClick(sales) })
                             }
                         }
                     }
@@ -111,19 +113,19 @@ private fun RankBadge(rank: Int) {
 }
 
 @Composable
-private fun BranchRow(rank: Int, branch: BranchPerformanceItemDto) {
-    ClayCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+private fun BranchRow(rank: Int, branch: LeaderboardBranchItemDto, onClick: () -> Unit) {
+    ClayCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clickable(onClick = onClick)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             RankBadge(rank)
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = branch.branch, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = "${branch.currentUnit} unit", style = MaterialTheme.typography.bodySmall)
+                Text(text = branch.cabang, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = "${branch.totalTransaksi} transaksi", style = MaterialTheme.typography.bodySmall)
             }
             Text(
-                text = remember(branch.currentAmount) { formatRupiah(branch.currentAmount) },
+                text = remember(branch.omset) { formatRupiah(branch.omset) },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -132,39 +134,27 @@ private fun BranchRow(rank: Int, branch: BranchPerformanceItemDto) {
 }
 
 @Composable
-private fun SalesRow(rank: Int, sales: SalesPerformanceItemDto) {
-    ClayCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RankBadge(rank)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = sales.salesPerson, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(text = "${sales.currentUnit} / ${sales.targetUnit} unit", style = MaterialTheme.typography.bodySmall)
-                }
-                Text(
-                    text = remember(sales.currentAmount) { formatRupiah(sales.currentAmount) },
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+private fun SalesRow(rank: Int, sales: LeaderboardSalesItemDto, onClick: () -> Unit) {
+    ClayCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RankBadge(rank)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = sales.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = "${sales.totalQty} unit · ${sales.totalTransaksi} transaksi", style = MaterialTheme.typography.bodySmall)
             }
-            if (sales.targetUnit > 0) {
-                val achievementPct = sales.currentUnit.toDouble() / sales.targetUnit * 100
-                LinearProgressIndicator(
-                    progress = { (achievementPct / 100.0).toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().padding(start = 40.dp, top = 6.dp)
-                )
-                Text(
-                    text = "Pencapaian target: %.1f%%".format(achievementPct),
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(start = 40.dp, top = 2.dp)
-                )
-            }
+            Text(
+                text = remember(sales.revenue) { formatRupiah(sales.revenue) },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
 
-private fun formatRupiah(value: Double): String {
-    val rounded = value.toLong()
-    val text = rounded.toString().reversed().chunked(3).joinToString(".").reversed()
+private fun formatRupiah(value: Long): String {
+    val text = value.toString().reversed().chunked(3).joinToString(".").reversed()
     return "Rp $text"
 }

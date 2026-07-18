@@ -58,14 +58,22 @@ class SettingsViewModel @Inject constructor(
     fun consumeUpdateMessage() = _uiState.update { it.copy(updateMessage = null) }
 
     fun loadProfile() {
-        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        // Stale-while-revalidate: profil dari cache sesi tampil SEKETIKA (tersedia sinkron di
+        // TokenStore) — tidak ada spinner saat buka Settings; network hanya menyegarkan
+        // diam-diam di belakang. Spinner tinggal untuk kasus langka cache kosong.
+        val cached = getProfileUseCase.cached()
+        _uiState.update { it.copy(isLoading = cached == null && it.user == null, user = cached ?: it.user, errorMessage = null) }
         viewModelScope.launch {
             when (val result = getProfileUseCase()) {
                 is AuthResult.Success -> {
                     _uiState.update { it.copy(isLoading = false, user = result.data) }
                 }
                 is AuthResult.Failure -> {
-                    _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
+                    // Profil cache sudah tampil — kegagalan refresh tidak perlu mengganggu layar;
+                    // error hanya ditampilkan bila benar-benar tidak ada apa pun untuk dirender.
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = if (it.user == null) result.message else null)
+                    }
                 }
             }
         }

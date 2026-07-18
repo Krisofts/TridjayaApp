@@ -9,4 +9,7 @@ class GetProfileUseCase @Inject constructor(
     private val authRepository: AuthRepository
 ) {
     suspend operator fun invoke(): AuthResult<UserDto> = authRepository.profile()
+
+    /** Profil dari cache sesi — tersedia seketika tanpa menunggu network. */
+    fun cached(): UserDto? = authRepository.cachedUser
 }

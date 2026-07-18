@@ -11,6 +11,7 @@ class ExportProductsUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(filters: InventoryFilters): List<ProductAggregate> =
         inventoryRepository.exportProducts(
-            filters.search, filters.region, filters.readyOnly, filters.category, filters.merk, filters.sortOrder
+            filters.search, filters.region, filters.dealer, filters.readyOnly, filters.category,
+            filters.merk, filters.sortOrder, filters.deadstockOnly
         )
 }

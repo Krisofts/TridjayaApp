@@ -79,6 +79,24 @@ class TokenStore(private val context: Context) {
     val mustChangePassword: Boolean get() { ensureLoaded(); return cache.mustChangePassword }
     val isLoggedIn: Boolean get() { ensureLoaded(); return cache.accessToken.isNotBlank() }
 
+    /** The last profile the server gave us, rebuilt as a [UserDto] — the offline fallback for the
+     *  Settings/profile screen. Null until a login or profile fetch has ever populated it. */
+    fun cachedProfile(): UserDto? {
+        ensureLoaded()
+        val s = cache
+        if (s.accessToken.isBlank() || s.userName.isBlank()) return null
+        return UserDto(
+            id = s.userId,
+            nik = s.nik,
+            email = s.email,
+            name = s.userName,
+            role = s.role,
+            cabangName = s.cabangName,
+            whatsapp = s.whatsapp,
+            mustChangePassword = s.mustChangePassword
+        )
+    }
+
     /** True when the access token is missing or within [marginMillis] of expiry — used for proactive refresh. */
     fun accessTokenExpiresWithin(marginMillis: Long): Boolean {
         ensureLoaded()
@@ -101,6 +119,8 @@ class TokenStore(private val context: Context) {
             cabangName = session.user.cabangName,
             whatsapp = session.user.whatsapp,
             role = session.user.role,
+            nik = session.user.nik,
+            email = session.user.email,
             mustChangePassword = session.user.mustChangePassword
         )
     }
@@ -122,6 +142,8 @@ class TokenStore(private val context: Context) {
             cabangName = user.cabangName,
             whatsapp = user.whatsapp,
             role = user.role,
+            nik = user.nik,
+            email = user.email,
             mustChangePassword = user.mustChangePassword
         )
     }

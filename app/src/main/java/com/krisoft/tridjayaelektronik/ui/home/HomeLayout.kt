@@ -11,15 +11,16 @@ import javax.inject.Singleton
  * — Tridjaya's take on Rhythm's Home section customization.
  */
 enum class HomeSection(val key: String, val label: String) {
-    KPI("kpi", "Sales KPI"),
-    TARGET("target", "Target Bulanan"),
+    QUICK_ACCESS("quick_access", "Akses Cepat"),
+    // Sales KPI & Target Bulanan were removed from Home (they live on the dedicated Sales screen,
+    // reachable from quick access) — stale persisted keys are silently dropped by fromKey().
     CRM_SUMMARY("crm_summary", "Ringkasan CRM"),
     RANKING_CABANG("ranking_cabang", "Ranking Cabang"),
-    RANKING_SALES("ranking_sales", "Ranking Sales");
+    RANKING_SALES("ranking_sales", "Klasemen Sales");
 
     companion object {
         val DEFAULT_ORDER: List<HomeSection> =
-            listOf(KPI, TARGET, CRM_SUMMARY, RANKING_CABANG, RANKING_SALES)
+            listOf(QUICK_ACCESS, CRM_SUMMARY, RANKING_CABANG, RANKING_SALES)
         fun fromKey(key: String): HomeSection? = entries.firstOrNull { it.key == key }
     }
 }

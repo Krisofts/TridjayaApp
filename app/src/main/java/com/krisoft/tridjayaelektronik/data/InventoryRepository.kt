@@ -5,47 +5,42 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import com.krisoft.tridjayaelektronik.data.local.BranchStockDao
 import com.krisoft.tridjayaelektronik.data.local.BranchStockEntity
-import com.krisoft.tridjayaelektronik.data.local.DashboardCacheDao
-import com.krisoft.tridjayaelektronik.data.local.DashboardCacheEntity
 import com.krisoft.tridjayaelektronik.data.local.ProductAggregate
 import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
 import com.krisoft.tridjayaelektronik.data.local.SyncMetaEntity
-import com.krisoft.tridjayaelektronik.data.model.HomeDashboardCache
+import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
+import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
+import com.krisoft.tridjayaelektronik.data.model.IndentDto
+import com.krisoft.tridjayaelektronik.data.model.IndentListData
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val SYNC_PAGE_LIMIT = 1000
 private val SYNC_INTERVAL_MILLIS = java.util.concurrent.TimeUnit.HOURS.toMillis(5)
-private val DASHBOARD_CACHE_TTL_MILLIS = java.util.concurrent.TimeUnit.HOURS.toMillis(5)
-
-/** Month-to-date range vs the same range one month back, for the *-performance endpoints. */
-private data class DateRange(val start: String, val end: String, val compareStart: String, val compareEnd: String)
 
 @Singleton
 class InventoryRepository @Inject constructor(
     private val api: InventoryApi,
     private val branchStockDao: BranchStockDao,
-    private val syncMetaDao: SyncMetaDao,
-    private val dashboardCacheDao: DashboardCacheDao
+    private val syncMetaDao: SyncMetaDao
 ) {
-
-    private val json = Json { ignoreUnknownKeys = true }
 
     fun pagedProducts(
         search: String,
         region: String,
+        dealer: String,
         readyOnly: Boolean,
         category: String,
         merk: String,
-        sortOrder: Int
+        sortOrder: Int,
+        deadstockOnly: Boolean
     ): Flow<PagingData<ProductAggregate>> {
         return Pager(
             config = PagingConfig(
@@ -55,29 +50,37 @@ class InventoryRepository @Inject constructor(
                 prefetchDistance = 10
             )
         ) {
-            branchStockDao.pagingSource(search.trim(), region, readyOnly, category, merk, sortOrder)
+            branchStockDao.pagingSource(
+                search.trim(), region, dealer, readyOnly, category, merk, sortOrder, deadstockOnly
+            )
         }.flow
     }
 
     suspend fun exportProducts(
         search: String,
         region: String,
+        dealer: String,
         readyOnly: Boolean,
         category: String,
         merk: String,
-        sortOrder: Int
+        sortOrder: Int,
+        deadstockOnly: Boolean
     ): List<ProductAggregate> =
-        branchStockDao.filteredProducts(search.trim(), region, readyOnly, category, merk, sortOrder)
+        branchStockDao.filteredProducts(
+            search.trim(), region, dealer, readyOnly, category, merk, sortOrder, deadstockOnly
+        )
 
     /** Simple product search for the global search screen — name/code match, default sort, no filters. */
     suspend fun searchProducts(query: String): List<ProductAggregate> =
         branchStockDao.filteredProducts(
             query.trim(),
             "",
+            "",
             false,
             "",
             "",
-            com.krisoft.tridjayaelektronik.data.local.ProductSortOrder.NAME_ASC
+            com.krisoft.tridjayaelektronik.data.local.ProductSortOrder.NAME_ASC,
+            false
         )
 
     suspend fun categories(): List<String> = branchStockDao.distinctCategories()
@@ -118,7 +121,10 @@ class InventoryRepository @Inject constructor(
                         merk = it.Merk,
                         harga = it.Harga,
                         stok = it.Stok,
-                        kodeCabang = it.kodeCabang
+                        kodeCabang = it.kodeCabang,
+                        gambar = it.Gambar?.trim()?.takeIf { url -> url.isNotEmpty() },
+                        umurHari = it.umurHari,
+                        kondisi = it.kondisi
                     )
                 }
                 if (!data.hasMore) break
@@ -132,91 +138,68 @@ class InventoryRepository @Inject constructor(
         }
     }
 
-    /**
-     * KPI + monthly target + full branch/sales ranking, bundled and cached in Room for 5 minutes
-     * so switching tabs or opening "Lihat Semua" doesn't re-hit the API every time.
-     */
-    suspend fun homeDashboard(forceRefresh: Boolean = false): AuthResult<HomeDashboardCache> {
-        if (!forceRefresh) {
-            val cached = dashboardCacheDao.get(DashboardCacheEntity.KEY_HOME_DASHBOARD)
-            val isFresh = cached != null && System.currentTimeMillis() - cached.cachedAtMillis < DASHBOARD_CACHE_TTL_MILLIS
-            if (isFresh) {
-                val parsed = runCatching {
-                    json.decodeFromString(HomeDashboardCache.serializer(), cached!!.jsonPayload)
-                }.getOrNull()
-                if (parsed != null) return AuthResult.Success(parsed)
-            }
-        }
-
-        val range = monthToDateRange()
+    suspend fun listIndent(status: String? = null): AuthResult<IndentListData> {
         return try {
-            coroutineScope {
-                // Fire all four independent endpoints concurrently instead of awaiting them one by
-                // one — dashboard cold-load latency drops from the sum of four round-trips to the
-                // slowest single one.
-                val kpiDeferred = async { api.executiveKpi() }
-                val targetDeferred = async { api.monthlyTarget() }
-                val branchDeferred = async { api.branchPerformance(range.start, range.end, range.compareStart, range.compareEnd) }
-                val salesDeferred = async { api.salesPerformance(range.start, range.end, range.compareStart, range.compareEnd) }
-
-                val kpiResponse = kpiDeferred.await()
-                val targetResponse = targetDeferred.await()
-                val branchResponse = branchDeferred.await()
-                val salesResponse = salesDeferred.await()
-
-                val kpi = kpiResponse.body()?.data
-                val target = targetResponse.body()?.data
-                val branches = branchResponse.body()?.data?.items
-                val sales = salesResponse.body()?.data?.items
-
-                if (kpiResponse.isSuccessful && targetResponse.isSuccessful &&
-                    branchResponse.isSuccessful && salesResponse.isSuccessful &&
-                    kpi != null && target != null && branches != null && sales != null
-                ) {
-                    val bundle = HomeDashboardCache(
-                        kpi = kpi,
-                        target = target,
-                        branches = branches.sortedByDescending { it.currentAmount },
-                        sales = sales.sortedByDescending { it.currentAmount }
-                    )
-                    dashboardCacheDao.upsert(
-                        DashboardCacheEntity(
-                            key = DashboardCacheEntity.KEY_HOME_DASHBOARD,
-                            jsonPayload = json.encodeToString(HomeDashboardCache.serializer(), bundle),
-                            cachedAtMillis = System.currentTimeMillis()
-                        )
-                    )
-                    AuthResult.Success(bundle)
-                } else {
-                    val failedCode = listOf(kpiResponse, targetResponse, branchResponse, salesResponse)
-                        .firstOrNull { !it.isSuccessful }
-                        ?.code() ?: 0
-                    AuthResult.Failure("http_$failedCode", "Gagal memuat dashboard ($failedCode)")
-                }
+            val response = api.listIndent(status)
+            val data = response.body()?.data
+            if (response.isSuccessful && data != null) {
+                AuthResult.Success(data)
+            } else {
+                parseError(response, "Gagal memuat daftar indent")
             }
         } catch (e: Exception) {
             AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
         }
     }
 
-    private fun monthToDateRange(): DateRange {
-        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
-        val endCal = Calendar.getInstance()
-        val end = fmt.format(endCal.time)
-
-        val startCal = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }
-        val start = fmt.format(startCal.time)
-
-        val compareEndCal = Calendar.getInstance().apply { add(Calendar.MONTH, -1) }
-        val compareEnd = fmt.format(compareEndCal.time)
-
-        val compareStartCal = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_MONTH, 1)
-            add(Calendar.MONTH, -1)
+    suspend fun createIndent(request: CreateIndentRequest): AuthResult<IndentDto> {
+        return try {
+            val response = api.createIndent(request)
+            val data = response.body()?.data
+            if (response.isSuccessful && data != null) {
+                AuthResult.Success(data)
+            } else {
+                parseError(response, "Gagal mengajukan indent")
+            }
+        } catch (e: Exception) {
+            AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
         }
-        val compareStart = fmt.format(compareStartCal.time)
+    }
 
-        return DateRange(start, end, compareStart, compareEnd)
+    suspend fun uploadIndentProof(bytes: ByteArray, filename: String, mimeType: String): AuthResult<String> {
+        return try {
+            val body = bytes.toRequestBody(mimeType.toMediaType())
+            val part = MultipartBody.Part.createFormData("file", filename, body)
+            val response = api.uploadIndentProof(part)
+            val data = response.body()?.data
+            if (response.isSuccessful && data != null) {
+                AuthResult.Success(data.url)
+            } else {
+                parseError(response, "Gagal mengunggah bukti")
+            }
+        } catch (e: Exception) {
+            AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+        }
+    }
+
+    /**
+     * Surfaces the backend's own error text instead of a bare HTTP code — validation errors
+     * carry the actionable detail in `errors[0]` ("Ukuran file maksimum 5 MB", etc.) with a
+     * generic "Input tidak valid" message, so the detail wins when present.
+     */
+    private fun <T> parseError(response: Response<*>, fallback: String): AuthResult<T> {
+        val raw = response.errorBody()?.string()
+        val parsed = raw?.let {
+            runCatching { errorJson.decodeFromString(ApiErrorResponse.serializer(), it) }.getOrNull()
+        }
+        val detail = parsed?.errors?.firstOrNull() ?: parsed?.message
+        return AuthResult.Failure(
+            parsed?.code ?: "http_${response.code()}",
+            detail ?: "$fallback (${response.code()})"
+        )
+    }
+
+    private companion object {
+        val errorJson = Json { ignoreUnknownKeys = true }
     }
 }

@@ -4,49 +4,53 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FilterAlt
+import androidx.compose.material.icons.rounded.HourglassBottom
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.material.icons.rounded.LocationOn
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Place
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Storefront
+import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -54,14 +58,14 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SearchBar
-import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.SelectableChipColors
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -73,7 +77,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -81,16 +85,26 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
-import com.krisoft.tridjayaelektronik.data.export.InventoryCsvExporter
+import coil.compose.AsyncImage
+import com.krisoft.tridjayaelektronik.data.ProductImageUrl
+import com.krisoft.tridjayaelektronik.data.export.InventoryXlsxExporter
 import com.krisoft.tridjayaelektronik.data.local.BranchStockEntity
 import com.krisoft.tridjayaelektronik.data.local.DealerAlias
 import com.krisoft.tridjayaelektronik.data.local.ProductAggregate
 import com.krisoft.tridjayaelektronik.data.local.ProductSortOrder
 import com.krisoft.tridjayaelektronik.data.local.RegionAlias
+import com.krisoft.tridjayaelektronik.ui.theme.AgingBadge
+import com.krisoft.tridjayaelektronik.ui.theme.agingColor
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveInlineError
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveShapes
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,179 +117,165 @@ fun InventoryScreen(
     val state by viewModel.uiState.collectAsState()
     val pagingItems = viewModel.pagingFlow.collectAsLazyPagingItems()
     var showSortSheet by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var isExporting by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-            ) {
-                if (onBack != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 12.dp, end = 16.dp, top = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = "Kembali",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                        Text(
-                            text = "Semua Barang",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
-                    }
+    TridjayaCollapsibleHeader(
+        title = "Semua Barang",
+        onBack = onBack,
+        actions = {
+            ExpressiveFilledIconButton(
+                onClick = {
+                    showSearch = !showSearch
+                    if (!showSearch) viewModel.onSearchChange("")
                 }
-                InventorySearchBar(
-                    query = state.filters.search,
-                    onQueryChange = viewModel::onSearchChange,
-                    onRefresh = viewModel::refresh,
-                    isRefreshing = state.isSyncing,
-                    isExporting = isExporting,
-                    onExport = {
-                        isExporting = true
-                        scope.launch {
-                            val products = viewModel.exportProducts()
-                            exportAndShare(context, products)
-                            isExporting = false
-                        }
-                    }
+            ) {
+                Icon(
+                    if (showSearch) Icons.Rounded.Close else Icons.Rounded.Search,
+                    contentDescription = if (showSearch) "Tutup pencarian" else "Cari barang"
                 )
-                FilterChipsRow(
-                    filters = state.filters,
-                    hasMyRegion = state.myRegion != null,
-                    categories = state.categories,
-                    merks = state.merks,
-                    onToggleReady = viewModel::toggleReadyOnly,
-                    onToggleRegion = viewModel::setRegion,
-                    onMyBranch = viewModel::setMyBranchOnly,
-                    onSelectCategory = viewModel::setCategory,
-                    onSelectMerk = viewModel::setMerk,
-                    onSortClick = { showSortSheet = true }
-                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            ExpressiveFilledIconButton(onClick = { showExportSheet = true }) {
+                Icon(Icons.Rounded.Share, contentDescription = "Export inventaris")
             }
         }
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+    ) { contentModifier ->
+        Column(modifier = contentModifier) {
+            AnimatedVisibility(
+                visible = showSearch,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                ExpressiveTextField(
+                    value = state.filters.search,
+                    onValueChange = viewModel::onSearchChange,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = "Cari nama atau kode barang",
+                    trailingIcon = if (state.filters.search.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { viewModel.onSearchChange("") }) {
+                                Icon(Icons.Rounded.Clear, contentDescription = "Hapus pencarian")
+                            }
+                        }
+                    } else null
+                )
+            }
+            FilterChipsRow(
+                filters = state.filters,
+                hasMyRegion = state.myRegion != null,
+                myDealer = state.myDealer,
+                onToggleReady = viewModel::toggleReadyOnly,
+                onToggleRegion = viewModel::setRegion,
+                onMyBranch = viewModel::setMyBranchOnly,
+                onToggleMyStore = viewModel::toggleMyStore,
+                onToggleDeadstock = viewModel::toggleDeadstockOnly,
+                onFilterClick = { showSortSheet = true }
+            )
             if (state.syncError != null) {
-                Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = state.syncError ?: "",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = viewModel::refresh) { Text("Coba lagi") }
-                    }
-                }
+                ExpressiveInlineError(
+                    message = state.syncError ?: "",
+                    onRetry = viewModel::refresh,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                // Bottom clearance so the last row clears the floating nav it scrolls behind.
-                contentPadding = PaddingValues(top = 4.dp, bottom = 100.dp)
+            val pullState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = state.isSyncing,
+                onRefresh = viewModel::refresh,
+                state = pullState,
+                modifier = Modifier.weight(1f),
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        isRefreshing = state.isSyncing,
+                        state = pullState,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             ) {
-                items(
-                    count = pagingItems.itemCount,
-                    key = pagingItems.itemKey { "${it.kode}|${it.kodeCabang}" }
-                ) { index ->
-                    val product = pagingItems[index]
-                    if (product != null) {
-                        val key = "${product.kode}|${product.kodeCabang}"
-                        // derivedStateOf so toggling one card's expand state only recomposes that
-                        // card — without it, every visible ProductCard re-reads the whole `state`
-                        // object on every expand/collapse, causing scroll jank as the list grows.
-                        val isExpanded by remember(key) { derivedStateOf { key in state.expanded } }
-                        val isLoadingBranches by remember(key) { derivedStateOf { state.loadingBranchFor == key } }
-                        val branches by remember(key) { derivedStateOf { state.branchDetails[key] } }
-                        ProductCard(
-                            product = product,
-                            isExpanded = isExpanded,
-                            isLoadingBranches = isLoadingBranches,
-                            branches = branches,
-                            onClick = { onProductClick(product.kode, product.kodeCabang) },
-                            onToggleExpand = { viewModel.toggleExpand(product.kode, product.kodeCabang) }
-                        )
-                    }
-                }
-
-                when (val append = pagingItems.loadState.append) {
-                    is LoadState.Loading -> {
-                        item {
-                            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
-                            }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    // Bottom clearance so the last row clears the floating nav it scrolls behind.
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 100.dp)
+                ) {
+                    items(
+                        count = pagingItems.itemCount,
+                        key = pagingItems.itemKey { "${it.kode}|${it.kodeCabang}" }
+                    ) { index ->
+                        val product = pagingItems[index]
+                        if (product != null) {
+                            val key = "${product.kode}|${product.kodeCabang}"
+                            // derivedStateOf so toggling one card's expand state only recomposes that
+                            // card — without it, every visible ProductCard re-reads the whole `state`
+                            // object on every expand/collapse, causing scroll jank as the list grows.
+                            val isExpanded by remember(key) { derivedStateOf { key in state.expanded } }
+                            val isLoadingBranches by remember(key) { derivedStateOf { state.loadingBranchFor == key } }
+                            val branches by remember(key) { derivedStateOf { state.branchDetails[key] } }
+                            ProductCard(
+                                product = product,
+                                isExpanded = isExpanded,
+                                isLoadingBranches = isLoadingBranches,
+                                branches = branches,
+                                onClick = { onProductClick(product.kode, product.kodeCabang) },
+                                onToggleExpand = { viewModel.toggleExpand(product.kode, product.kodeCabang) }
+                            )
                         }
                     }
-                    is LoadState.Error -> {
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Gagal memuat data.",
-                                    color = MaterialTheme.colorScheme.error
+
+                    when (val append = pagingItems.loadState.append) {
+                        is LoadState.Loading -> {
+                            item {
+                                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                        }
+                        is LoadState.Error -> {
+                            item {
+                                ExpressiveInlineError(
+                                    message = "Gagal memuat data.",
+                                    onRetry = { pagingItems.retry() },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                                 )
-                                Spacer(Modifier.width(8.dp))
-                                TextButton(onClick = { pagingItems.retry() }) { Text("Coba lagi") }
                             }
                         }
+                        else -> Unit
                     }
-                    else -> Unit
-                }
 
-                // Initial load → shimmering skeleton rows instead of a spinner.
-                if (pagingItems.loadState.refresh is LoadState.Loading && pagingItems.itemCount == 0) {
-                    items(7) {
-                        SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-                    }
-                }
-
-                // Refresh failed with nothing cached to show (e.g. first load while offline) →
-                // full error state with retry, instead of a blank list.
-                if (pagingItems.loadState.refresh is LoadState.Error && pagingItems.itemCount == 0) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                            ExpressiveErrorState(
-                                message = "Tidak bisa memuat barang. Periksa koneksi lalu coba lagi.",
-                                onRetry = { pagingItems.retry() }
-                            )
+                    // Empty-list states, mutually exclusive so exactly one renders. Room's own
+                    // `loadState.refresh` alone isn't enough to detect "still loading" here — querying
+                    // an empty table resolves to NotLoading almost instantly, so on a fresh install
+                    // (no rows synced yet) it would flip straight to the "no results" empty state while
+                    // the first-ever network sync (`state.isSyncing`) is still running in the background.
+                    // Checking `state.isSyncing` too is what actually shows a loading state during that
+                    // first download instead of a misleading "Tidak ada barang".
+                    if (pagingItems.itemCount == 0 && (state.isSyncing || pagingItems.loadState.refresh is LoadState.Loading)) {
+                        items(7) {
+                            SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                         }
-                    }
-                }
-
-                if (pagingItems.loadState.refresh is LoadState.NotLoading && pagingItems.itemCount == 0) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                            ExpressiveEmptyState(
-                                icon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                title = "Tidak ada barang",
-                                subtitle = "Tidak ada barang yang cocok dengan filter"
-                            )
+                    } else if (pagingItems.itemCount == 0 && (state.syncError != null || pagingItems.loadState.refresh is LoadState.Error)) {
+                        // Sync finished with an error and nothing cached (e.g. first install while
+                        // offline) → full error state with retry, instead of a blank list.
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                ExpressiveErrorState(
+                                    message = state.syncError ?: "Tidak bisa memuat barang. Periksa koneksi lalu coba lagi.",
+                                    onRetry = viewModel::refresh
+                                )
+                            }
+                        }
+                    } else if (pagingItems.itemCount == 0) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                ExpressiveEmptyState(
+                                    icon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    title = "Tidak ada barang",
+                                    subtitle = "Tidak ada barang yang cocok dengan filter"
+                                )
+                            }
                         }
                     }
                 }
@@ -284,100 +284,195 @@ fun InventoryScreen(
     }
 
     if (showSortSheet) {
-        SortBottomSheet(
-            current = state.filters.sortOrder,
-            onDismiss = { showSortSheet = false },
-            onSelect = {
-                viewModel.setSortOrder(it)
+        InventoryFilterSheet(
+            filters = state.filters,
+            categories = state.categories,
+            merks = state.merks,
+            onApply = { category, merk, sortOrder, dealerText ->
+                viewModel.applyFilterSheet(category, merk, sortOrder, dealerText)
                 showSortSheet = false
-            }
+            },
+            onDismiss = { showSortSheet = false }
+        )
+    }
+
+    if (showExportSheet) {
+        InventoryExportSheet(
+            filters = state.filters,
+            loadItems = { viewModel.exportProducts() },
+            onDismiss = { showExportSheet = false }
         )
     }
 }
 
-private suspend fun exportAndShare(context: Context, products: List<ProductAggregate>) {
-    val uri = InventoryCsvExporter.export(context, products)
+private suspend fun exportAndShareXlsx(context: Context, products: List<ProductAggregate>) {
+    val uri = InventoryXlsxExporter.export(context, products)
     val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/csv"
+        type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(intent, "Export ke Excel"))
 }
 
+/** Human-readable summary of active filters ("Ready · Jakarta · Kategori: TV"), null if none active. */
+private fun buildFilterSummary(filters: InventoryFilters): String? {
+    val parts = buildList {
+        if (filters.readyOnly) add("Ready")
+        if (filters.deadstockOnly) add("Deadstock")
+        if (filters.region.isNotEmpty()) add(RegionAlias.label(filters.region))
+        if (filters.dealer.isNotEmpty()) add(DealerAlias.label(filters.dealer))
+        if (filters.category.isNotEmpty()) add(filters.category)
+        if (filters.merk.isNotEmpty()) add(filters.merk)
+        if (filters.search.isNotBlank()) add("\"${filters.search}\"")
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InventorySearchBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onRefresh: () -> Unit,
-    isRefreshing: Boolean,
-    isExporting: Boolean,
-    onExport: () -> Unit
+private fun InventoryExportSheet(
+    filters: InventoryFilters,
+    loadItems: suspend () -> List<ProductAggregate>,
+    onDismiss: () -> Unit
 ) {
-    var showMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var items by remember { mutableStateOf<List<ProductAggregate>?>(null) }
+    var isExporting by remember { mutableStateOf(false) }
+    val filterSummary = remember(filters) { buildFilterSummary(filters) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        SearchBar(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            colors = SearchBarDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            tonalElevation = 1.dp,
-            shadowElevation = 2.dp,
-            inputField = {
-                SearchBarDefaults.InputField(
-                    query = query,
-                    onQueryChange = onQueryChange,
-                    onSearch = {},
-                    expanded = false,
-                    onExpandedChange = {},
-                    placeholder = { Text("Cari nama atau kode barang") },
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (query.isNotEmpty()) {
-                                IconButton(onClick = { onQueryChange("") }) {
-                                    Icon(Icons.Rounded.Clear, contentDescription = "Hapus pencarian")
-                                }
-                            }
-                            if (isRefreshing || isExporting) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(horizontal = 12.dp))
+    LaunchedEffect(Unit) {
+        items = loadItems()
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = ExpressiveShapes.Squircle,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Box(modifier = Modifier.padding(14.dp), contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Rounded.TableChart,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = "Export Inventaris",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Format Microsoft Excel (.xlsx)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            ClayCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Total Produk",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val count = items?.size
+                            if (count == null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             } else {
-                                Box {
-                                    IconButton(onClick = { showMenu = true }) {
-                                        Icon(Icons.Rounded.MoreVert, contentDescription = "Menu")
-                                    }
-                                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                        DropdownMenuItem(
-                                            text = { Text("Sinkronkan Ulang") },
-                                            leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null) },
-                                            onClick = {
-                                                showMenu = false
-                                                onRefresh()
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Export ke Excel") },
-                                            leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null) },
-                                            onClick = {
-                                                showMenu = false
-                                                onExport()
-                                            }
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = "$count item",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = ExpressiveShapes.Squircle,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Box(modifier = Modifier.padding(10.dp)) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Inventory2,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
                             }
                         }
                     }
-                )
-            },
-            expanded = false,
-            onExpandedChange = {}
-        ) {}
+                    if (filterSummary != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.FilterAlt,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = filterSummary,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ExpressiveFilledButton(
+                onClick = {
+                    val list = items ?: return@ExpressiveFilledButton
+                    isExporting = true
+                    scope.launch {
+                        exportAndShareXlsx(context, list)
+                        isExporting = false
+                        onDismiss()
+                    }
+                },
+                enabled = !isExporting && items != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isExporting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Membuat file...")
+                } else {
+                    Icon(Icons.Rounded.TableChart, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Export ke Excel (.xlsx)")
+                }
+            }
+        }
     }
 }
 
@@ -385,24 +480,44 @@ private fun InventorySearchBar(
 private fun FilterChipsRow(
     filters: InventoryFilters,
     hasMyRegion: Boolean,
-    categories: List<String>,
-    merks: List<String>,
+    myDealer: String?,
     onToggleReady: () -> Unit,
     onToggleRegion: (String) -> Unit,
     onMyBranch: () -> Unit,
-    onSelectCategory: (String) -> Unit,
-    onSelectMerk: (String) -> Unit,
-    onSortClick: () -> Unit
+    onToggleMyStore: () -> Unit,
+    onToggleDeadstock: () -> Unit,
+    onFilterClick: () -> Unit
 ) {
     val chipColors = FilterChipDefaults.filterChipColors(
         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
         selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
     )
+    // Deadstock pakai aksen merah supaya langsung terbaca sebagai "barang bermasalah".
+    val deadstockColors = FilterChipDefaults.filterChipColors(
+        selectedContainerColor = Color(0xFFC62828),
+        selectedLabelColor = Color.White,
+        selectedLeadingIconColor = Color.White
+    )
+    val filterActive = filters.category.isNotEmpty() || filters.merk.isNotEmpty() ||
+        filters.dealer.isNotEmpty() || filters.sortOrder != ProductSortOrder.NAME_ASC
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
     ) {
+        item {
+            // Semua filter kategori/merk/urutan pindah ke bottom sheet — satu pintu.
+            FilterChip(
+                selected = filterActive,
+                onClick = onFilterClick,
+                label = { Text(if (filterActive) "Filter Aktif" else "Filter & Urut") },
+                leadingIcon = {
+                    Icon(Icons.Rounded.FilterAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                },
+                shape = RoundedCornerShape(50),
+                colors = chipColors
+            )
+        }
         item {
             FilterChip(
                 selected = filters.readyOnly,
@@ -414,6 +529,33 @@ private fun FilterChipsRow(
                 shape = RoundedCornerShape(50),
                 colors = chipColors
             )
+        }
+        item {
+            FilterChip(
+                selected = filters.deadstockOnly,
+                onClick = onToggleDeadstock,
+                label = { Text("Deadstock") },
+                leadingIcon = {
+                    Icon(Icons.Rounded.HourglassBottom, contentDescription = null, modifier = Modifier.size(16.dp))
+                },
+                shape = RoundedCornerShape(50),
+                colors = deadstockColors
+            )
+        }
+        if (myDealer != null) {
+            item {
+                // Otomatis dari cabang profil user login — sekali tap: stok toko sendiri saja.
+                FilterChip(
+                    selected = filters.dealer == myDealer,
+                    onClick = onToggleMyStore,
+                    label = { Text("Toko Saya") },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Storefront, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                    shape = RoundedCornerShape(50),
+                    colors = chipColors
+                )
+            }
         }
         if (hasMyRegion) {
             item {
@@ -440,106 +582,109 @@ private fun FilterChipsRow(
                 colors = chipColors
             )
         }
-        item {
-            FilterDropdownChip(
-                label = "Kategori",
-                selectedValue = filters.category,
-                options = categories,
-                onSelect = onSelectCategory,
-                icon = Icons.AutoMirrored.Rounded.List,
-                colors = chipColors
-            )
-        }
-        item {
-            FilterDropdownChip(
-                label = "Merk",
-                selectedValue = filters.merk,
-                options = merks,
-                onSelect = onSelectMerk,
-                icon = Icons.Rounded.Star,
-                colors = chipColors
-            )
-        }
-        item {
-            FilterChip(
-                selected = false,
-                onClick = onSortClick,
-                label = { Text("Urutkan") },
-                leadingIcon = { Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                shape = RoundedCornerShape(50)
-            )
-        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FilterDropdownChip(
-    label: String,
-    selectedValue: String,
-    options: List<String>,
-    onSelect: (String) -> Unit,
-    icon: ImageVector,
-    colors: SelectableChipColors
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        FilterChip(
-            selected = selectedValue.isNotEmpty(),
-            onClick = { expanded = true },
-            label = { Text(if (selectedValue.isNotEmpty()) selectedValue else label) },
-            leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
-            trailingIcon = { Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(16.dp)) },
-            shape = RoundedCornerShape(50),
-            colors = colors
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("Semua $label") },
-                onClick = { onSelect(""); expanded = false }
-            )
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = { onSelect(option); expanded = false }
-                )
-            }
-        }
-    }
-}
+// Kategori+Merk kini diatur lewat InventoryFilterSheet di bawah (bottom sheet gabungan);
+// Global Search masih memakai FilterPanelChip di ui/theme/FilterPanel.kt.
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Sheet gabungan Filter (kategori/merk dgn saran ketik) + Urutkan (nama/harga/stok). Draft lokal —
+ *  baru diterapkan saat tombol Terapkan ditekan, pola yang sama dengan panel filter lama. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun SortBottomSheet(
-    current: Int,
-    onDismiss: () -> Unit,
-    onSelect: (Int) -> Unit
+private fun InventoryFilterSheet(
+    filters: InventoryFilters,
+    categories: List<String>,
+    merks: List<String>,
+    onApply: (category: String, merk: String, sortOrder: Int, dealerText: String) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    val options = listOf(
+    var categoryDraft by remember { mutableStateOf(filters.category) }
+    var merkDraft by remember { mutableStateOf(filters.merk) }
+    var sortDraft by remember { mutableStateOf(filters.sortOrder) }
+    var dealerDraft by remember {
+        mutableStateOf(if (filters.dealer.isEmpty()) "" else DealerAlias.label(filters.dealer))
+    }
+    val sortOptions = listOf(
         ProductSortOrder.NAME_ASC to "Nama (A-Z)",
         ProductSortOrder.PRICE_ASC to "Harga Termurah",
-        ProductSortOrder.PRICE_DESC to "Harga Termahal"
+        ProductSortOrder.PRICE_DESC to "Harga Termahal",
+        ProductSortOrder.STOCK_DESC to "Stok Terbanyak",
+        ProductSortOrder.STOCK_ASC to "Stok Paling Sedikit"
     )
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp)
         ) {
-            Icon(
-                Icons.Rounded.KeyboardArrowDown,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.FilterAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = "Filter & Urutkan",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 8.dp).weight(1f)
+                )
+                if (categoryDraft.isNotEmpty() || merkDraft.isNotEmpty() || dealerDraft.isNotEmpty() ||
+                    sortDraft != ProductSortOrder.NAME_ASC
+                ) {
+                    Text(
+                        text = "Reset",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                categoryDraft = ""
+                                merkDraft = ""
+                                dealerDraft = ""
+                                sortDraft = ProductSortOrder.NAME_ASC
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            SheetSuggestField(
+                label = "Kategori",
+                value = categoryDraft,
+                onValueChange = { categoryDraft = it },
+                options = categories,
+                placeholder = "Semua kategori"
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            SheetSuggestField(
+                label = "Merk",
+                value = merkDraft,
+                onValueChange = { merkDraft = it },
+                options = merks,
+                placeholder = "Semua merk"
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            SheetSuggestField(
+                label = "Toko / Cabang",
+                value = dealerDraft,
+                onValueChange = { dealerDraft = it },
+                options = DealerAlias.allLabels,
+                placeholder = "Semua toko"
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "Urutkan Berdasarkan",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 8.dp)
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
             )
-        }
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-            options.forEach { (value, label) ->
-                val selected = current == value
+            Spacer(modifier = Modifier.height(4.dp))
+            sortOptions.forEach { (value, label) ->
+                val selected = sortDraft == value
                 ListItem(
                     headlineContent = {
                         Text(
@@ -549,7 +694,7 @@ private fun SortBottomSheet(
                         )
                     },
                     leadingContent = {
-                        RadioButton(selected = selected, onClick = { onSelect(value) })
+                        RadioButton(selected = selected, onClick = { sortDraft = value })
                     },
                     colors = ListItemDefaults.colors(
                         containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent
@@ -557,12 +702,70 @@ private fun SortBottomSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .clickable { onSelect(value) }
+                        .clickable { sortDraft = value }
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            ExpressiveFilledButton(
+                onClick = { onApply(categoryDraft.trim(), merkDraft.trim(), sortDraft, dealerDraft.trim()) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Terapkan")
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+    }
+}
+
+/** Kolom teks + saran chip (maks 6, terfilter mengikuti ketikan) — tap saran mengisi kolom. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SheetSuggestField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    options: List<String>,
+    placeholder: String
+) {
+    Text(text = label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(modifier = Modifier.height(6.dp))
+    ExpressiveTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        placeholder = placeholder,
+        trailingIcon = if (value.isNotEmpty()) {
+            {
+                IconButton(onClick = { onValueChange("") }) {
+                    Icon(Icons.Rounded.Clear, contentDescription = "Hapus $label")
+                }
+            }
+        } else null
+    )
+    val suggestions = remember(value, options) {
+        options.filter { it.contains(value.trim(), ignoreCase = true) && !it.equals(value.trim(), ignoreCase = true) }
+            .take(6)
+    }
+    if (suggestions.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(6.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            suggestions.forEach { option ->
+                Surface(
+                    onClick = { onValueChange(option) },
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    Text(
+                        text = option,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -583,19 +786,32 @@ private fun ProductCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                // Rhythm-style leading artwork placeholder (products have no photo field yet).
+                // Rhythm-style leading artwork slot — real photo when the ERP has one (`Gambar`),
+                // icon placeholder otherwise (most products don't have one populated yet).
+                val imageUrl = remember(product.gambar) { ProductImageUrl.resolve(product.gambar) }
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.size(52.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    // AsyncImage (bukan SubcomposeAsyncImage) — subkomposisi per baris terlalu
+                    // mahal saat fling di list panjang; ikon placeholder cukup digambar di
+                    // belakang dan tertutup foto begitu berhasil dimuat.
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = Icons.Rounded.Inventory2,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(26.dp)
                         )
+                        if (imageUrl != null) {
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = product.nama,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.size(12.dp))
@@ -606,11 +822,18 @@ private fun ProductCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        text = RegionAlias.label(product.kodeCabang),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = RegionAlias.label(product.kodeCabang),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        // Aging stok tertua di antara semua dealer (kolom Kondisi web Stok All Cabang).
+                        product.maxUmurHari?.let { umur ->
+                            Spacer(modifier = Modifier.width(8.dp))
+                            AgingBadge(umur)
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -658,9 +881,23 @@ private fun ProductCard(
                             branches.forEach { branch ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = DealerAlias.label(branch.kodeDealer), style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        text = DealerAlias.label(branch.kodeDealer),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    // Umur stok per dealer — deadstock (>=90 hr) tampil merah.
+                                    branch.umurHari?.let { umur ->
+                                        Text(
+                                            text = "$umur hr",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = agingColor(umur)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                    }
                                     Text(text = "${branch.stok.toInt()}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                                 }
                             }

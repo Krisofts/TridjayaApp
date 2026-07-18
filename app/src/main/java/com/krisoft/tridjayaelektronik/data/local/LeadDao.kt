@@ -41,6 +41,17 @@ interface LeadDao {
     @Query("SELECT * FROM leads WHERE pendingSync = 1 ORDER BY id DESC")
     suspend fun pendingLeads(): List<LeadEntity>
 
+    @Query("SELECT * FROM leads WHERE id = :id")
+    suspend fun byId(id: Long): LeadEntity?
+
+    /** Server rows whose stage was moved offline and still needs pushing. */
+    @Query("SELECT * FROM leads WHERE stageDirty = 1 AND id > 0")
+    suspend fun dirtyStageLeads(): List<LeadEntity>
+
+    /** Server rows whose won/lost/reopen outcome was set offline and still needs pushing. */
+    @Query("SELECT * FROM leads WHERE statusDirtyOp IS NOT NULL AND id > 0")
+    suspend fun dirtyStatusLeads(): List<LeadEntity>
+
     @Query("DELETE FROM leads WHERE id = :id")
     suspend fun deleteById(id: Long)
 
