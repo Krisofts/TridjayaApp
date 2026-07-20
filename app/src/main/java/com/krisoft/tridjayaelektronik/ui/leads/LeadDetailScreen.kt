@@ -368,7 +368,7 @@ private fun ReadOnlyBanner(handlerName: String) {
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = "Ditangani oleh $handlerName — Anda hanya bisa melihat prospek ini.",
+            text = "Followup oleh $handlerName — Anda hanya bisa melihat prospek ini.",
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -685,7 +685,7 @@ private fun InfoListCard(
     }
     val rows = buildList {
         add(Triple(Icons.Rounded.PersonAdd, "Dibuat oleh", creatorName))
-        add(Triple(Icons.Rounded.Person, "Ditangani oleh", handlerName + handlerSuffix))
+        add(Triple(Icons.Rounded.Person, "Followup oleh", handlerName + handlerSuffix))
         if (!lead.minatBarang.isNullOrBlank()) add(Triple(Icons.Rounded.ShoppingBag, "Minat Barang", lead.minatBarang!!))
         if (!lead.kategoriProduk.isNullOrBlank()) add(Triple(Icons.Rounded.Category, "Kategori Produk", lead.kategoriProduk!!))
         if (!lead.source.isNullOrBlank()) add(Triple(Icons.Rounded.Campaign, "Sumber", lead.source!!))

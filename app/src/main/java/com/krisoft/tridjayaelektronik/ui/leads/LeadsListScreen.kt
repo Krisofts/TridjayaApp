@@ -112,7 +112,7 @@ private enum class LeadSortOption(val label: String) {
 /** Cakupan kepemilikan prospek — membedakan yang saya tangani vs yang dilempar antar sales. */
 private enum class LeadScope(val label: String) {
     ALL("Semua"),
-    MINE("Ditangani Saya"),
+    MINE("Followup Saya"),
     THROWN_TO_ME("Dilempar ke Saya"),
     THROWN_BY_ME("Saya Lempar ke Sales Lain");
 

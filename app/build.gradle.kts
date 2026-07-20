@@ -56,13 +56,10 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
-        debug {
-            // Build debug menembak gateway LOKAL, bukan produksi. HP fisik mencapainya lewat
-            // `adb reverse tcp:4100 tcp:4100` → device `localhost:4100` diteruskan ke PC.
-            // `localhost` sudah diizinkan cleartext di network_security_config.xml.
-            // Pastikan gateway (4100) + kinerja-service (4114) + auth-service (4101) jalan lokal.
-            buildConfigField("String", "API_BASE_URL", "\"http://localhost:4100/\"")
-        }
+        // Debug memakai API_BASE_URL default (https://tridjaya.com/) sama seperti release.
+        // Untuk uji ke gateway lokal, sementara ganti API_BASE_URL di defaultConfig ke
+        // "http://localhost:4100/" + jalankan `adb reverse tcp:4100 tcp:4100` (localhost sudah
+        // diizinkan cleartext di network_security_config.xml). Jangan commit override lokal itu.
     }
 
     buildFeatures {

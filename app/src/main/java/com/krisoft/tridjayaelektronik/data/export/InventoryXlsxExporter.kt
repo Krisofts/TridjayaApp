@@ -2,18 +2,10 @@ package com.krisoft.tridjayaelektronik.data.export
 
 import android.content.Context
 import androidx.core.content.FileProvider
-import com.krisoft.tridjayaelektronik.data.ProductImageUrl
 import com.krisoft.tridjayaelektronik.data.local.ProductAggregate
 import com.krisoft.tridjayaelektronik.data.local.RegionAlias
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.dhatim.fastexcel.BorderSide
 import org.dhatim.fastexcel.BorderStyle
 import org.dhatim.fastexcel.Workbook
@@ -21,34 +13,31 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
-/** Writes the given products to a styled .xlsx (with per-row product photos) and returns a shareable content:// Uri. */
+/**
+ * Menulis daftar produk ke .xlsx (data saja, tanpa foto) + kolom Sub Total (stok×harga) dan
+ * baris Grand Total. Foto sengaja tidak diikutkan (download bikin lambat/rawan gagal); ekspor
+ * murni tulis-file lokal di IO — cepat, tak butuh koneksi. Nama file memakai prefix filter.
+ */
 object InventoryXlsxExporter {
 
-    private const val MAX_CONCURRENT_DOWNLOADS = 6
-    private const val IMAGE_SIZE_PX = 64
+    // Kolom: A Kode | B Nama | C Kategori | D Merk | E Cabang | F Stok | G Harga | H Sub Total
+    private val headers = listOf("Kode", "Nama", "Kategori", "Merk", "Cabang", "Stok", "Harga", "Sub Total")
+    private const val COL_SUBTOTAL = 7
 
-    private val imageClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(8, TimeUnit.SECONDS)
-            .readTimeout(8, TimeUnit.SECONDS)
-            .build()
-    }
+    private const val NUM_FMT = "#,##0"
 
-    private val headers = listOf("Gambar", "Kode", "Nama", "Kategori", "Merk", "Cabang", "Stok", "Harga")
-
-    suspend fun export(context: Context, products: List<ProductAggregate>): android.net.Uri = withContext(Dispatchers.IO) {
-        val imagesByUrl = prefetchImages(products)
-
+    suspend fun export(context: Context, products: List<ProductAggregate>, filePrefix: String): android.net.Uri = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
-        val file = File(dir, "inventaris_$timestamp.xlsx")
+        val safePrefix = filePrefix.trim().ifBlank { "Produk" }
+        val file = File(dir, "${safePrefix}_$timestamp.xlsx")
 
         FileOutputStream(file).use { out ->
             val workbook = Workbook(out, "Tridjaya Elektronik", "1.0")
             val sheet = workbook.newWorksheet("Inventaris")
 
+            // Header
             headers.forEachIndexed { col, title -> sheet.value(0, col, title) }
             sheet.range(0, 0, 0, headers.lastIndex).style()
                 .fillColor("1E63E9")
@@ -57,43 +46,61 @@ object InventoryXlsxExporter {
                 .horizontalAlignment("center")
                 .verticalAlignment("center")
                 .set()
-            sheet.rowHeight(0, 22.0)
+            sheet.rowHeight(0, 24.0)
 
-            sheet.width(0, 12.0)
-            sheet.width(1, 14.0)
-            sheet.width(2, 34.0)
-            sheet.width(3, 18.0)
-            sheet.width(4, 16.0)
-            sheet.width(5, 20.0)
-            sheet.width(6, 10.0)
-            sheet.width(7, 16.0)
+            sheet.width(0, 15.0)  // Kode
+            sheet.width(1, 36.0)  // Nama
+            sheet.width(2, 18.0)  // Kategori
+            sheet.width(3, 16.0)  // Merk
+            sheet.width(4, 20.0)  // Cabang
+            sheet.width(5, 10.0)  // Stok
+            sheet.width(6, 16.0)  // Harga
+            sheet.width(7, 18.0)  // Sub Total
 
+            // Perataan per kolom: left=kode/nama, center=kategori/merk/cabang/stok, right=harga/subtotal.
+            val align = arrayOf("left", "left", "center", "center", "center", "center", "right", "right")
+
+            var grandTotal = 0.0
             products.forEachIndexed { index, product ->
                 val row = index + 1
-                sheet.rowHeight(row, 54.0)
+                sheet.rowHeight(row, 20.0)  // sedikit lebih tinggi dari default = ada spasi
 
-                val bytes = ProductImageUrl.resolve(product.gambar)?.let { imagesByUrl[it] }
-                if (bytes != null) {
-                    sheet.addImage(row, 0, bytes, IMAGE_SIZE_PX, IMAGE_SIZE_PX)
-                }
-                sheet.value(row, 1, product.kode)
-                sheet.value(row, 2, product.nama)
-                sheet.value(row, 3, product.kategori)
-                sheet.value(row, 4, product.merk)
-                sheet.value(row, 5, RegionAlias.label(product.kodeCabang))
-                sheet.value(row, 6, product.totalStok)
-                sheet.value(row, 7, product.harga)
-                sheet.style(row, 6).format("#,##0").verticalAlignment("center").set()
-                sheet.style(row, 7).format("#,##0").verticalAlignment("center").set()
-                for (col in 1..5) sheet.style(row, col).verticalAlignment("center").wrapText(false).set()
+                val subtotal = product.totalStok * product.harga
+                grandTotal += subtotal
 
-                if (index % 2 == 1) {
-                    sheet.range(row, 0, row, headers.lastIndex).style().fillColor("F2F4F8").set()
+                sheet.value(row, 0, product.kode)
+                sheet.value(row, 1, product.nama)
+                sheet.value(row, 2, product.kategori)
+                sheet.value(row, 3, product.merk)
+                sheet.value(row, 4, RegionAlias.label(product.kodeCabang))
+                sheet.value(row, 5, product.totalStok)
+                sheet.value(row, 6, product.harga)
+                sheet.value(row, 7, subtotal)
+
+                for (col in headers.indices) {
+                    var st = sheet.style(row, col)
+                        .verticalAlignment("center")
+                        .horizontalAlignment(align[col])
+                        .wrapText(false)
+                    if (col >= 5) st = st.format(NUM_FMT)   // Stok, Harga, Sub Total angka
+                    if (index % 2 == 1) st = st.fillColor("F2F4F8")
+                    st.set()
                 }
             }
 
-            val lastRow = products.size
-            sheet.range(0, 0, lastRow, headers.lastIndex).style()
+            // Grand Total
+            val totalRow = products.size + 1
+            sheet.rowHeight(totalRow, 22.0)
+            sheet.value(totalRow, 0, "GRAND TOTAL")
+            sheet.range(totalRow, 0, totalRow, COL_SUBTOTAL - 1).merge()
+            sheet.value(totalRow, COL_SUBTOTAL, grandTotal)
+            sheet.range(totalRow, 0, totalRow, COL_SUBTOTAL - 1).style()
+                .fillColor("EAEEF6").bold().horizontalAlignment("right").verticalAlignment("center").set()
+            sheet.style(totalRow, COL_SUBTOTAL)
+                .fillColor("EAEEF6").bold().horizontalAlignment("right").verticalAlignment("center").format(NUM_FMT).set()
+
+            // Border seluruh tabel termasuk baris total
+            sheet.range(0, 0, totalRow, headers.lastIndex).style()
                 .borderStyle(BorderSide.TOP, BorderStyle.THIN)
                 .borderStyle(BorderSide.BOTTOM, BorderStyle.THIN)
                 .borderStyle(BorderSide.LEFT, BorderStyle.THIN)
@@ -107,28 +114,4 @@ object InventoryXlsxExporter {
 
         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }
-
-    /** Downloads every distinct product image once (bounded concurrency) before the sheet is built —
-     * fastexcel's Worksheet isn't safe to write from multiple coroutines, so all network I/O happens
-     * first and the actual row-writing loop above stays single-threaded. */
-    private suspend fun prefetchImages(products: List<ProductAggregate>): Map<String, ByteArray> = coroutineScope {
-        val semaphore = Semaphore(MAX_CONCURRENT_DOWNLOADS)
-        products
-            .mapNotNull { ProductImageUrl.resolve(it.gambar) }
-            .distinct()
-            .map { url ->
-                async {
-                    semaphore.withPermit { url to downloadImage(url) }
-                }
-            }
-            .awaitAll()
-            .mapNotNull { (url, bytes) -> bytes?.let { url to it } }
-            .toMap()
-    }
-
-    private fun downloadImage(url: String): ByteArray? = runCatching {
-        imageClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
-            if (response.isSuccessful) response.body?.bytes() else null
-        }
-    }.getOrNull()
 }

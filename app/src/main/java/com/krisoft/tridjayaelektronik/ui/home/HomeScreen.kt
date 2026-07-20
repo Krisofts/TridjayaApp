@@ -38,7 +38,11 @@ import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.FactCheck
 import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
@@ -219,26 +223,6 @@ private fun LazyListScope.homeSection(
         HomeSection.CRM_SUMMARY -> {
             item { SectionHeader(title = "Ringkasan CRM", icon = Icons.Rounded.Groups) }
             item { CrmCard(summary = state.crmSummary) }
-        }
-        HomeSection.RANKING_CABANG -> if (state.topBranches.isNotEmpty()) {
-            item { SectionHeader(title = "Ranking Cabang", icon = Icons.Rounded.Star, onViewMore = onViewMoreBranches) }
-            item {
-                RankingCard {
-                    state.topBranches.forEachIndexed { index, branch ->
-                        BranchRankingRow(rank = index + 1, branch = branch, onClick = { onBranchClick(branch) })
-                    }
-                }
-            }
-        }
-        HomeSection.RANKING_SALES -> if (state.topSales.isNotEmpty()) {
-            item { SectionHeader(title = "Klasemen Sales", icon = Icons.Rounded.Star, onViewMore = onViewMoreSales) }
-            item {
-                RankingCard {
-                    state.topSales.forEachIndexed { index, sales ->
-                        SalesRankingRow(rank = index + 1, sales = sales, onClick = { onSalesClick(sales) })
-                    }
-                }
-            }
         }
     }
 }
@@ -597,90 +581,62 @@ private fun CrmCard(summary: LeadSummary?) {
         PlaceholderCard("Belum ada data prospek")
         return
     }
+    // Desain tenang & rapi: satu angka utama (nilai pipeline) + baris statistik seragam.
     ClayCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Headline: today's prospect input next to the all-time total.
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CrmHeroTile(
-                    label = "Prospek Hari Ini",
-                    value = "${summary.todayCount}",
-                    icon = Icons.Rounded.CalendarToday,
-                    container = MaterialTheme.colorScheme.primaryContainer,
-                    content = MaterialTheme.colorScheme.onPrimaryContainer,
-                    accent = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f)
-                )
-                CrmHeroTile(
-                    label = "Total Prospek",
-                    value = "${summary.totalCount}",
-                    icon = Icons.Rounded.Groups,
-                    container = MaterialTheme.colorScheme.secondaryContainer,
-                    content = MaterialTheme.colorScheme.onSecondaryContainer,
-                    accent = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                MiniStat("Open", "${summary.openCount}", Color(0xFF1565C0))
-                MiniStat("Deal", "${summary.wonThisMonth}", Color(0xFF2E7D32))
-                MiniStat("Gagal", "${summary.lostThisMonth}", Color(0xFFC62828))
-            }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Nilai Pipeline", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    text = formatRupiah(summary.openEstimatedValue),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CrmHeroTile(
-    label: String,
-    value: String,
-    icon: ImageVector,
-    container: Color,
-    content: Color,
-    accent: Color,
-    modifier: Modifier = Modifier
-) {
-    Surface(shape = RoundedCornerShape(16.dp), color = container, modifier = modifier) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
-            Surface(shape = CircleShape, color = accent.copy(alpha = 0.18f)) {
-                Box(modifier = Modifier.padding(7.dp)) {
-                    Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
+        Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = value,
-                style = MaterialTheme.typography.headlineMedium,
+                text = "Nilai Pipeline Aktif",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = formatRupiah(summary.openEstimatedValue),
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = content
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 2.dp)
             )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = content.copy(alpha = 0.75f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                CrmStat("Hari Ini", summary.todayCount, MaterialTheme.colorScheme.onSurface)
+                CrmStatDivider()
+                CrmStat("Total", summary.totalCount, MaterialTheme.colorScheme.onSurface)
+                CrmStatDivider()
+                CrmStat("Deal", summary.wonThisMonth, Color(0xFF2E7D32))
+                CrmStatDivider()
+                CrmStat("Gagal", summary.lostThisMonth, Color(0xFFC62828))
+            }
         }
     }
 }
 
 @Composable
-private fun RowScope.MiniStat(label: String, value: String, color: Color) {
+private fun RowScope.CrmStat(label: String, value: Int, valueColor: Color) {
     Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = color)
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = "$value",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = valueColor
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
+}
+
+@Composable
+private fun CrmStatDivider() {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 2.dp)
+            .width(1.dp)
+            .height(30.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+    )
 }
 
 @Composable
@@ -746,88 +702,133 @@ private fun DrawScope.greetingSphere(cx: Float, cy: Float, r: Float, base: Color
     )
 }
 
-// Hour buckets/emoji ported 1:1 from Rhythm's ModernWelcomeSection.
-private data class GreetingContent(
-    val emoji: String,
-    val decorativeEmoji: String,
+private data class GreetingUi(
     val label: String,
-    val quotes: List<String>
+    val quote: String,
+    val icon: ImageVector,
+    /** Gradien latar kartu greeting. */
+    val gradient: List<Color>,
+    /** Warna teks di atas gradien. */
+    val onColor: Color,
+    /** Tint ikon (harus kontras dengan badge putih). */
+    val iconTint: Color
 )
+
+/** Tema sapaan per waktu — background + ikon berubah pagi/siang/sore/malam. */
+private fun timeGreeting(hour: Int): GreetingUi = when (hour) {
+    in 5..10 -> GreetingUi(   // Pagi — sunrise hangat
+        "Selamat Pagi",
+        "Awali hari dengan semangat, semoga banyak closing!",
+        Icons.Rounded.WbSunny,
+        listOf(Color(0xFFFFD07A), Color(0xFFFF9F5A)),
+        Color(0xFF3E2A12),
+        Color(0xFFF57C00)
+    )
+    in 11..14 -> GreetingUi(  // Siang — langit cerah
+        "Selamat Siang",
+        "Jangan lupa follow up prospek hari ini.",
+        Icons.Rounded.LightMode,
+        listOf(Color(0xFF57ABFF), Color(0xFF2E7CF6)),
+        Color.White,
+        Color(0xFFFB8C00)
+    )
+    in 15..18 -> GreetingUi(  // Sore — sunset
+        "Selamat Sore",
+        "Saatnya review progress target harian.",
+        Icons.Rounded.WbTwilight,
+        listOf(Color(0xFFFF9E6D), Color(0xFFE8577D)),
+        Color.White,
+        Color(0xFFF4511E)
+    )
+    else -> GreetingUi(       // Malam
+        "Selamat Malam",
+        "Tutup hari dengan evaluasi progress. Terima kasih kerja kerasmu.",
+        Icons.Rounded.DarkMode,
+        listOf(Color(0xFF3B4A8C), Color(0xFF1E2547)),
+        Color.White,
+        Color(0xFF3F51B5)
+    )
+}
+
+/** Tema sapaan musiman (override tema waktu). Tambah case lain untuk perayaan berikutnya
+ *  (mis. Desember/Tahun Baru, Ramadan) — tinggal daftarkan bulannya di sini. */
+private fun seasonalGreeting(month: Int): GreetingUi? = when (month) {
+    Calendar.AUGUST -> GreetingUi(   // Agustus — Kemerdekaan RI
+        "Dirgahayu Indonesia",
+        "Merdeka! Semangat Agustus, terus raih target.",
+        Icons.Rounded.Flag,
+        listOf(Color(0xFFF44336), Color(0xFFB71C1C)),
+        Color.White,
+        Color(0xFFE53935)
+    )
+    else -> null
+}
 
 @Composable
 private fun GreetingCard(userName: String) {
-    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val greeting = remember(hour) {
-        when (hour) {
-            in 0..4 -> GreetingContent("🌙", "⭐", "Selamat Malam", listOf("Istirahat cukup, closing lanjut besok pagi.", "Waktu tenang untuk susun strategi besok."))
-            in 5..11 -> GreetingContent("☀️", "🌻", "Selamat Pagi", listOf("Awali hari dengan semangat, semoga banyak closing!", "Pagi cerah untuk follow up prospek baru."))
-            in 12..16 -> GreetingContent("🌤️", "⚡", "Selamat Siang", listOf("Jangan lupa follow up prospek hari ini.", "Semoga siang ini penuh peluang baru."))
-            in 17..20 -> GreetingContent("🌅", "✨", "Selamat Sore", listOf("Saatnya review progress target harian.", "Sore produktif, terus semangat!"))
-            else -> GreetingContent("🌙", "🌟", "Selamat Malam", listOf("Tutup hari dengan evaluasi progress.", "Terima kasih atas kerja kerasmu hari ini."))
-        }
-    }
-    val quote = remember(greeting) { greeting.quotes.random() }
+    val cal = remember { Calendar.getInstance() }
+    val hour = remember { cal.get(Calendar.HOUR_OF_DAY) }
+    val month = remember { cal.get(Calendar.MONTH) }
+    // Musiman (mis. Agustus) menimpa tema waktu; kalau tidak, pakai tema pagi/siang/sore/malam.
+    val greeting = remember(hour, month) { seasonalGreeting(month) ?: timeGreeting(hour) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "greeting_emoji_pulse")
-    val emojiScale by infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "greeting_pulse")
+    val iconScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(animation = tween(2000), repeatMode = RepeatMode.Reverse),
-        label = "greeting_emoji_scale"
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(animation = tween(2200), repeatMode = RepeatMode.Reverse),
+        label = "greeting_icon_scale"
     )
-    // Flyer-style claymorphism treatment: puffy tinted shadow, top-light sheen, floating 3D
-    // spheres — theme-driven (unlike the flyer's fixed palette) so it adapts to preset/dark mode.
-    val primary = MaterialTheme.colorScheme.primary
-    val tertiary = MaterialTheme.colorScheme.tertiary
-    val container = MaterialTheme.colorScheme.primaryContainer
+
     val shape = RoundedCornerShape(26.dp)
+    val base = greeting.gradient.first()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 6.dp)
-            .shadow(12.dp, shape, ambientColor = primary.copy(alpha = 0.55f), spotColor = primary.copy(alpha = 0.55f))
+            .shadow(12.dp, shape, ambientColor = base.copy(alpha = 0.5f), spotColor = base.copy(alpha = 0.5f))
             .clip(shape)
-            .background(container)
-            .background(
-                Brush.verticalGradient(0f to Color.White.copy(alpha = 0.30f), 0.45f to Color.Transparent)
-            )
+            .background(Brush.linearGradient(greeting.gradient))
+            // sheen tipis di atas untuk kesan glossy
+            .background(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.18f), 0.5f to Color.Transparent))
             .drawBehind {
-                greetingSphere(size.width * 0.90f, size.height * 0.18f, 30.dp.toPx(), primary, alpha = 0.45f)
-                greetingSphere(size.width * 0.78f, size.height * 0.88f, 18.dp.toPx(), tertiary, alpha = 0.40f)
-                greetingSphere(size.width * 0.97f, size.height * 0.70f, 12.dp.toPx(), primary, alpha = 0.35f)
+                greetingSphere(size.width * 0.90f, size.height * 0.18f, 30.dp.toPx(), Color.White, alpha = 0.16f)
+                greetingSphere(size.width * 0.80f, size.height * 0.92f, 18.dp.toPx(), Color.White, alpha = 0.14f)
+                greetingSphere(size.width * 0.97f, size.height * 0.62f, 12.dp.toPx(), Color.White, alpha = 0.12f)
             }
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Emoji floating in its own little clay ball.
+            // Ikon vektor (bukan emoji) di badge kaca putih, ditint sesuai tema, dengan pulse halus.
             Box(
                 modifier = Modifier
                     .padding(end = 14.dp)
-                    .graphicsLayer { scaleX = emojiScale; scaleY = emojiScale }
-                    .shadow(8.dp, CircleShape, ambientColor = primary.copy(alpha = 0.5f), spotColor = primary.copy(alpha = 0.5f))
-                    .background(Color.White.copy(alpha = 0.85f), CircleShape)
-                    .background(
-                        Brush.verticalGradient(0f to Color.White, 0.6f to Color.Transparent),
-                        CircleShape
-                    )
+                    .graphicsLayer { scaleX = iconScale; scaleY = iconScale }
+                    .shadow(8.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.22f), spotColor = Color.Black.copy(alpha = 0.22f))
+                    .background(Color.White.copy(alpha = 0.94f), CircleShape)
                     .size(54.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = greeting.emoji, style = MaterialTheme.typography.headlineMedium)
+                Icon(
+                    imageVector = greeting.icon,
+                    contentDescription = null,
+                    tint = greeting.iconTint,
+                    modifier = Modifier.size(30.dp)
+                )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (userName.isBlank()) greeting.label else "${greeting.label}, $userName",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = greeting.onColor
                 )
                 Text(
-                    text = quote,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    text = greeting.quote,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = greeting.onColor.copy(alpha = 0.85f),
                     modifier = Modifier.padding(top = 5.dp)
                 )
             }

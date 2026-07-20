@@ -105,7 +105,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveShapes
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -305,8 +308,8 @@ fun InventoryScreen(
     }
 }
 
-private suspend fun exportAndShareXlsx(context: Context, products: List<ProductAggregate>) {
-    val uri = InventoryXlsxExporter.export(context, products)
+private suspend fun exportAndShareXlsx(context: Context, products: List<ProductAggregate>, filePrefix: String) {
+    val uri = InventoryXlsxExporter.export(context, products, filePrefix)
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         putExtra(Intent.EXTRA_STREAM, uri)
@@ -329,6 +332,19 @@ private fun buildFilterSummary(filters: InventoryFilters): String? {
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
+/** Prefix nama file export dari filter aktif — urutan Merk_Kategori_Deadstock (bukan "inventaris").
+ *  Contoh: "Samsung_TV", "Deadstock", "LG_Kulkas". Kosong bila tak ada filter → "Produk". */
+private fun buildExportPrefix(filters: InventoryFilters): String {
+    val parts = buildList {
+        if (filters.merk.isNotBlank()) add(filters.merk)
+        if (filters.category.isNotBlank()) add(filters.category)
+        if (filters.deadstockOnly) add("Deadstock")
+    }
+    val slug = parts.joinToString("_") { it.trim().replace(Regex("[^A-Za-z0-9]+"), "-").trim('-') }
+        .replace(Regex("_+"), "_").trim('_')
+    return slug.ifBlank { "Produk" }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InventoryExportSheet(
@@ -340,10 +356,18 @@ private fun InventoryExportSheet(
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<ProductAggregate>?>(null) }
     var isExporting by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf(false) }
     val filterSummary = remember(filters) { buildFilterSummary(filters) }
 
+    // Muat daftar produk di IO + tahan error: kegagalan tak boleh crash / nyangkut spinner.
     LaunchedEffect(Unit) {
-        items = loadItems()
+        runCatching { withContext(Dispatchers.IO) { loadItems() } }
+            .onSuccess { items = it; loadError = false }
+            .onFailure {
+                items = emptyList()
+                loadError = true
+                Toast.makeText(context, "Gagal memuat produk untuk export", Toast.LENGTH_LONG).show()
+            }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -448,14 +472,23 @@ private fun InventoryExportSheet(
             ExpressiveFilledButton(
                 onClick = {
                     val list = items ?: return@ExpressiveFilledButton
+                    if (list.isEmpty()) {
+                        Toast.makeText(context, "Tidak ada produk untuk diexport", Toast.LENGTH_SHORT).show()
+                        return@ExpressiveFilledButton
+                    }
                     isExporting = true
                     scope.launch {
-                        exportAndShareXlsx(context, list)
-                        isExporting = false
-                        onDismiss()
+                        try {
+                            exportAndShareXlsx(context, list, buildExportPrefix(filters))
+                            onDismiss()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Gagal membuat file: ${e.message ?: "kesalahan tak terduga"}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            isExporting = false
+                        }
                     }
                 },
-                enabled = !isExporting && items != null,
+                enabled = !isExporting && items != null && !loadError,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isExporting) {
