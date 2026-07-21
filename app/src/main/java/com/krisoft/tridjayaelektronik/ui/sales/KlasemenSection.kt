@@ -391,7 +391,7 @@ private fun MiniSegmented(options: List<String>, selectedIndex: Int, onSelect: (
 }
 
 @Composable
-private fun KlasemenRowCard(row: StandingRow, metric: KlasemenMetric) {
+internal fun KlasemenRowCard(row: StandingRow, metric: KlasemenMetric) {
     ClayCard(
         modifier = Modifier
             .fillMaxWidth()

@@ -12,13 +12,13 @@ import javax.inject.Singleton
  */
 enum class HomeSection(val key: String, val label: String) {
     QUICK_ACCESS("quick_access", "Akses Cepat"),
-    // Sales KPI/Target, Ranking Cabang & Klasemen Sales were removed from Home (they live on the
-    // dedicated Sales screen, reachable from quick access) — stale persisted keys are silently
-    // dropped by fromKey().
-    CRM_SUMMARY("crm_summary", "Ringkasan CRM");
+    // Sales KPI/Target dulu dihapus (ada di layar Sales). Klasemen (sales + cabang) dikembalikan
+    // sebagai SATU widget ringkas top-5 (LEADERBOARD). Stale persisted keys di-drop fromKey().
+    CRM_SUMMARY("crm_summary", "Ringkasan CRM"),
+    LEADERBOARD("leaderboard", "Klasemen");
 
     companion object {
-        val DEFAULT_ORDER: List<HomeSection> = listOf(QUICK_ACCESS, CRM_SUMMARY)
+        val DEFAULT_ORDER: List<HomeSection> = listOf(QUICK_ACCESS, CRM_SUMMARY, LEADERBOARD)
         fun fromKey(key: String): HomeSection? = entries.firstOrNull { it.key == key }
     }
 }

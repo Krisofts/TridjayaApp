@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,13 +51,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -153,12 +159,15 @@ fun AttendanceScreen(
                 }
             }
             else -> {
+                // Sisakan ruang untuk navigation bar sistem agar item riwayat terakhir tidak
+                // terpotong di tepi bawah (edge-to-edge).
+                val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 LazyColumn(
                     modifier = contentModifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp + navBottom),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    item(key = "clock") { ClockCard(viewModel.userName, viewModel.cabang) }
+                    item(key = "clock") { ClockCard(viewModel.userName, viewModel.cabang, state) }
                     item(key = "absen") {
                         AbsenCard(
                             state = state,
@@ -196,16 +205,92 @@ fun AttendanceScreen(
 }
 
 @Composable
-private fun ClockCard(userName: String, cabang: String) {
+private fun ClockCard(userName: String, cabang: String, state: AttendanceUiState) {
     var clock by remember { mutableStateOf(currentClock()) }
     LaunchedEffect(Unit) { while (true) { clock = currentClock(); delay(1000) } }
-    ClayCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
-            Text("Halo, $userName", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(cabang, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(clock, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Text(formatAttendanceDate(todayIso()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+    val primary = MaterialTheme.colorScheme.primary
+    val gradient = Brush.linearGradient(listOf(primary, lerp(primary, Color.Black, 0.30f)))
+    val white = Color.White
+    val (statusLabel, statusIcon) = when {
+        state.hasCheckedOut -> "Selesai" to Icons.Rounded.CheckCircle
+        state.hasCheckedIn -> "Sudah Masuk" to Icons.Rounded.Login
+        else -> "Belum Absen" to Icons.Rounded.Schedule
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(gradient, RoundedCornerShape(24.dp))
+            .padding(20.dp)
+    ) {
+        // Ornamen lingkaran transparan di pojok kanan atas.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(120.dp)
+                .background(white.copy(alpha = 0.06f), CircleShape)
+        )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(44.dp).background(white.copy(alpha = 0.18f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        userName.trim().take(1).uppercase(),
+                        color = white,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Halo, $userName",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = white,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.LocationOn, contentDescription = null, tint = white.copy(alpha = 0.85f), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            cabang,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = white.copy(alpha = 0.9f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Surface(color = white.copy(alpha = 0.20f), shape = RoundedCornerShape(50)) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(statusIcon, contentDescription = null, tint = white, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(statusLabel, color = white, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(18.dp))
+            Text(
+                clock,
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                color = white,
+                maxLines = 1
+            )
+            Text(
+                formatAttendanceDate(todayIso()),
+                style = MaterialTheme.typography.bodyMedium,
+                color = white.copy(alpha = 0.85f)
+            )
         }
     }
 }
@@ -347,13 +432,15 @@ private fun LocationStatus(state: AttendanceUiState, onRefresh: () -> Unit) {
         state.locationError != null -> Quintet(Color(0xFFB5670C).copy(alpha = 0.12f), Color(0xFFB5670C), Icons.Rounded.LocationOff, "Gagal ambil lokasi", state.locationError)
         state.hasLocation && state.inArea == true -> Quintet(
             Color(0xFF12B76A).copy(alpha = 0.12f), Color(0xFF12B76A), Icons.Rounded.LocationOn,
-            "Dalam area toko",
+            state.geofence?.cabangNama?.takeIf { it.isNotBlank() }?.let { "Dalam area $it" } ?: "Dalam area toko",
             "Jarak ${formatDistance((state.distanceM ?: 0).toLong())} dari titik toko · siap check-in."
         )
         state.hasLocation && state.inArea == false -> Quintet(
             Color(0xFFF04438).copy(alpha = 0.12f), Color(0xFFF04438), Icons.Rounded.LocationOn,
             "Di luar area toko",
-            "Jarak ${formatDistance((state.distanceM ?: 0).toLong())} dari titik toko · absen jadi perlu review."
+            state.geofence?.cabangNama?.takeIf { it.isNotBlank() }
+                ?.let { "Terdekat $it · ${formatDistance((state.distanceM ?: 0).toLong())} · absen perlu review." }
+                ?: "Jarak ${formatDistance((state.distanceM ?: 0).toLong())} dari titik toko · absen jadi perlu review."
         )
         state.hasLocation -> Quintet(
             Color(0xFF12B76A).copy(alpha = 0.12f), Color(0xFF12B76A), Icons.Rounded.LocationOn,

@@ -53,13 +53,23 @@ data class AbsensiRecordDto(
 data class AbsensiTodayDto(
     val tanggal: String = "",
     val record: AbsensiRecordDto? = null,
-    /** Geofence cabang user (null bila cabang belum dikonfigurasi) — untuk verdict live di app. */
+    /**
+     * Geofence SEMUA cabang yang dikonfigurasi (karyawan boleh absen di cabang manapun —
+     * verdict akhir dihitung server terhadap seluruh cabang). App memilih cabang terdekat
+     * untuk verdict live sebelum punch. Kosong bila belum ada cabang yang dikonfigurasi.
+     */
+    val geofences: List<AbsensiGeofenceDto> = emptyList(),
+    /**
+     * Kompat backend versi lama (sebelum "geofence lintas cabang") yang mengirim SATU geofence
+     * cabang user. VM menggabungkan: pakai [geofences] bila ada, jika kosong fallback ke [geofence].
+     */
     val geofence: AbsensiGeofenceDto? = null
 )
 
 /** Titik + radius geofence cabang (dari config), dikirim di `today` agar app hitung jarak live. */
 @Serializable
 data class AbsensiGeofenceDto(
+    val cabangId: String? = null,
     val latitude: Double = 0.0,
     val longitude: Double = 0.0,
     val radiusM: Long = 0,

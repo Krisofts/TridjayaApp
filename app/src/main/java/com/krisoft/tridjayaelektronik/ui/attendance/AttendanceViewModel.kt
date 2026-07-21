@@ -48,10 +48,12 @@ data class AttendanceUiState(
     val locationDenied: Boolean = false,
     val locationError: String? = null,
 
-    /** Geofence cabang user (dari `today`) + verdict live saat lokasi terdeteksi. */
+    /** Geofence SEMUA cabang (dari `today`) — app pilih terdekat/yang memuat untuk verdict live. */
+    val geofences: List<AbsensiGeofenceDto> = emptyList(),
+    /** Cabang hasil resolve (yang memuat kita, atau terdekat) — untuk nama & verdict live. */
     val geofence: AbsensiGeofenceDto? = null,
     val distanceM: Int? = null,
-    /** true = dalam radius, false = di luar, null = belum bisa dihitung (tak ada lokasi/geofence). */
+    /** true = dalam radius salah satu cabang, false = di luar semua, null = belum bisa dihitung. */
     val inArea: Boolean? = null,
 
     val submitting: Boolean = false,
@@ -135,7 +137,8 @@ class AttendanceViewModel @Inject constructor(
             }
             val todayData = (todayRes as? AuthResult.Success)?.data
             val today = todayData?.record
-            val geofence = todayData?.geofence
+            // Kompat: backend baru kirim `geofences[]`; versi lama kirim `geofence` tunggal.
+            val geofences = todayData?.let { it.geofences.ifEmpty { listOfNotNull(it.geofence) } }
             val history = (historyRes as? AuthResult.Success)?.data
             val error = when {
                 todayRes is AuthResult.Failure && historyRes is AuthResult.Failure -> todayRes.message
@@ -148,7 +151,7 @@ class AttendanceViewModel @Inject constructor(
                         today = today ?: it.today,
                         history = history ?: it.history,
                         loadError = error,
-                        geofence = geofence ?: it.geofence
+                        geofences = geofences ?: it.geofences
                     )
                 )
             }
@@ -196,18 +199,34 @@ class AttendanceViewModel @Inject constructor(
         _uiState.update { it.copy(selfie = null) }
     }
 
-    /** Hitung jarak ke titik geofence + verdict dalam/luar area dari state terkini. */
+    /**
+     * Verdict live: karyawan boleh absen di cabang manapun, jadi hitung jarak ke SEMUA cabang.
+     * Jika berada dalam radius salah satu cabang → dalam area (pilih yang terdekat di antara yang
+     * memuat); jika tidak → tampilkan cabang terdekat + "perlu review". Sinkron dengan `evaluate_punch`
+     * server yang juga mengevaluasi terhadap seluruh cabang.
+     */
     private fun withArea(state: AttendanceUiState): AttendanceUiState {
-        val g = state.geofence
         val lat = state.lat
         val lng = state.lng
-        if (g == null || lat == null || lng == null) {
-            return state.copy(distanceM = null, inArea = null)
+        if (state.geofences.isEmpty() || lat == null || lng == null) {
+            return state.copy(geofence = null, distanceM = null, inArea = null)
         }
         val out = FloatArray(1)
-        android.location.Location.distanceBetween(lat, lng, g.latitude, g.longitude, out)
-        val dist = out[0].toInt()
-        return state.copy(distanceM = dist, inArea = dist <= g.radiusM)
+        var nearest: AbsensiGeofenceDto? = null
+        var nearestDist = Int.MAX_VALUE
+        var inside: AbsensiGeofenceDto? = null
+        var insideDist = Int.MAX_VALUE
+        for (g in state.geofences) {
+            android.location.Location.distanceBetween(lat, lng, g.latitude, g.longitude, out)
+            val d = out[0].toInt()
+            if (d < nearestDist) { nearestDist = d; nearest = g }
+            if (d <= g.radiusM && d < insideDist) { insideDist = d; inside = g }
+        }
+        return if (inside != null) {
+            state.copy(geofence = inside, distanceM = insideDist, inArea = true)
+        } else {
+            state.copy(geofence = nearest, distanceM = nearestDist, inArea = false)
+        }
     }
 
     fun checkIn() = punch(isCheckIn = true)
