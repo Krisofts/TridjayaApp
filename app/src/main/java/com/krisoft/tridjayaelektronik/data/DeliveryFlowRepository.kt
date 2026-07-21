@@ -79,6 +79,24 @@ class DeliveryFlowRepository @Inject constructor(
     suspend fun cancel(id: String, reason: String): AuthResult<DeliveryJobDto> =
         call("Gagal membatalkan") { api.cancel(id, reason) }
 
+    suspend fun checklist(kategori: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>> = try {
+        val response = api.checklist(kategori)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items.filter { it.aktif })
+        else parseError(response, "Gagal memuat checklist PDI")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    suspend fun drivers(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DriverDto>> = try {
+        val response = api.users("driver")
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat daftar driver")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     /** Upload foto (JPEG) → URL relatif untuk dikirim di body tahap (PDI/deliver). */
     suspend fun uploadPhoto(bytes: ByteArray, filename: String): AuthResult<String> = try {
         val part = MultipartBody.Part.createFormData("file", filename, bytes.toRequestBody("image/jpeg".toMediaType()))

@@ -110,6 +110,35 @@ data class DeliveryContextDto(
 @Serializable
 data class DeliveryUploadResponse(val url: String = "")
 
+/** Item checklist PDI per-kategori (`GET /delivery/config/checklist?kategori=`). */
+@Serializable
+data class ChecklistItemDto(
+    val id: String = "",
+    val kategori: String = "",
+    val itemLabel: String = "",
+    val urutan: Int = 0,
+    val wajib: Boolean = false,
+    val aktif: Boolean = true
+)
+
+@Serializable
+data class ChecklistConfigData(val items: List<ChecklistItemDto> = emptyList())
+
+/** Driver untuk dropdown assign (`GET /api/users?role=driver`). Field 1-kata → aman snake/camel. */
+@Serializable
+data class DriverDto(
+    val id: String? = null,
+    val userId: String? = null,
+    val name: String = "",
+    val nik: String? = null,
+    val role: String? = null
+) {
+    val effectiveId: String get() = (id ?: userId).orEmpty()
+}
+
+@Serializable
+data class UsersListData(val items: List<DriverDto> = emptyList())
+
 // ── Request bodies ───────────────────────────────────────────────────────────
 
 @Serializable

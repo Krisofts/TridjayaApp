@@ -2,6 +2,8 @@ package com.krisoft.tridjayaelektronik.data.remote
 
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
+import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
+import com.krisoft.tridjayaelektronik.data.model.UsersListData
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliverBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto
@@ -65,4 +67,10 @@ interface DeliveryFlowApi {
     @Multipart
     @POST("api/inventory/delivery/upload-photo")
     suspend fun uploadPhoto(@Part file: MultipartBody.Part): Response<ApiResponse<DeliveryUploadResponse>>
+
+    @GET("api/inventory/delivery/config/checklist")
+    suspend fun checklist(@Query("kategori") kategori: String): Response<ApiResponse<ChecklistConfigData>>
+
+    @GET("api/users")
+    suspend fun users(@Query("role") role: String): Response<ApiResponse<UsersListData>>
 }

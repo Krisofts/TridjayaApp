@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -217,10 +218,10 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
                 }
                 when (job.status) {
-                    DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting)
+                    DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist)
                     DeliveryStatusKey.PENDING_SPK -> SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
                     DeliveryStatusKey.PENDING_DELIVERY_NOTE -> DeliveryNoteAction(job, viewModel, state.submitting)
-                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job.id, viewModel, state.submitting)
+                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job.id, viewModel, state.submitting, state.drivers)
                     DeliveryStatusKey.ASSIGNED -> SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
                     DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job.id, viewModel, state.submitting)
                     else -> Text("Tidak ada aksi pada tahap ini.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -240,7 +241,7 @@ private fun SimpleAction(label: String, submitting: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean) {
+private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean, checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>) {
     var serial by remember { mutableStateOf("") }
     var engine by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -249,16 +250,54 @@ private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean
     var hasPhoto by remember { mutableStateOf(false) }
     val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onPdiPhotoCaptured(file); hasPhoto = true } }
 
+    // Hasil checklist per item.id: hasil (ok/tidak/na) default "ok" + catatan.
+    val hasil = remember(checklist) { mutableStateMapOf<String, String>().apply { checklist.forEach { put(it.id, "ok") } } }
+    val catatan = remember(checklist) { mutableStateMapOf<String, String>() }
+
     Text("PDI / Inspeksi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
     ExpressiveTextField(serial, { serial = it }, label = "Nomor serial (wajib)", modifier = Modifier.fillMaxWidth())
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(engine, { engine = it }, label = "Nomor mesin (opsional)", modifier = Modifier.fillMaxWidth())
+
+    if (checklist.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text("Checklist", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        checklist.sortedBy { it.urutan }.forEach { item ->
+            Spacer(Modifier.height(6.dp))
+            Text(item.itemLabel + if (item.wajib) " *" else "", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("ok" to "OK", "tidak" to "Tidak", "na" to "N/A").forEach { (k, l) ->
+                    val sel = hasil[item.id] == k
+                    Surface(onClick = { hasil[item.id] = k }, shape = RoundedCornerShape(50),
+                        color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                        Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+                    }
+                }
+            }
+            if (hasil[item.id] == "tidak") {
+                Spacer(Modifier.height(4.dp))
+                ExpressiveTextField(catatan[item.id].orEmpty(), { catatan[item.id] = it }, label = "Catatan (wajib untuk Tidak)", modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+
     Spacer(Modifier.height(10.dp))
     PhotoBox(if (hasPhoto) file else null, "Foto unit siap (opsional)") { cam.launch(uri) }
     Spacer(Modifier.height(14.dp))
-    ExpressiveFilledButton(onClick = { vm.submitPdi(id, serial, engine, emptyList()) {} }, enabled = !submitting && serial.trim().isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Simpan PDI")
+
+    val missingCatatan = checklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
+    ExpressiveFilledButton(
+        onClick = {
+            val bodies = checklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
+            vm.submitPdi(id, serial, engine, bodies) {}
+        },
+        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan, modifier = Modifier.fillMaxWidth()
+    ) {
+        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        else Text(if (missingCatatan) "Isi catatan item 'Tidak'" else "Simpan PDI")
     }
 }
 
@@ -275,15 +314,32 @@ private fun DeliveryNoteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
 }
 
 @Composable
-private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean) {
+private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean, drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto>) {
     var driverId by remember { mutableStateOf("") }
     var driverName by remember { mutableStateOf("") }
     var date by remember { mutableStateOf("2026-07-22") }
+
     Text("Assign Driver + Jadwal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
-    ExpressiveTextField(driverName, { driverName = it }, label = "Nama driver", modifier = Modifier.fillMaxWidth())
-    Spacer(Modifier.height(10.dp))
-    ExpressiveTextField(driverId, { driverId = it }, label = "ID driver (user id)", modifier = Modifier.fillMaxWidth())
+    if (drivers.isNotEmpty()) {
+        Text("Pilih driver", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            drivers.forEach { d ->
+                val sel = driverId == d.effectiveId
+                Surface(onClick = { driverId = d.effectiveId; driverName = d.name }, shape = RoundedCornerShape(12.dp),
+                    color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+                    Text(d.name.ifBlank { d.effectiveId }, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    } else {
+        // Fallback bila daftar driver tak bisa dimuat (role tak berizin / endpoint kosong).
+        ExpressiveTextField(driverName, { driverName = it }, label = "Nama driver", modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(10.dp))
+        ExpressiveTextField(driverId, { driverId = it }, label = "ID driver (user id)", modifier = Modifier.fillMaxWidth())
+    }
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(date, { date = it }, label = "Jadwal kirim (yyyy-mm-dd)", modifier = Modifier.fillMaxWidth())
     Spacer(Modifier.height(14.dp))

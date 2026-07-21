@@ -37,7 +37,11 @@ data class DeliveryFlowUiState(
     val error: String? = null,
     val submitting: Boolean = false,
     val actionError: String? = null,
-    val actionDone: Boolean = false
+    val actionDone: Boolean = false,
+    /** Checklist PDI per-kategori (untuk tahap pending_pdi). */
+    val checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList(),
+    /** Daftar driver (untuk tahap pending_scheduling); kosong → form fallback input manual. */
+    val drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto> = emptyList()
 )
 
 /**
@@ -78,8 +82,26 @@ class DeliveryFlowViewModel @Inject constructor(
         pdiPhotoBytes = null
         viewModelScope.launch {
             when (val res = repository.detail(id)) {
-                is AuthResult.Success -> _state.update { it.copy(loading = false, detail = res.data) }
+                is AuthResult.Success -> {
+                    _state.update { it.copy(loading = false, detail = res.data) }
+                    loadAuxFor(res.data)
+                }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
+            }
+        }
+    }
+
+    /** Muat data pendukung sesuai tahap: checklist PDI (pending_pdi) atau daftar driver (pending_scheduling). */
+    private fun loadAuxFor(job: DeliveryJobDto) {
+        when (job.status) {
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_PDI -> {
+                val kategori = job.kategori?.trim().orEmpty()
+                if (kategori.isNotEmpty()) viewModelScope.launch {
+                    (repository.checklist(kategori) as? AuthResult.Success)?.let { r -> _state.update { it.copy(checklist = r.data) } }
+                }
+            }
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_SCHEDULING -> viewModelScope.launch {
+                (repository.drivers() as? AuthResult.Success)?.let { r -> _state.update { it.copy(drivers = r.data) } }
             }
         }
     }
