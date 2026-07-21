@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +36,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.krisoft.tridjayaelektronik.ui.security.SecurityBlockScreen
+import com.krisoft.tridjayaelektronik.ui.security.SecurityGuard
 import androidx.compose.ui.zIndex
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -90,11 +96,34 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    TridjayaNavHost()
+                    SecurityGate { TridjayaNavHost() }
                 }
             }
         }
     }
+}
+
+/**
+ * Gerbang integritas: bila [SecurityGuard] mendeteksi aplikasi mock location / perangkat berbahaya,
+ * seluruh aplikasi diganti dengan [SecurityBlockScreen] sampai ancaman dicopot. Deteksi diulang tiap
+ * kali app kembali ke foreground (ON_RESUME) dan lewat tombol "Cek Ulang".
+ */
+@Composable
+private fun SecurityGate(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    var threats by remember { mutableStateOf(SecurityGuard.detect(context)) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) threats = SecurityGuard.detect(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (threats.isEmpty()) content()
+    else SecurityBlockScreen(threats = threats, onRecheck = { threats = SecurityGuard.detect(context) })
 }
 
 @Composable
