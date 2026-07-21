@@ -139,6 +139,55 @@ data class DriverDto(
 @Serializable
 data class UsersListData(val items: List<DriverDto> = emptyList())
 
+// ── Approval diskon per-baris (SPK) ──────────────────────────────────────────
+
+@Serializable
+data class DiscountJobSummaryDto(
+    val kodeBarang: String? = null,
+    val namaBarang: String? = null,
+    val kategori: String? = null,
+    val merk: String? = null,
+    val tipe: String? = null,
+    val customerName: String? = null,
+    val customerPhone: String? = null
+)
+
+/** Pengajuan diskon (`GET /api/inventory/discount-requests`). camelCase 1:1. */
+@Serializable
+data class DiscountRequestDto(
+    val id: String = "",
+    val context: String = "",
+    val spkBatchKode: String = "",
+    val baris: Int? = null,
+    val deliveryJobIds: List<String> = emptyList(),
+    val jobSummary: DiscountJobSummaryDto? = null,
+    val discountType: String = "",
+    val value: Double = 0.0,
+    val reason: String = "",
+    val hargaSebelum: Double? = null,
+    val hargaSesudah: Double? = null,
+    val status: String = "pending",
+    val requestedById: String = "",
+    val requestedByName: String? = null,
+    val decidedById: String? = null,
+    val decidedByName: String? = null,
+    val decidedAt: String? = null,
+    val decisionNote: String? = null,
+    val createdAt: String = ""
+)
+
+@Serializable
+data class DiscountListData(
+    val items: List<DiscountRequestDto> = emptyList(),
+    val total: Int = 0,
+    val page: Int = 1,
+    val limit: Int = 20
+)
+
+/** Body approve/reject diskon. */
+@Serializable
+data class DecisionBody(val decisionNote: String? = null)
+
 // ── Request bodies ───────────────────────────────────────────────────────────
 
 @Serializable

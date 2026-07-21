@@ -41,7 +41,9 @@ data class DeliveryFlowUiState(
     /** Checklist PDI per-kategori (untuk tahap pending_pdi). */
     val checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList(),
     /** Daftar driver (untuk tahap pending_scheduling); kosong → form fallback input manual. */
-    val drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto> = emptyList()
+    val drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto> = emptyList(),
+    /** Pengajuan diskon menunggu approval (layar approval diskon). */
+    val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList()
 )
 
 /**
@@ -107,6 +109,34 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     fun clearActionError() = _state.update { it.copy(actionError = null) }
+
+    // ── Approval diskon per-baris ────────────────────────────────────────────
+    fun loadDiscounts(status: String? = "pending") {
+        _state.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            when (val res = repository.discounts(status)) {
+                is AuthResult.Success -> _state.update { it.copy(loading = false, discounts = res.data, error = null) }
+                is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
+            }
+        }
+    }
+
+    fun approveDiscount(id: String, note: String) = discountAction { repository.approveDiscount(id, note) }
+    fun rejectDiscount(id: String, note: String) = discountAction { repository.rejectDiscount(id, note) }
+
+    private fun discountAction(block: suspend () -> AuthResult<*>) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = block()) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    loadDiscounts("pending") // muat ulang: item yang diputuskan hilang dari antrian
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
 
     // ── Foto (PDI ready / serah terima) ──────────────────────────────────────
     fun onPdiPhotoCaptured(file: File) = viewModelScope.launch {
