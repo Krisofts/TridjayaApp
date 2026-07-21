@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.FactCheck
@@ -69,6 +70,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +85,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -94,6 +97,10 @@ import com.krisoft.tridjayaelektronik.data.model.MonthlyTargetDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
+import com.krisoft.tridjayaelektronik.domain.sales.KlasemenEntity
+import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
+import com.krisoft.tridjayaelektronik.ui.sales.KlasemenRowCard
+import com.krisoft.tridjayaelektronik.ui.sales.KlasemenViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonBox
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonLine
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
@@ -230,7 +237,108 @@ private fun LazyListScope.homeSection(
             item { SectionHeader(title = "Ringkasan CRM", icon = Icons.Rounded.Groups) }
             item { CrmCard(summary = state.crmSummary) }
         }
+        HomeSection.LEADERBOARD -> {
+            item { SectionHeader(title = "Klasemen", icon = Icons.Rounded.EmojiEvents) }
+            item { HomeKlasemenCard(onOpenSales = onQuickAccessSales) }
+        }
     }
+}
+
+/**
+ * Widget Klasemen di Home — memakai data & gaya yang sama persis dengan layar Sales
+ * ([KlasemenViewModel] + [KlasemenRowCard]): kartu-per-baris, medali 🥇🥈🥉, dan
+ * MovementBadge (naik/turun/BARU). Default periode = **kemarin**; metrik otomatis
+ * mengikuti entity (Sales → unit, Cabang → omset), sama seperti web /dashboard/klasemen.
+ * Top 5 saja; "Lihat semua" membuka layar Sales lengkap.
+ */
+@Composable
+private fun HomeKlasemenCard(onOpenSales: () -> Unit) {
+    val vm: KlasemenViewModel = hiltViewModel()
+    val state by vm.uiState.collectAsState()
+
+    // Default klasemen di Home = hari kemarin (layar Sales tetap default hari ini — VM terpisah per entry).
+    LaunchedEffect(Unit) {
+        val kemarin = KlasemenStandings.shiftDays(KlasemenStandings.todayIso(), -1)
+        if (state.cutoffIso != kemarin) vm.setCutoff(kemarin)
+    }
+
+    val isSales = state.entity == KlasemenEntity.SALES
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LeaderboardTab("Sales", isSales, Modifier.weight(1f)) { vm.setEntity(KlasemenEntity.SALES) }
+            LeaderboardTab("Cabang", !isSales, Modifier.weight(1f)) { vm.setEntity(KlasemenEntity.CABANG) }
+        }
+
+        Text(
+            text = if (isSales) "Peringkat sales (unit) · kemarin" else "Peringkat cabang (omset) · kemarin",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+        )
+
+        when {
+            state.isLoading && state.standings.isEmpty() -> repeat(3) {
+                SkeletonBox(
+                    modifier = Modifier.fillMaxWidth().height(56.dp).padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(20.dp)
+                )
+            }
+            state.errorMessage != null && state.standings.isEmpty() ->
+                EmptyRankRow(state.errorMessage ?: "Gagal memuat klasemen")
+            state.standings.isEmpty() -> EmptyRankRow("Belum ada data klasemen kemarin")
+            else -> state.standings.take(5).forEach { row -> KlasemenRowCard(row, state.metric) }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Lihat semua",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onOpenSales() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardTab(label: String, active: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = modifier
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyRankRow(message: String) {
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp),
+        textAlign = TextAlign.Center
+    )
 }
 
 /**
