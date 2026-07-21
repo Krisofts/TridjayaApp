@@ -409,6 +409,9 @@ private fun QuickAccessRow(
             QuickAccessTile(Icons.Rounded.Description, "Input SPK", Color(0xFF1E63E9), { onSpkMenu("input") }, Modifier.width(86.dp))
         }
         item {
+            QuickAccessTile(Icons.Rounded.Discount, "Diskon", Color(0xFFB5670C), { onSpkMenu("diskon") }, Modifier.width(86.dp))
+        }
+        item {
             QuickAccessTile(Icons.Rounded.FactCheck, "PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
         }
         item {

@@ -3,6 +3,9 @@ package com.krisoft.tridjayaelektronik.data.remote
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
+import com.krisoft.tridjayaelektronik.data.model.DecisionBody
+import com.krisoft.tridjayaelektronik.data.model.DiscountListData
+import com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto
 import com.krisoft.tridjayaelektronik.data.model.UsersListData
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliverBody
@@ -73,4 +76,17 @@ interface DeliveryFlowApi {
 
     @GET("api/users")
     suspend fun users(@Query("role") role: String): Response<ApiResponse<UsersListData>>
+
+    @GET("api/inventory/discount-requests")
+    suspend fun discountRequests(
+        @Query("status") status: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 100
+    ): Response<ApiResponse<DiscountListData>>
+
+    @POST("api/inventory/discount-requests/{id}/approve")
+    suspend fun approveDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
+
+    @POST("api/inventory/discount-requests/{id}/reject")
+    suspend fun rejectDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
 }

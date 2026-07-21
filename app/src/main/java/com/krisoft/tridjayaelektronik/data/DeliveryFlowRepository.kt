@@ -97,6 +97,35 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    suspend fun discounts(status: String? = "pending"): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>> = try {
+        val response = api.discountRequests(status = status)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat pengajuan diskon")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    suspend fun approveDiscount(id: String, note: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = decision("Gagal menyetujui diskon") {
+        api.approveDiscount(id, com.krisoft.tridjayaelektronik.data.model.DecisionBody(note.ifBlank { null }))
+    }
+
+    suspend fun rejectDiscount(id: String, note: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = decision("Gagal menolak diskon") {
+        api.rejectDiscount(id, com.krisoft.tridjayaelektronik.data.model.DecisionBody(note.ifBlank { null }))
+    }
+
+    private inline fun decision(
+        fallback: String,
+        block: () -> Response<com.krisoft.tridjayaelektronik.data.model.ApiResponse<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>>
+    ): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = try {
+        val response = block()
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, fallback)
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     /** Upload foto (JPEG) → URL relatif untuk dikirim di body tahap (PDI/deliver). */
     suspend fun uploadPhoto(bytes: ByteArray, filename: String): AuthResult<String> = try {
         val part = MultipartBody.Part.createFormData("file", filename, bytes.toRequestBody("image/jpeg".toMediaType()))

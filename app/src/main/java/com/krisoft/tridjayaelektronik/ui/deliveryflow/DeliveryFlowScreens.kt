@@ -28,14 +28,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Discount
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -63,6 +67,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import java.io.File
@@ -496,4 +501,84 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
 @Composable
 private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+}
+
+// ── Approval Diskon per-baris ────────────────────────────────────────────────
+
+@Composable
+fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
+    val state by viewModel.state.collectAsState()
+    LaunchedEffect(Unit) { viewModel.loadDiscounts("pending") }
+    var rejectId by remember { mutableStateOf<String?>(null) }
+
+    TridjayaCollapsibleHeader(title = "Approval Diskon", onBack = onBack) { contentModifier ->
+        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        when {
+            state.loading && state.discounts.isEmpty() ->
+                Box(contentModifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+            state.error != null && state.discounts.isEmpty() ->
+                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+                    ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadDiscounts("pending") })
+                }
+            state.discounts.isEmpty() ->
+                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+                    ExpressiveEmptyState(
+                        icon = { Icon(Icons.Rounded.Discount, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
+                        title = "Tidak ada pengajuan diskon", subtitle = "Semua pengajuan sudah diputuskan."
+                    )
+                }
+            else -> LazyColumn(
+                modifier = contentModifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
+                items(state.discounts, key = { it.id }) { d ->
+                    DiscountCard(d, state.submitting, onApprove = { viewModel.approveDiscount(d.id, "") }, onReject = { rejectId = d.id })
+                }
+            }
+        }
+    }
+
+    rejectId?.let { id ->
+        var note by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { rejectId = null },
+            title = { Text("Tolak diskon?", fontWeight = FontWeight.Bold) },
+            text = { ExpressiveTextField(note, { note = it }, label = "Catatan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(onClick = { viewModel.rejectDiscount(id, note); rejectId = null }) { Text("Tolak") } },
+            dismissButton = { TextButton(onClick = { rejectId = null }) { Text("Batal") } }
+        )
+    }
+}
+
+@Composable
+private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto, submitting: Boolean, onApprove: () -> Unit, onReject: () -> Unit) {
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(d.spkBatchKode + (d.baris?.let { " · baris $it" } ?: ""), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Diskon ${rupiah(d.value)}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(d.jobSummary?.namaBarang ?: d.jobSummary?.kodeBarang ?: "-", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(d.jobSummary?.customerName ?: "-", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            InfoLine("Harga sebelum", d.hargaSebelum?.let { rupiah(it) })
+            InfoLine("Harga sesudah", d.hargaSesudah?.let { rupiah(it) })
+            InfoLine("Alasan", d.reason)
+            InfoLine("Diajukan", d.requestedByName)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ExpressiveOutlinedButton(onClick = onReject, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Tolak")
+                }
+                ExpressiveFilledButton(onClick = onApprove, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                    if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
+                    Text("Setujui")
+                }
+            }
+        }
+    }
 }
