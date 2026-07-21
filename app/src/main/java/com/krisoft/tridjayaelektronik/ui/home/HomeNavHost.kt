@@ -20,12 +20,10 @@ import com.krisoft.tridjayaelektronik.ui.delivery.DeliveryListScreen
 import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
 import com.krisoft.tridjayaelektronik.ui.opname.OpnameListScreen
 import com.krisoft.tridjayaelektronik.ui.sales.SalesScreen
-import com.krisoft.tridjayaelektronik.ui.spk.DeliveryControlScreen
-import com.krisoft.tridjayaelektronik.ui.spk.DiscountApprovalScreen
-import com.krisoft.tridjayaelektronik.ui.spk.KasirQueueScreen
-import com.krisoft.tridjayaelektronik.ui.spk.PdiQueueScreen
-import com.krisoft.tridjayaelektronik.ui.spk.SpkListScreen
-import com.krisoft.tridjayaelektronik.ui.spk.SpkOrderDetailScreen
+import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.CreateSpkScreen
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryQueueScreen
 
 const val HOME_ROUTE_DASHBOARD = "home_dashboard"
 private const val ROUTE_RANKING = "home_ranking/{kind}"
@@ -35,14 +33,15 @@ private const val ROUTE_SALES = "home_sales"
 private const val ROUTE_OPNAME = "home_opname"
 private const val ROUTE_DELIVERY = "home_delivery"
 private const val ROUTE_ABSEN = "home_absen"
-private const val ROUTE_SPK_LIST = "home_spk_list"
-private const val ROUTE_SPK_DISKON = "home_spk_diskon"
-private const val ROUTE_SPK_KASIR = "home_spk_kasir"
-private const val ROUTE_SPK_PDI = "home_spk_pdi"
-private const val ROUTE_SPK_KONTROL = "home_spk_kontrol"
-private const val ROUTE_SPK_DETAIL = "home_spk_detail/{mode}/{id}"
+private const val ROUTE_DLV_CREATE = "home_dlv_create"
+private const val ROUTE_DLV_PDI = "home_dlv_pdi"
+private const val ROUTE_DLV_KASIR = "home_dlv_kasir"
+private const val ROUTE_DLV_NOTE = "home_dlv_note"
+private const val ROUTE_DLV_SCHEDULE = "home_dlv_schedule"
+private const val ROUTE_DLV_DRIVER = "home_dlv_driver"
+private const val ROUTE_DLV_DETAIL = "home_dlv_detail/{id}"
 
-private fun spkDetailRoute(mode: String, id: String) = "home_spk_detail/$mode/${Uri.encode(id)}"
+private fun dlvDetailRoute(id: String) = "home_dlv_detail/${Uri.encode(id)}"
 
 private fun branchTransactionsRoute(kodeDealer: String, branchName: String) =
     "home_ranking_transactions/${RankingKind.BRANCH.name}/${Uri.encode(kodeDealer)}?name=${Uri.encode(branchName)}"
@@ -101,12 +100,13 @@ fun HomeNavHost(
                 onQuickAccessAbsen = { navController.navigate(ROUTE_ABSEN) { launchSingleTop = true } },
                 onSpkMenu = { key ->
                     val route = when (key) {
-                        "input" -> ROUTE_SPK_LIST
-                        "diskon" -> ROUTE_SPK_DISKON
-                        "kasir" -> ROUTE_SPK_KASIR
-                        "pdi" -> ROUTE_SPK_PDI
-                        "kontrol" -> ROUTE_SPK_KONTROL
-                        else -> ROUTE_SPK_LIST
+                        "input" -> ROUTE_DLV_CREATE
+                        "pdi" -> ROUTE_DLV_PDI
+                        "kasir" -> ROUTE_DLV_KASIR
+                        "note" -> ROUTE_DLV_NOTE
+                        "jadwal" -> ROUTE_DLV_SCHEDULE
+                        "driver" -> ROUTE_DLV_DRIVER
+                        else -> ROUTE_DLV_CREATE
                     }
                     navController.navigate(route) { launchSingleTop = true }
                 }
@@ -148,40 +148,33 @@ fun HomeNavHost(
         composable(ROUTE_ABSEN) {
             AttendanceScreen(onBack = { navController.popBackStack() })
         }
-        composable(ROUTE_SPK_LIST) { SpkListScreen(onBack = { navController.popBackStack() }) }
-        composable(ROUTE_SPK_DISKON) {
-            DiscountApprovalScreen(
-                onBack = { navController.popBackStack() },
-                onOpen = { id -> navController.navigate(spkDetailRoute("diskon", id)) { launchSingleTop = true } }
-            )
+        composable(ROUTE_DLV_CREATE) { CreateSpkScreen(onBack = { navController.popBackStack() }) }
+        composable(ROUTE_DLV_PDI) {
+            DeliveryQueueScreen("Antri PDI", DeliveryStatusKey.PENDING_PDI, onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
-        composable(ROUTE_SPK_KASIR) {
-            KasirQueueScreen(
-                onBack = { navController.popBackStack() },
-                onOpen = { id -> navController.navigate(spkDetailRoute("kasir", id)) { launchSingleTop = true } }
-            )
+        composable(ROUTE_DLV_KASIR) {
+            DeliveryQueueScreen("Antri Kasir", DeliveryStatusKey.PENDING_SPK, onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
-        composable(ROUTE_SPK_PDI) {
-            PdiQueueScreen(
-                onBack = { navController.popBackStack() },
-                onOpen = { id -> navController.navigate(spkDetailRoute("pdi", id)) { launchSingleTop = true } }
-            )
+        composable(ROUTE_DLV_NOTE) {
+            DeliveryQueueScreen("Surat Jalan", DeliveryStatusKey.PENDING_DELIVERY_NOTE, onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
-        composable(ROUTE_SPK_KONTROL) {
-            DeliveryControlScreen(
-                onBack = { navController.popBackStack() },
-                onOpen = { id -> navController.navigate(spkDetailRoute("kontrol", id)) { launchSingleTop = true } }
-            )
+        composable(ROUTE_DLV_SCHEDULE) {
+            DeliveryQueueScreen("Penjadwalan", DeliveryStatusKey.PENDING_SCHEDULING, onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
+        }
+        composable(ROUTE_DLV_DRIVER) {
+            // Driver: backend meng-scope antrian (assigned + in_transit) berdasarkan role, tanpa filter status.
+            DeliveryQueueScreen("Tugas Antar", status = null, onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
         composable(
-            route = ROUTE_SPK_DETAIL,
-            arguments = listOf(
-                navArgument("mode") { type = NavType.StringType },
-                navArgument("id") { type = NavType.StringType }
-            )
+            route = ROUTE_DLV_DETAIL,
+            arguments = listOf(navArgument("id") { type = NavType.StringType })
         ) { entry ->
-            SpkOrderDetailScreen(
-                mode = entry.arguments?.getString("mode").orEmpty(),
+            DeliveryJobDetailScreen(
                 id = entry.arguments?.getString("id").orEmpty(),
                 onBack = { navController.popBackStack() }
             )

@@ -13,6 +13,7 @@ import com.krisoft.tridjayaelektronik.data.local.OpnameCountDao
 import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
 import com.krisoft.tridjayaelektronik.data.remote.AuthApi
 import com.krisoft.tridjayaelektronik.data.remote.AbsensiApi
+import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import com.krisoft.tridjayaelektronik.data.remote.CrmApi
 import com.krisoft.tridjayaelektronik.data.remote.DeviceApi
 import com.krisoft.tridjayaelektronik.data.remote.OffApi
@@ -81,6 +82,11 @@ object AppModule {
     @Singleton
     fun provideDeviceApi(tokenStore: TokenStore): DeviceApi =
         NetworkModule.createDeviceApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideDeliveryFlowApi(tokenStore: TokenStore): DeliveryFlowApi =
+        NetworkModule.createDeliveryFlowApi(tokenStore)
 
     /** v11 → v12: kolom aging stok (umurHari + kondisi) di branch_stock. Migrasi ADDITIVE —
      *  jangan destruktif, supaya antrean offline (pending leads, hitungan opname) tidak terhapus

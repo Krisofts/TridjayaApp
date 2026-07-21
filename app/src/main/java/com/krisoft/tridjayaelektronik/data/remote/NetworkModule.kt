@@ -81,6 +81,9 @@ object NetworkModule {
     fun createDeviceApi(tokenStore: TokenStore): DeviceApi =
         authenticatedRetrofit(tokenStore).create(DeviceApi::class.java)
 
+    fun createDeliveryFlowApi(tokenStore: TokenStore): DeliveryFlowApi =
+        authenticatedRetrofit(tokenStore).create(DeliveryFlowApi::class.java)
+
     private fun baseClientBuilder(): OkHttpClient.Builder {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
