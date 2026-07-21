@@ -111,7 +111,13 @@ class InventoryRepository @Inject constructor(
                 if (!response.isSuccessful) {
                     return AuthResult.Failure("http_${response.code()}", "Gagal mengambil data stok (${response.code()})")
                 }
-                val data = response.body()?.data ?: break
+                val data = response.body()?.data
+                if (data == null) {
+                    // Page pertama sukses tapi body kosong/null → JANGAN timpa cache dengan list kosong
+                    // (bisa mengosongkan inventori selama 5 jam). Page berikutnya null → berhenti saja.
+                    if (page == 1) return AuthResult.Failure("empty_response", "Respons stok kosong dari server")
+                    break
+                }
                 rows += data.items.map {
                     BranchStockEntity(
                         kode = it.Kode,

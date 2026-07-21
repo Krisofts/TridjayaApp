@@ -29,7 +29,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -388,9 +389,11 @@ private fun QuickAccessRow(
     showOpname: Boolean = true,
     showDelivery: Boolean = true
 ) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    LazyHorizontalGrid(
+        rows = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxWidth().height(224.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
             QuickAccessTile(
@@ -401,21 +404,24 @@ private fun QuickAccessRow(
                 modifier = Modifier.width(86.dp)
             )
         }
-        // Alur SPK dipecah jadi menu per-tahap (nanti digating per role — untuk sekarang tampil semua).
+        // Alur pengiriman SPK per-tahap (nyata → inventory-service). RBAC di backend; tampil semua.
         item {
             QuickAccessTile(Icons.Rounded.Description, "Input SPK", Color(0xFF1E63E9), { onSpkMenu("input") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.Discount, "Diskon", Color(0xFFB5670C), { onSpkMenu("diskon") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.PointOfSale, "Kasir SPK", Color(0xFF0086C9), { onSpkMenu("kasir") }, Modifier.width(86.dp))
         }
         item {
             QuickAccessTile(Icons.Rounded.FactCheck, "PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
         }
         item {
-            QuickAccessTile(Icons.Rounded.LocalShipping, "Kontrol Kirim", Color(0xFF0E9384), { onSpkMenu("kontrol") }, Modifier.width(86.dp))
+            QuickAccessTile(Icons.Rounded.PointOfSale, "Kasir SPK", Color(0xFF0086C9), { onSpkMenu("kasir") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.Receipt, "Surat Jalan", Color(0xFF0E9384), { onSpkMenu("note") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.CalendarToday, "Jadwal", Color(0xFF1565C0), { onSpkMenu("jadwal") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.LocalShipping, "Driver", Color(0xFF6941C6), { onSpkMenu("driver") }, Modifier.width(86.dp))
         }
         item {
             QuickAccessTile(

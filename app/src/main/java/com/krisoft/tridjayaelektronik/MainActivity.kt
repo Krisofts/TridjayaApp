@@ -41,6 +41,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.ui.security.SecurityBlockScreen
 import com.krisoft.tridjayaelektronik.ui.security.SecurityGuard
+import com.krisoft.tridjayaelektronik.ui.security.Threat
+import androidx.compose.runtime.produceState
+import androidx.compose.material3.CircularProgressIndicator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.zIndex
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -111,19 +116,30 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun SecurityGate(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    var threats by remember { mutableStateOf(SecurityGuard.detect(context)) }
+    var recheckKey by remember { mutableStateOf(0) }
+
+    // Deteksi (scan semua paket + cek root berbasis file) dijalankan di Dispatchers.IO — sebelumnya
+    // sinkron di main thread saat start & tiap resume → risiko ANR/jank. produceState menahan hasil
+    // lama saat re-cek sehingga tak berkedip; hanya run pertama menampilkan status "memeriksa".
+    val threats by produceState<List<Threat>?>(initialValue = null, recheckKey) {
+        value = withContext(Dispatchers.IO) { SecurityGuard.detect(context) }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) threats = SecurityGuard.detect(context)
+            if (event == Lifecycle.Event.ON_RESUME) recheckKey++
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (threats.isEmpty()) content()
-    else SecurityBlockScreen(threats = threats, onRecheck = { threats = SecurityGuard.detect(context) })
+    when (val t = threats) {
+        null -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        else -> if (t.isEmpty()) content() else SecurityBlockScreen(threats = t, onRecheck = { recheckKey++ })
+    }
 }
 
 @Composable
