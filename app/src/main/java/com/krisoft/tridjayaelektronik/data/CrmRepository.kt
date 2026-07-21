@@ -322,10 +322,14 @@ class CrmRepository @Inject constructor(
      * then kicks the background sync queue to push it to `/api/prospek-harian`. The queue survives
      * this call via [appScope]. Always returns Success — the write is never lost.
      */
+    // Sekuens id sementara (negatif) yang dijamin unik meski dua create terjadi di milidetik sama
+    // — mencegah tabrakan REPLACE di Room yang bisa membuang lead pertama.
+    private val tempIdSeq = java.util.concurrent.atomic.AtomicLong(-System.currentTimeMillis())
+
     suspend fun createLead(draft: ProspekDraft): AuthResult<LeadDto> {
         val now = nowTimestamp()
         val local = LeadEntity(
-            id = -System.currentTimeMillis(),
+            id = tempIdSeq.decrementAndGet(),
             nama = draft.nama,
             phone = draft.phone,
             pipelineId = draft.pipelineId ?: 0,
@@ -401,6 +405,11 @@ class CrmRepository @Inject constructor(
     suspend fun moveStage(id: Long, stageId: Long): AuthResult<LeadDto> {
         val existing = leadDao.byId(id)
             ?: return AuthResult.Failure("not_found", "Prospek tidak ditemukan di cache")
+        // Lead lokal yang belum tersinkron (id negatif) tak punya id server → pindah stage tak bisa
+        // ikut disinkron dan akan hilang saat replace. Blokir sampai lead selesai tersinkron.
+        if (existing.id <= 0) {
+            return AuthResult.Failure("pending_sync", "Prospek belum tersinkron ke server. Coba lagi setelah online.")
+        }
         val updated = existing.copy(
             stageId = stageId,
             updatedAt = nowTimestamp(),
@@ -486,6 +495,11 @@ class CrmRepository @Inject constructor(
     private suspend fun applyOutcomeOffline(id: Long, op: String, lostReason: String? = null): AuthResult<LeadDto> {
         val existing = leadDao.byId(id)
             ?: return AuthResult.Failure("not_found", "Prospek tidak ditemukan di cache")
+        // Lead lokal belum tersinkron (id negatif) tak bisa dikirim won/lost/reopen ke server dan
+        // akan hilang saat replace — blokir sampai tersinkron.
+        if (existing.id <= 0) {
+            return AuthResult.Failure("pending_sync", "Prospek belum tersinkron ke server. Coba lagi setelah online.")
+        }
         val updated = existing.copy(
             status = when (op) {
                 "won" -> "won"

@@ -25,12 +25,24 @@ object NetworkModule {
         explicitNulls = false
     }
 
+    @Volatile
     private var retrofit: Retrofit? = null
+    private val retrofitLock = Any()
 
-    /** Builds (once) the authenticated Retrofit instance shared by every API interface. */
+    /**
+     * Builds (once) the authenticated Retrofit instance shared by every API interface. Double-checked
+     * locking so two API providers initializing concurrently can't each build their own Retrofit +
+     * TokenRefresher (which would break the single-refresher / single-use-refresh-token invariant).
+     */
     private fun authenticatedRetrofit(tokenStore: TokenStore): Retrofit {
         retrofit?.let { return it }
+        synchronized(retrofitLock) {
+            retrofit?.let { return it }
+            return buildAuthenticatedRetrofit(tokenStore).also { retrofit = it }
+        }
+    }
 
+    private fun buildAuthenticatedRetrofit(tokenStore: TokenStore): Retrofit {
         // A dedicated Retrofit/OkHttp instance without the auth interceptor/authenticator,
         // used only for calling /api/auth/refresh so it can never recurse into itself.
         val plainClient = baseClientBuilder().build()
@@ -45,7 +57,7 @@ object NetworkModule {
             .authenticator(TokenRefreshAuthenticator(refresher))
             .build()
 
-        return buildRetrofit(client).also { retrofit = it }
+        return buildRetrofit(client)
     }
 
     fun createAuthApi(tokenStore: TokenStore): AuthApi =

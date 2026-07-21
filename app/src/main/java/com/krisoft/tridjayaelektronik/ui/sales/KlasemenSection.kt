@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,7 +56,46 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveInlineError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 
-private val MEDALS = listOf("🥇", "🥈", "🥉") // 🥇🥈🥉
+// Warna medali emas/perak/perunggu untuk peringkat 1-3.
+private val MEDAL_GOLD = Color(0xFFF6B10A)
+private val MEDAL_SILVER = Color(0xFF9FB0C3)
+private val MEDAL_BRONZE = Color(0xFFCE7E3B)
+
+/** Indikator peringkat: ikon medali vektor (emas/perak/perunggu) untuk 1-3, badge angka untuk sisanya. */
+@Composable
+internal fun RankMedal(rank: Int, modifier: Modifier = Modifier.size(36.dp)) {
+    if (rank in 1..3) {
+        val color = when (rank) {
+            1 -> MEDAL_GOLD
+            2 -> MEDAL_SILVER
+            else -> MEDAL_BRONZE
+        }
+        Box(
+            modifier = modifier.background(color.copy(alpha = 0.18f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.WorkspacePremium,
+                contentDescription = "Peringkat $rank",
+                tint = color,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+    } else {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(30.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "$rank",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
 
 private fun formatRupiah(value: Double): String {
     val text = value.toLong().toString().reversed().chunked(3).joinToString(".").reversed()
@@ -406,22 +446,7 @@ internal fun KlasemenRowCard(row: StandingRow, metric: KlasemenMetric) {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                if (row.rank <= 3) {
-                    Text(text = MEDALS[row.rank - 1], style = MaterialTheme.typography.titleMedium)
-                } else {
-                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(30.dp)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "${row.rank}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
+            RankMedal(row.rank)
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(

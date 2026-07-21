@@ -1,6 +1,5 @@
 package com.krisoft.tridjayaelektronik.ui.home
 
-import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,9 +32,11 @@ class TransactionListViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
+    // Navigation Compose sudah URL-decode arg StringType; JANGAN decode lagi (double-decode merusak
+    // nilai yang mengandung % atau +).
     val kind: RankingKind = RankingKind.valueOf(checkNotNull(savedStateHandle.get<String>("kind")))
-    val code: String = Uri.decode(checkNotNull(savedStateHandle.get<String>("code")))
-    val displayName: String = Uri.decode(savedStateHandle.get<String>("name").orEmpty()).ifBlank { code }
+    val code: String = checkNotNull(savedStateHandle.get<String>("code"))
+    val displayName: String = savedStateHandle.get<String>("name").orEmpty().ifBlank { code }
 
     private val _uiState = MutableStateFlow(TransactionListUiState())
     val uiState: StateFlow<TransactionListUiState> = _uiState.asStateFlow()
