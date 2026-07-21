@@ -37,6 +37,9 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Discount
+import androidx.compose.material.icons.rounded.PointOfSale
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CalendarToday
@@ -122,6 +125,8 @@ fun HomeScreen(
     onQuickAccessOpname: () -> Unit = {},
     onQuickAccessDelivery: () -> Unit = {},
     onQuickAccessAbsen: () -> Unit = {},
+    /** Buka satu menu alur SPK (dummy) berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
+    onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -175,7 +180,7 @@ fun HomeScreen(
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessDelivery, onQuickAccessAbsen
+                                onQuickAccessOpname, onQuickAccessDelivery, onQuickAccessAbsen, onSpkMenu
                             )
                         }
                     }
@@ -210,7 +215,8 @@ private fun LazyListScope.homeSection(
     onQuickAccessSales: () -> Unit,
     onQuickAccessOpname: () -> Unit,
     onQuickAccessDelivery: () -> Unit,
-    onQuickAccessAbsen: () -> Unit
+    onQuickAccessAbsen: () -> Unit,
+    onSpkMenu: (String) -> Unit
 ) {
     when (section) {
         HomeSection.QUICK_ACCESS -> {
@@ -225,6 +231,7 @@ private fun LazyListScope.homeSection(
                     onOpname = onQuickAccessOpname,
                     onDelivery = onQuickAccessDelivery,
                     onAbsen = onQuickAccessAbsen,
+                    onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
                     showOpname = canAccessOpname(role),
                     // Fitur dummy untuk review desain — belum digating role (aktifkan
@@ -376,6 +383,7 @@ private fun QuickAccessRow(
     onOpname: () -> Unit,
     onDelivery: () -> Unit,
     onAbsen: () -> Unit,
+    onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
     showOpname: Boolean = true,
     showDelivery: Boolean = true
@@ -392,6 +400,22 @@ private fun QuickAccessRow(
                 onClick = onAbsen,
                 modifier = Modifier.width(86.dp)
             )
+        }
+        // Alur SPK dipecah jadi menu per-tahap (nanti digating per role — untuk sekarang tampil semua).
+        item {
+            QuickAccessTile(Icons.Rounded.Description, "Input SPK", Color(0xFF1E63E9), { onSpkMenu("input") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.Discount, "Diskon", Color(0xFFB5670C), { onSpkMenu("diskon") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.PointOfSale, "Kasir SPK", Color(0xFF0086C9), { onSpkMenu("kasir") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.FactCheck, "PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.LocalShipping, "Kontrol Kirim", Color(0xFF0E9384), { onSpkMenu("kontrol") }, Modifier.width(86.dp))
         }
         item {
             QuickAccessTile(

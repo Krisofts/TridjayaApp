@@ -20,6 +20,12 @@ import com.krisoft.tridjayaelektronik.ui.delivery.DeliveryListScreen
 import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
 import com.krisoft.tridjayaelektronik.ui.opname.OpnameListScreen
 import com.krisoft.tridjayaelektronik.ui.sales.SalesScreen
+import com.krisoft.tridjayaelektronik.ui.spk.DeliveryControlScreen
+import com.krisoft.tridjayaelektronik.ui.spk.DiscountApprovalScreen
+import com.krisoft.tridjayaelektronik.ui.spk.KasirQueueScreen
+import com.krisoft.tridjayaelektronik.ui.spk.PdiQueueScreen
+import com.krisoft.tridjayaelektronik.ui.spk.SpkListScreen
+import com.krisoft.tridjayaelektronik.ui.spk.SpkOrderDetailScreen
 
 const val HOME_ROUTE_DASHBOARD = "home_dashboard"
 private const val ROUTE_RANKING = "home_ranking/{kind}"
@@ -29,6 +35,14 @@ private const val ROUTE_SALES = "home_sales"
 private const val ROUTE_OPNAME = "home_opname"
 private const val ROUTE_DELIVERY = "home_delivery"
 private const val ROUTE_ABSEN = "home_absen"
+private const val ROUTE_SPK_LIST = "home_spk_list"
+private const val ROUTE_SPK_DISKON = "home_spk_diskon"
+private const val ROUTE_SPK_KASIR = "home_spk_kasir"
+private const val ROUTE_SPK_PDI = "home_spk_pdi"
+private const val ROUTE_SPK_KONTROL = "home_spk_kontrol"
+private const val ROUTE_SPK_DETAIL = "home_spk_detail/{mode}/{id}"
+
+private fun spkDetailRoute(mode: String, id: String) = "home_spk_detail/$mode/${Uri.encode(id)}"
 
 private fun branchTransactionsRoute(kodeDealer: String, branchName: String) =
     "home_ranking_transactions/${RankingKind.BRANCH.name}/${Uri.encode(kodeDealer)}?name=${Uri.encode(branchName)}"
@@ -84,7 +98,18 @@ fun HomeNavHost(
                 onQuickAccessSales = { navController.navigate(ROUTE_SALES) { launchSingleTop = true } },
                 onQuickAccessOpname = { navController.navigate(ROUTE_OPNAME) { launchSingleTop = true } },
                 onQuickAccessDelivery = { navController.navigate(ROUTE_DELIVERY) { launchSingleTop = true } },
-                onQuickAccessAbsen = { navController.navigate(ROUTE_ABSEN) { launchSingleTop = true } }
+                onQuickAccessAbsen = { navController.navigate(ROUTE_ABSEN) { launchSingleTop = true } },
+                onSpkMenu = { key ->
+                    val route = when (key) {
+                        "input" -> ROUTE_SPK_LIST
+                        "diskon" -> ROUTE_SPK_DISKON
+                        "kasir" -> ROUTE_SPK_KASIR
+                        "pdi" -> ROUTE_SPK_PDI
+                        "kontrol" -> ROUTE_SPK_KONTROL
+                        else -> ROUTE_SPK_LIST
+                    }
+                    navController.navigate(route) { launchSingleTop = true }
+                }
             )
         }
         composable(
@@ -122,6 +147,44 @@ fun HomeNavHost(
         }
         composable(ROUTE_ABSEN) {
             AttendanceScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_SPK_LIST) { SpkListScreen(onBack = { navController.popBackStack() }) }
+        composable(ROUTE_SPK_DISKON) {
+            DiscountApprovalScreen(
+                onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(spkDetailRoute("diskon", id)) { launchSingleTop = true } }
+            )
+        }
+        composable(ROUTE_SPK_KASIR) {
+            KasirQueueScreen(
+                onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(spkDetailRoute("kasir", id)) { launchSingleTop = true } }
+            )
+        }
+        composable(ROUTE_SPK_PDI) {
+            PdiQueueScreen(
+                onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(spkDetailRoute("pdi", id)) { launchSingleTop = true } }
+            )
+        }
+        composable(ROUTE_SPK_KONTROL) {
+            DeliveryControlScreen(
+                onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(spkDetailRoute("kontrol", id)) { launchSingleTop = true } }
+            )
+        }
+        composable(
+            route = ROUTE_SPK_DETAIL,
+            arguments = listOf(
+                navArgument("mode") { type = NavType.StringType },
+                navArgument("id") { type = NavType.StringType }
+            )
+        ) { entry ->
+            SpkOrderDetailScreen(
+                mode = entry.arguments?.getString("mode").orEmpty(),
+                id = entry.arguments?.getString("id").orEmpty(),
+                onBack = { navController.popBackStack() }
+            )
         }
         composable(ROUTE_SALES) {
             SalesScreen(
