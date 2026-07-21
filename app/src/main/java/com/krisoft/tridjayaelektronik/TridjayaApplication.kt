@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.krisoft.tridjayaelektronik.data.TokenStore
+import com.krisoft.tridjayaelektronik.push.FcmService
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,9 @@ class TridjayaApplication : Application(), ImageLoaderFactory {
         // so the Keystore/crypto + disk cost is paid here instead of blocking MainActivity's first
         // frame — and so `sessionState` is resolved before the splash decides login vs. main.
         CoroutineScope(Dispatchers.IO).launch { tokenStore.warmUp() }
+        // Buat channel notifikasi ("approval" + "crm") lebih awal, supaya push FCM saat app
+        // di background sudah punya channel yang cocok (Android 8+ butuh channel ada dulu).
+        FcmService.ensureChannels(this)
     }
 
     /** ImageLoader terpusat untuk semua AsyncImage (foto produk list/detail/flyer, bukti indent):

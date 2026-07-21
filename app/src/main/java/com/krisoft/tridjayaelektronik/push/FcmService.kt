@@ -23,9 +23,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Terima push FCM (approval izin/absen) + daftarkan token baru. Saat app di background, sistem
- * menampilkan notifikasi otomatis (payload `notification`); saat foreground, [onMessageReceived]
- * dipanggil dan kita tampilkan manual. Channel "approval".
+ * Terima push FCM + daftarkan token baru. Saat app di background, sistem menampilkan notifikasi
+ * otomatis (payload `notification`) memakai `channel_id` dari payload; saat foreground,
+ * [onMessageReceived] dipanggil dan kita tampilkan manual pada channel yang sesuai.
+ *
+ * Dua channel: "approval" (persetujuan absen/izin) dan "crm" (notifikasi CRM: lead di-assign,
+ * pindah stage, won/lost, follow-up terlambat, lead baru). Keduanya dibuat lebih awal via
+ * [ensureChannels] supaya notifikasi background (Android 8+) selalu punya channel yang cocok.
  */
 @AndroidEntryPoint
 class FcmService : FirebaseMessagingService() {
@@ -43,7 +47,11 @@ class FcmService : FirebaseMessagingService() {
         val notification = message.notification
         val title = notification?.title ?: message.data["title"] ?: "Tridjaya Elektronik"
         val body = notification?.body ?: message.data["body"] ?: ""
-        showNotification(title, body)
+        // Channel dari payload (server kirim "crm"/"approval"); fallback ke data lalu default.
+        val channelId = notification?.channelId
+            ?: message.data["channel"]
+            ?: CHANNEL_APPROVAL
+        showNotification(title, body, normalizeChannel(channelId))
     }
 
     override fun onDestroy() {
@@ -51,8 +59,8 @@ class FcmService : FirebaseMessagingService() {
         super.onDestroy()
     }
 
-    private fun showNotification(title: String, body: String) {
-        ensureChannel()
+    private fun showNotification(title: String, body: String, channelId: String) {
+        ensureChannels(this)
         // API 33+: tanpa izin POST_NOTIFICATIONS notifikasi tak tampil — jangan crash.
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -66,7 +74,7 @@ class FcmService : FirebaseMessagingService() {
             this, 0, launch ?: Intent(),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+        val notif = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
@@ -78,20 +86,37 @@ class FcmService : FirebaseMessagingService() {
         NotificationManagerCompat.from(this).notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notif)
     }
 
-    private fun ensureChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            val manager = getSystemService(NotificationManager::class.java)
-            if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+    /** Channel tak dikenal dari server → pakai "approval" supaya notif tetap tampil. */
+    private fun normalizeChannel(channelId: String): String =
+        if (channelId == CHANNEL_CRM) CHANNEL_CRM else CHANNEL_APPROVAL
+
+    companion object {
+        const val CHANNEL_APPROVAL = "approval"
+        const val CHANNEL_CRM = "crm"
+
+        /**
+         * Buat kedua channel notifikasi bila belum ada. Dipanggil di startup app
+         * ([TridjayaApplication.onCreate]) — penting supaya notifikasi FCM saat app di
+         * **background** (ditampilkan sistem, kode kita tak jalan) sudah punya channel
+         * "crm"/"approval" yang cocok di Android 8+; kalau belum ada, notif bisa tak tampil.
+         */
+        fun ensureChannels(context: android.content.Context) {
+            if (Build.VERSION.SDK_INT < 26) return
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            if (manager.getNotificationChannel(CHANNEL_APPROVAL) == null) {
                 manager.createNotificationChannel(
-                    NotificationChannel(CHANNEL_ID, "Persetujuan Absensi/Izin", NotificationManager.IMPORTANCE_HIGH).apply {
+                    NotificationChannel(CHANNEL_APPROVAL, "Persetujuan Absensi/Izin", NotificationManager.IMPORTANCE_HIGH).apply {
                         description = "Notifikasi saat pengajuan izin atau absen disetujui/ditolak"
                     }
                 )
             }
+            if (manager.getNotificationChannel(CHANNEL_CRM) == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(CHANNEL_CRM, "CRM / Prospek", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "Notifikasi lead ditugaskan, perubahan stage, won/lost, dan follow-up terlambat"
+                    }
+                )
+            }
         }
-    }
-
-    companion object {
-        const val CHANNEL_ID = "approval"
     }
 }
