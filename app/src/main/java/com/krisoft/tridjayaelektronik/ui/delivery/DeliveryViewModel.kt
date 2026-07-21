@@ -1,12 +1,15 @@
 package com.krisoft.tridjayaelektronik.ui.delivery
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.model.DeliveryDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 
@@ -31,17 +34,22 @@ data class DeliveryUiState(
 }
 
 /**
- * Delivery workflow — sepenuhnya berbasis data dummy in-memory ([DeliveryDummyData]) untuk
- * mendemokan alur di HP sebelum API `/api/sales/delivery-schedules` di-wire. Perubahan status
- * (Lanjutkan / Tandai Gagal / Jadwalkan Ulang) hanya menulis ke state — hilang saat proses mati.
+ * Delivery workflow — data dummy in-memory yang kini disimpan di [DeliveryStore] ([javax.inject.Singleton])
+ * agar **dibagikan** dengan alur SPK: order yang diserahkan delivery controller (SPK → Kontrol Pengiriman)
+ * langsung muncul di pipeline ini. Search/filter tetap state lokal ViewModel. Perubahan status hanya
+ * menulis ke store (hilang saat proses mati).
  */
 @HiltViewModel
 class DeliveryViewModel @Inject constructor(
+    private val store: DeliveryStore,
     authRepository: AuthRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(DeliveryUiState(items = DeliveryDummyData.all()))
-    val uiState: StateFlow<DeliveryUiState> = _uiState.asStateFlow()
+    /** State UI lokal (search + filter); daftar item berasal dari [DeliveryStore]. */
+    private val _filter = MutableStateFlow(DeliveryUiState())
+    val uiState: StateFlow<DeliveryUiState> =
+        combine(store.items, _filter) { items, f -> f.copy(items = items) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DeliveryUiState())
 
     /** Nama sales default untuk SPK baru = user login. */
     val currentSalesName: String = authRepository.currentUserName?.trim().orEmpty().ifBlank { "Sales" }
@@ -49,19 +57,14 @@ class DeliveryViewModel @Inject constructor(
     /** Cabang pengirim default = cabang user login. */
     val currentBranch: String = authRepository.currentCabangName?.trim().orEmpty()
 
-    fun byId(id: String): DeliveryDto? = _uiState.value.items.firstOrNull { it.id == id }
+    fun byId(id: String): DeliveryDto? = store.byId(id)
 
-    fun onSearchChange(value: String) = _uiState.update { it.copy(search = value) }
+    fun onSearchChange(value: String) = _filter.update { it.copy(search = value) }
 
-    fun setStatusFilter(status: String?) = _uiState.update {
+    fun setStatusFilter(status: String?) = _filter.update {
         it.copy(statusFilter = if (it.statusFilter == status) null else status)
     }
 
-    /**
-     * Input SPK oleh sales — membuat order pengiriman baru di awal alur (status SPK). Dummy: id &
-     * nomor SPK di-generate lokal, ditaruh paling atas daftar. Mengembalikan id agar layar bisa
-     * langsung membuka detailnya.
-     */
     fun createSpk(
         customerName: String,
         customerPhone: String,
@@ -73,66 +76,14 @@ class DeliveryViewModel @Inject constructor(
         salesName: String,
         estimatedValue: Double,
         note: String
-    ): String {
-        val now = System.currentTimeMillis()
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(now))
-        val stamp = java.text.SimpleDateFormat("yyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date(now))
-        val seq = _uiState.value.items.size + 1
-        val record = DeliveryDto(
-            id = "DLV-$stamp",
-            spkNumber = "SPK/${today.replace("-", "")}/${seq.toString().padStart(3, '0')}",
-            customerName = customerName.trim(),
-            customerPhone = customerPhone.trim().ifBlank { null },
-            itemName = itemName.trim(),
-            quantity = quantity.coerceAtLeast(1),
-            paymentStatus = paymentStatus,
-            address = address.trim(),
-            senderBranch = senderBranch.trim(),
-            salesName = salesName.trim().ifBlank { "Sales" },
-            estimatedValue = estimatedValue,
-            note = note.trim().ifBlank { null },
-            scheduledDate = today,
-            createdAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(now)),
-            status = DeliveryStatus.SPK.key
-        )
-        _uiState.update { it.copy(items = listOf(record) + it.items) }
-        return record.id
-    }
+    ): String = store.createSpk(
+        customerName, customerPhone, itemName, quantity, paymentStatus,
+        address, senderBranch, salesName, estimatedValue, note
+    )
 
-    /** PDI lengkap bila semua poin [PDI_ITEMS] tercentang — syarat lanjut ke Dikirim. */
-    fun isPdiComplete(delivery: DeliveryDto): Boolean =
-        PDI_ITEMS.all { it.key in delivery.pdiChecked }
-
-    /** Toggle satu poin checklist PDI. */
-    fun togglePdiCheck(id: String, itemKey: String) = updateItem(id) { current ->
-        val checked = current.pdiChecked
-        current.copy(pdiChecked = if (itemKey in checked) checked - itemKey else checked + itemKey)
-    }
-
-    /**
-     * Majukan satu tahap (SPK → Disiapkan → PDI → Dikirim → Terkirim). Dari PDI hanya boleh maju
-     * bila checklist lengkap — kalau belum, diabaikan (UI menonaktifkan tombolnya).
-     */
-    fun advanceStatus(id: String) = updateItem(id) { current ->
-        val status = DeliveryStatus.from(current.status)
-        if (status == DeliveryStatus.PDI && !isPdiComplete(current)) return@updateItem current
-        val next = status.next() ?: return@updateItem current
-        current.copy(status = next.key)
-    }
-
-    /** Tandai gagal dengan alasan opsional. */
-    fun markFailed(id: String, reason: String) = updateItem(id) {
-        it.copy(status = DeliveryStatus.GAGAL.key, note = reason.ifBlank { it.note })
-    }
-
-    /** Jadwalkan ulang pengiriman yang gagal — kembali ke tahap awal (SPK). */
-    fun reschedule(id: String) = updateItem(id) {
-        it.copy(status = DeliveryStatus.SPK.key)
-    }
-
-    private inline fun updateItem(id: String, transform: (DeliveryDto) -> DeliveryDto) {
-        _uiState.update { state ->
-            state.copy(items = state.items.map { if (it.id == id) transform(it) else it })
-        }
-    }
+    fun isPdiComplete(delivery: DeliveryDto): Boolean = store.isPdiComplete(delivery)
+    fun togglePdiCheck(id: String, itemKey: String) = store.togglePdiCheck(id, itemKey)
+    fun advanceStatus(id: String) = store.advanceStatus(id)
+    fun markFailed(id: String, reason: String) = store.markFailed(id, reason)
+    fun reschedule(id: String) = store.reschedule(id)
 }

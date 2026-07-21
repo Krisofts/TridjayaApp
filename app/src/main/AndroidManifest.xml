@@ -9,6 +9,9 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <!-- Push notifikasi approval izin/absen (FCM). Runtime request di Android 13+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Integritas absen: memindai aplikasi mock location (GPS palsu) agar bisa diblok. App
+         enterprise side-load, bukan rilis Play Store, sehingga QUERY_ALL_PACKAGES diperbolehkan. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <application
         android:name=".TridjayaApplication"
