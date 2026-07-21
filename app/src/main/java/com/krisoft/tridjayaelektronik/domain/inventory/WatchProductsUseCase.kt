@@ -25,6 +25,8 @@ class WatchProductsUseCase @Inject constructor(
         combine(searchQuery.debounce(300).distinctUntilChanged(), filters) { search, f -> search to f }
             .distinctUntilChanged()
             .flatMapLatest { (search, f) ->
-                inventoryRepository.pagedProducts(search, f.region, f.readyOnly, f.category, f.merk, f.sortOrder)
+                inventoryRepository.pagedProducts(
+                    search, f.region, f.dealer, f.readyOnly, f.category, f.merk, f.sortOrder, f.deadstockOnly
+                )
             }
 }

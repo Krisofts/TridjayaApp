@@ -2,10 +2,10 @@ package com.krisoft.tridjayaelektronik.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.krisoft.tridjayaelektronik.data.model.BranchPerformanceItemDto
 import com.krisoft.tridjayaelektronik.data.model.ExecutiveKpiDto
+import com.krisoft.tridjayaelektronik.data.model.LeaderboardBranchItemDto
+import com.krisoft.tridjayaelektronik.data.model.LeaderboardSalesItemDto
 import com.krisoft.tridjayaelektronik.data.model.MonthlyTargetDto
-import com.krisoft.tridjayaelektronik.data.model.SalesPerformanceItemDto
 import com.krisoft.tridjayaelektronik.data.model.UserDto
 import com.krisoft.tridjayaelektronik.data.LeadSummary
 import com.krisoft.tridjayaelektronik.domain.home.GetCrmSummaryUseCase
@@ -24,8 +24,8 @@ data class HomeUiState(
     val user: UserDto? = null,
     val kpi: ExecutiveKpiDto? = null,
     val target: MonthlyTargetDto? = null,
-    val topBranches: List<BranchPerformanceItemDto> = emptyList(),
-    val topSales: List<SalesPerformanceItemDto> = emptyList(),
+    val topBranches: List<LeaderboardBranchItemDto> = emptyList(),
+    val topSales: List<LeaderboardSalesItemDto> = emptyList(),
     val crmSummary: LeadSummary? = null,
     val errorMessage: String? = null
 )

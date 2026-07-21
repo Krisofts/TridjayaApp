@@ -54,8 +54,20 @@ object NetworkModule {
     fun createInventoryApi(tokenStore: TokenStore): InventoryApi =
         authenticatedRetrofit(tokenStore).create(InventoryApi::class.java)
 
+    fun createSalesApi(tokenStore: TokenStore): SalesApi =
+        authenticatedRetrofit(tokenStore).create(SalesApi::class.java)
+
     fun createCrmApi(tokenStore: TokenStore): CrmApi =
         authenticatedRetrofit(tokenStore).create(CrmApi::class.java)
+
+    fun createAbsensiApi(tokenStore: TokenStore): AbsensiApi =
+        authenticatedRetrofit(tokenStore).create(AbsensiApi::class.java)
+
+    fun createOffApi(tokenStore: TokenStore): OffApi =
+        authenticatedRetrofit(tokenStore).create(OffApi::class.java)
+
+    fun createDeviceApi(tokenStore: TokenStore): DeviceApi =
+        authenticatedRetrofit(tokenStore).create(DeviceApi::class.java)
 
     private fun baseClientBuilder(): OkHttpClient.Builder {
         val logging = HttpLoggingInterceptor().apply {

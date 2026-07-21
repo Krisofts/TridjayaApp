@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 
@@ -96,8 +97,7 @@ fun ChangePasswordScreen(
                     )
 
                     if (state.errorMessage != null) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(state.errorMessage ?: "", color = MaterialTheme.colorScheme.error)
+                        ExpressiveFormError(message = state.errorMessage ?: "")
                     }
 
                     Spacer(Modifier.height(20.dp))

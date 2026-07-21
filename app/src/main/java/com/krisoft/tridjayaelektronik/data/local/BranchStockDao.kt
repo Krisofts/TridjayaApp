@@ -12,59 +12,80 @@ object ProductSortOrder {
     const val NAME_ASC = 0
     const val PRICE_ASC = 1
     const val PRICE_DESC = 2
+    const val STOCK_DESC = 3
+    const val STOCK_ASC = 4
 }
+
+/** Ambang deadstock (hari) — produk dengan umur stok tertua >= ini dianggap deadstock. */
+const val DEADSTOCK_MIN_DAYS = 180L
 
 @Dao
 interface BranchStockDao {
 
     @Query(
         """
-        SELECT kode, kodeCabang, nama, kategori, merk, harga, SUM(stok) AS totalStok
+        SELECT kode, kodeCabang, nama, kategori, merk, harga, SUM(stok) AS totalStok, MAX(gambar) AS gambar,
+               MAX(umurHari) AS maxUmurHari
         FROM branch_stock
         WHERE (:search = '' OR nama LIKE '%' || :search || '%' OR kode LIKE '%' || :search || '%')
           AND (:region = '' OR kodeCabang = :region)
-          AND (:category = '' OR kategori = :category)
-          AND (:merk = '' OR merk = :merk)
+          AND (:dealer = '' OR kodeDealer = :dealer)
+          AND (:category = '' OR kategori LIKE '%' || :category || '%')
+          AND (:merk = '' OR merk LIKE '%' || :merk || '%')
         GROUP BY kode, kodeCabang
         HAVING (:readyOnly = 0 OR SUM(stok) > 0)
+           AND (:deadstockOnly = 0 OR MAX(umurHari) >= :deadstockMinDays)
         ORDER BY
           CASE WHEN :sortOrder = 0 THEN nama END ASC,
           CASE WHEN :sortOrder = 1 THEN harga END ASC,
-          CASE WHEN :sortOrder = 2 THEN harga END DESC
+          CASE WHEN :sortOrder = 2 THEN harga END DESC,
+          CASE WHEN :sortOrder = 3 THEN totalStok END DESC,
+          CASE WHEN :sortOrder = 4 THEN totalStok END ASC
         """
     )
     fun pagingSource(
         search: String,
         region: String,
+        dealer: String,
         readyOnly: Boolean,
         category: String,
         merk: String,
-        sortOrder: Int
+        sortOrder: Int,
+        deadstockOnly: Boolean,
+        deadstockMinDays: Long = DEADSTOCK_MIN_DAYS
     ): PagingSource<Int, ProductAggregate>
 
     @Query(
         """
-        SELECT kode, kodeCabang, nama, kategori, merk, harga, SUM(stok) AS totalStok
+        SELECT kode, kodeCabang, nama, kategori, merk, harga, SUM(stok) AS totalStok, MAX(gambar) AS gambar,
+               MAX(umurHari) AS maxUmurHari
         FROM branch_stock
         WHERE (:search = '' OR nama LIKE '%' || :search || '%' OR kode LIKE '%' || :search || '%')
           AND (:region = '' OR kodeCabang = :region)
-          AND (:category = '' OR kategori = :category)
-          AND (:merk = '' OR merk = :merk)
+          AND (:dealer = '' OR kodeDealer = :dealer)
+          AND (:category = '' OR kategori LIKE '%' || :category || '%')
+          AND (:merk = '' OR merk LIKE '%' || :merk || '%')
         GROUP BY kode, kodeCabang
         HAVING (:readyOnly = 0 OR SUM(stok) > 0)
+           AND (:deadstockOnly = 0 OR MAX(umurHari) >= :deadstockMinDays)
         ORDER BY
           CASE WHEN :sortOrder = 0 THEN nama END ASC,
           CASE WHEN :sortOrder = 1 THEN harga END ASC,
-          CASE WHEN :sortOrder = 2 THEN harga END DESC
+          CASE WHEN :sortOrder = 2 THEN harga END DESC,
+          CASE WHEN :sortOrder = 3 THEN totalStok END DESC,
+          CASE WHEN :sortOrder = 4 THEN totalStok END ASC
         """
     )
     suspend fun filteredProducts(
         search: String,
         region: String,
+        dealer: String,
         readyOnly: Boolean,
         category: String,
         merk: String,
-        sortOrder: Int
+        sortOrder: Int,
+        deadstockOnly: Boolean,
+        deadstockMinDays: Long = DEADSTOCK_MIN_DAYS
     ): List<ProductAggregate>
 
     @Query("SELECT DISTINCT kategori FROM branch_stock WHERE kategori != '' ORDER BY kategori ASC")
@@ -78,7 +99,8 @@ interface BranchStockDao {
 
     @Query(
         """
-        SELECT kode, kodeCabang, nama, kategori, merk, harga, SUM(stok) AS totalStok
+        SELECT kode, kodeCabang, nama, kategori, merk, harga, SUM(stok) AS totalStok, MAX(gambar) AS gambar,
+               MAX(umurHari) AS maxUmurHari
         FROM branch_stock
         WHERE kode = :kode AND kodeCabang = :kodeCabang
         GROUP BY kode, kodeCabang

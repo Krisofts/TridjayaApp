@@ -27,12 +27,13 @@ android {
         applicationId = "com.krisoft.tridjayaelektronik"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 5
+        versionName = "1.4"
 
-        // Gateway Rust tridjaya, deployed at tridjayaelektronik.tech (HTTPS, no
-        // emulator/LAN workaround needed since it's a public domain).
-        buildConfigField("String", "API_BASE_URL", "\"https://tridjayaelektronik.tech/\"")
+        // Gateway Rust tridjaya, deployed at tridjaya.com (HTTPS, no emulator/LAN
+        // workaround needed since it's a public domain). Migrated 2026-07-13 from
+        // tridjayaelektronik.tech, which now only serves an HTML redirect page.
+        buildConfigField("String", "API_BASE_URL", "\"https://tridjaya.com/\"")
     }
 
     signingConfigs {
@@ -55,6 +56,10 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // Debug memakai API_BASE_URL default (https://tridjaya.com/) sama seperti release.
+        // Untuk uji ke gateway lokal, sementara ganti API_BASE_URL di defaultConfig ke
+        // "http://localhost:4100/" + jalankan `adb reverse tcp:4100 tcp:4100` (localhost sudah
+        // diizinkan cleartext di network_security_config.xml). Jangan commit override lokal itu.
     }
 
     buildFeatures {
@@ -80,6 +85,8 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
+    // EXIF orientation saat kompres foto bukti indent (IndentCreateViewModel)
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
@@ -119,11 +126,22 @@ dependencies {
     implementation("androidx.paging:paging-runtime:3.3.2")
     implementation("androidx.paging:paging-compose:3.3.2")
 
+    // XLSX export (Inventory "Export ke Excel") — lightweight pure-Java writer, no POI/reflection
+    // baggage, small enough for Android; supports styled cells + embedded row images.
+    implementation("org.dhatim:fastexcel:0.20.2")
+
+    // Product photo thumbnails (Inventory list + detail flyer) — Coil 2.x (not 3.x: avoids the
+    // multi-artifact network-engine split for a project this size). Disk+memory caching built in,
+    // so scrolling the Inventory list doesn't refetch images on every recomposition.
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
     // Firebase (Remote Config powers the update-check / force-update). Active only when a real
     // google-services.json is present (the plugin below is applied conditionally); otherwise the
     // dependency is inert and UpdateManager no-ops (no default FirebaseApp).
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-config-ktx")
+    // Cloud Messaging (push approval izin/absen). Inert tanpa google-services.json.
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     // Installs the bundled baseline profile on first run (removes cold-start/first-scroll JIT jank).
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")

@@ -21,6 +21,8 @@ data class PersistedSession(
     val cabangName: String = "",
     val whatsapp: String = "",
     val role: String = "",
+    val nik: String = "",
+    val email: String = "",
     val mustChangePassword: Boolean = false
 )
 

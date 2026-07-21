@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -60,11 +61,14 @@ import androidx.compose.ui.unit.dp
  */
 object ExpressiveShapes {
     val Full = CircleShape
-    val ExtraLarge = RoundedCornerShape(28.dp)
-    val Large = RoundedCornerShape(24.dp)
-    val Medium = RoundedCornerShape(16.dp)
-    val Small = RoundedCornerShape(12.dp)
-    val ExtraSmall = RoundedCornerShape(8.dp)
+    // Radius scale aligned 1:1 to the web dashboard's Tailwind radius tokens
+    // (xs/sm/md/lg/xl = 4/8/12/16/24dp) — every tier shifted down one step from the old values
+    // (was 8/12/16/24/28dp) so the name-to-dp mapping matches the web token names exactly.
+    val ExtraLarge = RoundedCornerShape(24.dp)
+    val Large = RoundedCornerShape(16.dp)
+    val Medium = RoundedCornerShape(12.dp)
+    val Small = RoundedCornerShape(8.dp)
+    val ExtraSmall = RoundedCornerShape(4.dp)
 
     // Expressive asymmetric tokens (Rhythm's ExpressiveShapeTokens): a squircle with one sharp-ish
     // corner for icon badges/heroes, and top-rounded sheet shapes.
@@ -328,6 +332,62 @@ fun ExpressiveErrorState(
             }
         }
     }
+}
+
+/**
+ * Inline error row for when content is still visible but a background action failed (e.g. a sync
+ * that didn't block already-cached data, or a paging append that failed mid-scroll) — the lighter
+ * counterpart to [ExpressiveErrorState], which replaces the whole screen. One shared look for every
+ * "something failed but you can keep going" case instead of a bespoke banner per screen.
+ */
+@Composable
+fun ExpressiveInlineError(
+    message: String,
+    modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null,
+    retryLabel: String = "Coba lagi"
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = ExpressiveShapes.Medium
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CloudOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.size(10.dp))
+            Text(
+                text = message,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f)
+            )
+            if (onRetry != null) {
+                TextButton(onClick = onRetry) { Text(retryLabel) }
+            }
+        }
+    }
+}
+
+/**
+ * Small error text for form/login validation failures — the consistent "this submission failed"
+ * message under a form's fields/button, replacing the per-screen mix of spacer gaps and typography.
+ */
+@Composable
+fun ExpressiveFormError(message: String, modifier: Modifier = Modifier) {
+    Text(
+        text = message,
+        color = MaterialTheme.colorScheme.error,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = modifier.padding(top = 12.dp)
+    )
 }
 
 /** Section title row (bold title + optional subtitle + trailing action), matching Rhythm's `ModernSectionTitle`. */

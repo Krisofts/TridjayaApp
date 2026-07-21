@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -26,8 +27,27 @@ private const val ROUTE_LEAD_DETAIL = "search_lead_detail/{leadId}"
 @Composable
 fun InventoryNavHost(
     navController: NavHostController = rememberNavController(),
-    onCloseSearch: () -> Unit = {}
+    onCloseSearch: () -> Unit = {},
+    openListSignal: Int = 0,
+    onExitToHome: () -> Unit = {}
 ) {
+    // Bumped by Home's "Akses Cepat" Inventory tile. Navigating here (inside this NavHost's own
+    // composable, after its `NavHost` call below) instead of from the caller avoids a crash: on a
+    // fresh session this tab's NavHost doesn't exist yet on the same frame the caller switches
+    // tabs, so a `navController.navigate(...)` fired from outside can race ahead of the graph being
+    // set ("Navigation graph has not been set for NavController"). A LaunchedEffect declared here
+    // only ever runs once this composable (and its NavHost) has actually composed.
+    // popUpTo clears the search root from the back stack — arriving via quick access never went
+    // through search, so back from the list shouldn't land there either (it should exit to Home).
+    LaunchedEffect(openListSignal) {
+        if (openListSignal > 0) {
+            navController.navigate(INVENTORY_ROUTE_LIST) {
+                popUpTo(SEARCH_ROUTE_ROOT) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = SEARCH_ROUTE_ROOT,
@@ -55,7 +75,6 @@ fun InventoryNavHost(
                 onLeadClick = { id ->
                     navController.navigate("search_lead_detail/$id") { launchSingleTop = true }
                 },
-                onBrowseInventory = { navController.navigate(INVENTORY_ROUTE_LIST) { launchSingleTop = true } },
                 onClose = onCloseSearch
             )
         }
@@ -64,7 +83,10 @@ fun InventoryNavHost(
                 onProductClick = { kode, kodeCabang ->
                     navController.navigate("inventory_detail/$kode/$kodeCabang") { launchSingleTop = true }
                 },
-                onBack = { navController.popBackStack() }
+                // Reached via search's "Jelajahi semua barang": pop back to search as usual.
+                // Reached via Home's quick access (search root popped off): nothing left to pop,
+                // so exit the tab back to Home instead of leaving the screen stuck.
+                onBack = { if (!navController.popBackStack()) onExitToHome() }
             )
         }
         composable(

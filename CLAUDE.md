@@ -2,7 +2,7 @@
 
 Native Android app (Kotlin + Jetpack Compose) for Tridjaya Elektronik's sales staff: browse
 inventory, manage CRM leads/prospects, view sales KPIs, and generate/share promotional product
-flyers. Talks to an existing Rust microservices backend at `https://tridjayaelektronik.tech/api`
+flyers. Talks to an existing Rust microservices backend at `https://tridjaya.com/api`
 (separate repo, not part of this project).
 
 Read this file first in any new session. It exists so a future agent doesn't have to
@@ -26,7 +26,8 @@ re-derive architecture decisions or repeat mistakes already fixed once.
 ```
 data/
   AuthRepository.kt        auth (login/profile/logout), token refresh race-condition-safe
-  InventoryRepository.kt   product sync + paging + Home dashboard cache
+  InventoryRepository.kt   product/stock sync + paging (Inventory tab only)
+  SalesRepository.kt       KPI/target/leaderboard (klasemen) + Home dashboard cache + txn drill-down
   CrmRepository.kt         leads sync/cache + pipeline/CRM actions
   TokenStore.kt            encrypted DataStore (Keystore AES-GCM): tokens, expiry, profile, mustChangePassword
   SessionCrypto.kt         Android Keystore AES-256/GCM encrypt/decrypt for the session blob
@@ -202,6 +203,35 @@ like Sepeda Listrik/Laptop/Handphone/TV use one bracket-lookup table, everything
 final OTR via a two-step 12-month lookup). Price-bracket lookup tables are bundled CSVs in
 `app/src/main/assets/pricing/`. If the reference project's business logic ever changes, this
 needs to be re-ported by hand — there's no shared library between the two projects.
+
+## Absen (Kehadiran) — mobile, WIRED ke backend nyata
+
+Fitur absen **check-in + selfie + lokasi (geofence)** di `ui/attendance/`, tersambung ke backend
+**`kinerja-service` modul absensi** (`tridjaya` repo, branch `feat/absensi-karyawan`,
+`src/absensi.rs` + `absensi_upload.rs`) via gateway `/api/absensi/*`. **Bukan dummy** — awalnya
+dibangun dummy (backend belum ada), lalu user membuat backend-nya dan modul di-refactor ke wiring
+nyata. Kontrak lengkap: `docs/absen-api-contract.md`.
+
+- **Alur punch**: ambil GPS + selfie → **upload selfie dulu** (`POST /api/absensi/upload-photo`
+  multipart field `file`, ≤5 MB) → dapat URL relatif → `POST /api/absensi/check-in|check-out`
+  `{lat,lng,photoUrl}`. Server menghitung jarak geofence (Haversine), telat/pulang-cepat, dan
+  `status` (`valid` bila dalam radius, `pending_review` bila di luar → butuh approve reviewer).
+  App **tidak** menghitung geofence sendiri (config cabang admin-only) — verdict tampil dari record.
+- **Layer app**: `data/model/AttendanceModels.kt` (`AbsensiRecordDto` 1:1 camelCase),
+  `data/remote/AbsensiApi.kt` (Retrofit, `today`/`list`/`check-in`/`check-out`/`upload-photo`),
+  `data/AbsensiRepository.kt` (no cache — absen harus real-time), `AttendanceViewModel`
+  (today+history paralel, kompres selfie ≤2 MB/1600px + EXIF, punch), `AttendanceScreen`.
+  DI: `NetworkModule.createAbsensiApi` + `AppModule.provideAbsensiApi`.
+- **Selfie**: full-res `ActivityResultContracts.TakePicture()` + FileProvider (cache-path `absensi/`
+  di `file_paths.xml`, authority `${applicationId}.fileprovider`). **Tanpa izin `CAMERA`** (delegasi
+  ke app kamera; kalau CAMERA dideklarasi wajib request runtime — jangan tambah tanpa alasan).
+- **Lokasi**: framework `LocationManager` (`ui/attendance/LocationProvider.kt`, suspend, tanpa
+  play-services) — izin `ACCESS_FINE/COARSE_LOCATION` di manifest + request runtime.
+- **Menu**: tile "Absen" (ikon Fingerprint, teal) paling depan di `QuickAccessRow` (Home), route
+  nested `home_absen` di `HomeNavHost`. Role gate di **backend** (STAFF_ROLES self-service); app
+  belum menyembunyikan tile per-role (semua user login lihat menu, backend menolak yang tak berhak).
+- **Prasyarat data**: tiap cabang perlu di-set geofence via `PUT /api/absensi/config/{cabangId}`
+  (admin). Tanpa config → jarak null, absen tak pernah di-flag telat/luar-area (fail-open).
 
 ## Signing / release builds
 

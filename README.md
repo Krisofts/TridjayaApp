@@ -3,7 +3,7 @@
 Native Android app (Kotlin + Jetpack Compose) for **Tridjaya Elektronik** sales staff: browse
 inventory, manage the CRM leads pipeline, track sales KPIs, and generate & share promotional
 product flyers. It talks to an existing Rust microservices backend at
-`https://tridjayaelektronik.tech/api`.
+`https://tridjaya.com/api`.
 
 <p>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white">
@@ -125,7 +125,7 @@ Without it, `./gradlew assembleRelease` produces an **unsigned** release APK. Re
 
 ## Backend API
 
-Base URL: `https://tridjayaelektronik.tech/api`. The full public endpoint map (auth, inventory,
+Base URL: `https://tridjaya.com/api`. The full public endpoint map (auth, inventory,
 executive dashboard, finance, CRM, kinerja, notifications, …) is in
 [`docs/backend-api-endpoints.md`](docs/backend-api-endpoints.md). The Rust backend lives in a
 separate repository.

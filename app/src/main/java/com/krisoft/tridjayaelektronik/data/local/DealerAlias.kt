@@ -27,4 +27,26 @@ object DealerAlias {
         val alias = names[kodeDealer.trim()] ?: kodeDealer.ifBlank { "Cabang Tidak Diketahui" }
         return "TE $alias"
     }
+
+    val allCodes: List<String> get() = names.keys.toList()
+
+    /** Semua label toko ("TE Pagaden", ...) untuk saran di filter sheet. */
+    val allLabels: List<String> get() = names.keys.map { label(it) }
+
+    /** Best-effort: nama cabang bebas dari profil user (mis. "TE PAGADEN") -> kode dealer. */
+    fun resolveFromBranchName(cabangName: String?): String? {
+        if (cabangName.isNullOrBlank()) return null
+        val lower = cabangName.lowercase()
+        return names.entries.firstOrNull { (_, alias) -> lower.contains(alias.lowercase()) }?.key
+    }
+
+    /** Label/teks bebas dari kolom filter ("TE Pagaden" / "pagaden") -> kode dealer, null bila tak dikenal. */
+    fun codeFromLabel(text: String): String? {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return null
+        if (names.containsKey(trimmed)) return trimmed
+        val lower = trimmed.lowercase().removePrefix("te ").trim()
+        return names.entries.firstOrNull { (_, alias) -> alias.lowercase() == lower }?.key
+            ?: names.entries.firstOrNull { (_, alias) -> alias.lowercase().contains(lower) }?.key
+    }
 }

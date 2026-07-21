@@ -4,8 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
-import com.krisoft.tridjayaelektronik.data.model.BranchPerformanceItemDto
-import com.krisoft.tridjayaelektronik.data.model.SalesPerformanceItemDto
+import com.krisoft.tridjayaelektronik.data.model.LeaderboardBranchItemDto
+import com.krisoft.tridjayaelektronik.data.model.LeaderboardSalesItemDto
 import com.krisoft.tridjayaelektronik.domain.home.GetRankingListUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,8 +19,8 @@ enum class RankingKind { BRANCH, SALES }
 
 data class RankingListUiState(
     val isLoading: Boolean = true,
-    val branches: List<BranchPerformanceItemDto> = emptyList(),
-    val sales: List<SalesPerformanceItemDto> = emptyList(),
+    val branches: List<LeaderboardBranchItemDto> = emptyList(),
+    val sales: List<LeaderboardSalesItemDto> = emptyList(),
     val errorMessage: String? = null
 )
 

@@ -1,20 +1,18 @@
 package com.krisoft.tridjayaelektronik.ui.leads
 
-import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,41 +26,36 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.EmojiEvents
-import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -71,38 +64,35 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
+import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
-import com.krisoft.tridjayaelektronik.ui.theme.SkeletonBox
-import com.krisoft.tridjayaelektronik.ui.theme.SkeletonLine
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.rememberHapticClick
-import kotlinx.coroutines.launch
 
-/** Swipeable status tabs — one pager page per filter. */
 private enum class LeadFilter(val label: String, val icon: ImageVector) {
     ALL("Semua", Icons.Rounded.Groups),
     OPEN("Open", Icons.Rounded.Schedule),
-    WON("Menang", Icons.Rounded.EmojiEvents),
-    LOST("Hilang", Icons.Rounded.Cancel);
+    WON("Deal", Icons.Rounded.EmojiEvents),
+    LOST("Gagal", Icons.Rounded.Cancel);
 
     fun matches(status: String): Boolean = when (this) {
         ALL -> true
@@ -113,16 +103,32 @@ private enum class LeadFilter(val label: String, val icon: ImageVector) {
 }
 
 private enum class LeadSortOption(val label: String) {
+    NEWEST("Terbaru Dibuat"),
     NAME("Nama (A–Z)"),
-    NEWEST("Terbaru"),
-    VALUE("Nilai Tertinggi")
+    VALUE("Nilai Tertinggi"),
+    PROBABILITY("Prioritas (Hot Duluan)")
 }
 
-/** Status → semantic accent colour, used consistently across avatar, badge and stats. */
-private fun statusColor(status: String): Color = when (status.lowercase()) {
-    "won" -> Color(0xFF2E7D32)
-    "lost" -> Color(0xFFC62828)
-    else -> Color(0xFF1565C0)
+/** Cakupan kepemilikan prospek — membedakan yang saya tangani vs yang dilempar antar sales. */
+private enum class LeadScope(val label: String) {
+    ALL("Semua"),
+    MINE("Followup Saya"),
+    THROWN_TO_ME("Dilempar ke Saya"),
+    THROWN_BY_ME("Saya Lempar ke Sales Lain");
+
+    fun matches(lead: LeadDto, myId: String?): Boolean = when (this) {
+        ALL -> true
+        MINE -> myId != null && (lead.assignedTo == myId || (lead.assignedTo.isNullOrBlank() && lead.pendingSync))
+        THROWN_TO_ME -> isThrownToMe(lead, myId)
+        THROWN_BY_ME -> isThrownToOther(lead, myId)
+    }
+}
+
+private fun filterColor(filter: LeadFilter, fallback: Color): Color = when (filter) {
+    LeadFilter.OPEN -> Color(0xFF1565C0)
+    LeadFilter.WON -> Color(0xFF2E7D32)
+    LeadFilter.LOST -> Color(0xFFC62828)
+    LeadFilter.ALL -> fallback
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -134,24 +140,30 @@ fun LeadsListScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var sort by remember { mutableStateOf(LeadSortOption.NAME) }
+    var sort by remember { mutableStateOf(LeadSortOption.NEWEST) }
+    var scope by remember { mutableStateOf(LeadScope.ALL) }
+    var filter by remember { mutableStateOf(LeadFilter.ALL) }
     var showSearch by remember { mutableStateOf(false) }
+    var showSortSheet by remember { mutableStateOf(false) }
     val searchFocus = remember { FocusRequester() }
-    val scope = rememberCoroutineScope()
 
     // Auto-focus the field the moment the search bar opens.
     LaunchedEffect(showSearch) { if (showSearch) searchFocus.requestFocus() }
 
-    val tabs = LeadFilter.entries
-    val pagerState = rememberPagerState(initialPage = 0) { tabs.size }
-    val selectedTab = pagerState.currentPage
-
-    val sortedItems = remember(state.items, sort) {
+    val visibleLeads = remember(state.items, sort, filter, scope, state.stageProgress, state.myId) {
+        val filtered = state.items.filter { filter.matches(it.status) && scope.matches(it, state.myId) }
         when (sort) {
-            LeadSortOption.NAME -> state.items.sortedBy { it.nama.lowercase() }
-            LeadSortOption.NEWEST -> state.items.sortedByDescending { it.createdAt }
-            LeadSortOption.VALUE -> state.items.sortedByDescending { it.estimatedValue }
+            LeadSortOption.NEWEST -> filtered.sortedByDescending { it.createdAt }
+            LeadSortOption.NAME -> filtered.sortedBy { it.nama.lowercase() }
+            LeadSortOption.VALUE -> filtered.sortedByDescending { it.estimatedValue }
+            LeadSortOption.PROBABILITY -> filtered.sortedByDescending {
+                leadProbability(it.status, state.stageProgress[it.stageId])
+            }
         }
+    }
+    val counts = remember(state.items, scope, state.myId) {
+        val scoped = state.items.filter { scope.matches(it, state.myId) }
+        LeadFilter.entries.associateWith { f -> scoped.count { f.matches(it.status) } }
     }
 
     // Edge-to-edge: content scrolls behind the floating nav, so the last row needs enough bottom
@@ -159,31 +171,37 @@ fun LeadsListScreen(
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listBottomClearance = navBarInset + 104.dp
 
-    val openWhatsApp: (LeadDto) -> Unit = { lead ->
-        val text = "Halo ${lead.nama}, "
-        runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, "https://wa.me/${lead.phone}?text=${android.net.Uri.encode(text)}".toUri())
-            )
-        }
+    val openWhatsAppPromo: (LeadDto) -> Unit = { lead ->
+        openWhatsApp(context, lead.phone, buildPromoMessage(lead, state.myName))
+    }
+
+    if (showSortSheet) {
+        LeadSortFilterSheet(
+            sort = sort,
+            scope = scope,
+            onSelectSort = { sort = it },
+            onSelectScope = { scope = it },
+            onDismiss = { showSortSheet = false }
+        )
     }
 
     TridjayaCollapsibleHeader(
         title = "Prospek",
         actions = {
-            IconButton(
+            ExpressiveFilledIconButton(
                 onClick = {
                     showSearch = !showSearch
                     if (!showSearch) viewModel.onSearchChange("")
                 }
             ) {
                 Icon(
-                    if (showSearch) Icons.Rounded.Clear else Icons.Rounded.Search,
-                    contentDescription = if (showSearch) "Tutup pencarian" else "Cari prospek",
-                    tint = if (showSearch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    if (showSearch) Icons.Rounded.Close else Icons.Rounded.Search,
+                    contentDescription = if (showSearch) "Tutup pencarian" else "Cari prospek"
                 )
             }
-            LeadSortMenu(current = sort, onSelect = { sort = it })
+            IconButton(onClick = { showSortSheet = true }) {
+                Icon(Icons.Rounded.Tune, contentDescription = "Urutkan & filter")
+            }
             if (state.isSyncing) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(22.dp).padding(end = 8.dp),
@@ -203,28 +221,72 @@ fun LeadsListScreen(
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
-                    LeadSearchBar(
-                        query = state.search,
-                        onQueryChange = viewModel::onSearchChange,
-                        onClose = {
-                            showSearch = false
-                            viewModel.onSearchChange("")
-                        },
-                        focusRequester = searchFocus
+                    ExpressiveTextField(
+                        value = state.search,
+                        onValueChange = viewModel::onSearchChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .focusRequester(searchFocus),
+                        placeholder = "Cari nama atau nomor WA…",
+                        trailingIcon = if (state.search.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { viewModel.onSearchChange("") }) {
+                                    Icon(Icons.Rounded.Clear, contentDescription = "Hapus teks")
+                                }
+                            }
+                        } else null
                     )
                 }
-                LibraryTabRow(
-                    tabs = tabs,
-                    selectedIndex = selectedTab,
-                    onTabClick = { index -> scope.launch { pagerState.animateScrollToPage(index) } }
+
+                // Summary that doubles as the status filter — tap a segment to filter the list.
+                StatusSummaryFilter(
+                    counts = counts,
+                    selected = filter,
+                    onSelect = { filter = it },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+
+                // Chip pengingat saat cakupan bukan "Semua" — sekali tap kembali normal.
+                if (scope != LeadScope.ALL) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            onClick = { scope = LeadScope.ALL },
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = scope.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "Hapus filter cakupan",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     when {
                         state.isLoading -> {
                             Column(modifier = Modifier.padding(top = 4.dp)) {
-                                repeat(6) { LeadCardSkeleton() }
+                                repeat(6) {
+                                    SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                                }
                             }
                         }
                         state.errorMessage != null && state.items.isEmpty() -> {
@@ -235,25 +297,38 @@ fun LeadsListScreen(
                                 )
                             }
                         }
-                        else -> {
-                            HorizontalPager(
-                                state = pagerState,
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(0.dp),
-                                pageSpacing = 0.dp
-                            ) { page ->
-                                val filter = tabs[page]
-                                val pageLeads = remember(sortedItems, filter) {
-                                    sortedItems.filter { filter.matches(it.status) }
-                                }
-                                LeadPage(
-                                    filter = filter,
-                                    leads = pageLeads,
-                                    stageNames = state.stageNames,
-                                    bottomClearance = listBottomClearance,
-                                    onLeadClick = onLeadClick,
-                                    onWhatsApp = openWhatsApp
+                        visibleLeads.isEmpty() -> {
+                            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                                ExpressiveEmptyState(
+                                    icon = { Icon(filter.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    title = if (filter == LeadFilter.ALL && scope == LeadScope.ALL) "Belum Ada Prospek"
+                                    else "Tidak ada prospek untuk filter ini",
+                                    subtitle = if (filter == LeadFilter.ALL && scope == LeadScope.ALL) "Tekan tombol + untuk menambahkan prospek baru"
+                                    else "Ganti filter atau tambah prospek baru"
                                 )
+                            }
+                        }
+                        else -> {
+                            val listState = rememberLazyListState()
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(top = 4.dp, bottom = listBottomClearance)
+                            ) {
+                                items(visibleLeads, key = { it.id }) { lead ->
+                                    LeadCard(
+                                        lead = lead,
+                                        stageName = state.stageNames[lead.stageId],
+                                        probability = leadProbability(lead.status, state.stageProgress[lead.stageId]),
+                                        creatorName = resolveCreatorName(lead, state.myId, state.employeeNames),
+                                        handlerName = resolveHandlerName(lead, state.myId, state.employeeNames),
+                                        thrownToOther = isThrownToOther(lead, state.myId),
+                                        thrownToMe = isThrownToMe(lead, state.myId),
+                                        onClick = { onLeadClick(lead.id) },
+                                        onWhatsApp = { openWhatsAppPromo(lead) },
+                                        modifier = Modifier.animateItem()
+                                    )
+                                }
                             }
                         }
                     }
@@ -275,443 +350,336 @@ fun LeadsListScreen(
     }
 }
 
-/** One swipe page: a scrollable list of professional lead cards for the tab's status. */
+/** Four tappable segments (count + label); the selected one fills with its status colour. */
 @Composable
-private fun LeadPage(
-    filter: LeadFilter,
-    leads: List<LeadDto>,
-    stageNames: Map<Long, String>,
-    bottomClearance: androidx.compose.ui.unit.Dp,
-    onLeadClick: (Long) -> Unit,
-    onWhatsApp: (LeadDto) -> Unit
+private fun StatusSummaryFilter(
+    counts: Map<LeadFilter, Int>,
+    selected: LeadFilter,
+    onSelect: (LeadFilter) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    if (leads.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            ExpressiveEmptyState(
-                icon = { Icon(filter.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                title = if (filter == LeadFilter.ALL) "Belum Ada Prospek" else "Tidak ada prospek \"${filter.label}\"",
-                subtitle = if (filter == LeadFilter.ALL) "Tekan tombol + untuk menambahkan prospek baru" else "Ganti filter atau tambah prospek baru"
-            )
-        }
-    } else {
-        val listState = rememberLazyListState()
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 4.dp, bottom = bottomClearance)
-        ) {
-            items(leads, key = { it.id }) { lead ->
-                LeadCard(
-                    lead = lead,
-                    stageName = stageNames[lead.stageId],
-                    onClick = { onLeadClick(lead.id) },
-                    onWhatsApp = { onWhatsApp(lead) },
-                    modifier = Modifier.animateItem()
+    ClayCard(modifier = modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LeadFilter.entries.forEach { f ->
+                val accent = filterColor(f, MaterialTheme.colorScheme.primary)
+                val isSelected = f == selected
+                val container by animateColorAsState(
+                    targetValue = if (isSelected) accent else Color.Transparent,
+                    label = "segment_container"
                 )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(container)
+                        .clickable(onClick = rememberHapticClick { onSelect(f) })
+                        .padding(vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "${counts[f] ?: 0}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = if (isSelected) Color.White else accent
+                    )
+                    Text(
+                        text = f.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) Color.White.copy(alpha = 0.9f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
 }
 
-/** Professional CRM lead card: status avatar, name + badge, phone, source, estimated value, quick WA. */
+/**
+ * Kartu prospek bergaya bersih: avatar kotak lembut, nama + minat + tahap, badge suhu
+ * Cold/Warm/Hot (pemetaan probabilitas) atau badge status utk lead selesai, nilai estimasi,
+ * lalu baris bawah penginput → penanggung jawab + tanggal + tombol WA promo.
+ */
 @Composable
 private fun LeadCard(
     lead: LeadDto,
     stageName: String?,
+    probability: Int,
+    creatorName: String,
+    handlerName: String,
+    thrownToOther: Boolean,
+    thrownToMe: Boolean,
     onClick: () -> Unit,
     onWhatsApp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val accent = statusColor(lead.status)
-    Surface(
+    val accent = leadAccentColor(lead.status)
+    val isOpen = lead.status.equals("open", ignoreCase = true)
+    val temp = leadTemperature(probability)
+    ClayCard(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .clickable(onClick = onClick)
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(shape = CircleShape, color = accent.copy(alpha = 0.14f), modifier = Modifier.size(48.dp)) {
-                Box(contentAlignment = Alignment.Center) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .background(accent.copy(alpha = 0.12f), RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
                         text = lead.nama.trim().firstOrNull()?.uppercase() ?: "?",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Black,
                         color = accent
                     )
                 }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = lead.nama,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    if (lead.pendingSync) {
-                        PendingBadge()
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-                    StatusBadge(status = lead.status)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Rounded.Phone,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = lead.phone,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (!stageName.isNullOrBlank() || lead.estimatedValue > 0 || !lead.source.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (!stageName.isNullOrBlank()) {
-                            StagePill(stageName)
+                        Text(
+                            text = lead.nama,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (lead.pendingSync) {
                             Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        if (!lead.source.isNullOrBlank()) {
-                            SourcePill(lead.source)
-                        }
-                        Spacer(modifier = Modifier.weight(1f))
-                        if (lead.estimatedValue > 0) {
-                            Text(
-                                text = formatRupiahShort(lead.estimatedValue),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                            Icon(
+                                Icons.Rounded.CloudUpload,
+                                contentDescription = "Antre sinkron",
+                                tint = Color(0xFFB5670C),
+                                modifier = Modifier.size(14.dp)
                             )
                         }
                     }
-                }
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Surface(
-                onClick = onWhatsApp,
-                shape = CircleShape,
-                color = Color(0xFF25D366).copy(alpha = 0.14f),
-                modifier = Modifier.size(40.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.Chat,
-                        contentDescription = "Chat WhatsApp ${lead.nama}",
-                        tint = Color(0xFF1B9E4B),
-                        modifier = Modifier.size(20.dp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    val minat = lead.minatBarang?.trim().orEmpty()
+                    Text(
+                        text = minat.ifBlank { lead.phone },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (minat.isNotBlank()) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (isOpen && !stageName.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Tahap: $stageName",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (isOpen) {
+                        TemperatureBadge(temp)
+                    } else {
+                        Surface(shape = RoundedCornerShape(50), color = accent.copy(alpha = 0.13f)) {
+                            Text(
+                                text = leadStatusLabel(lead.status),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = accent,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    if (lead.estimatedValue > 0) {
+                        Text(
+                            text = formatRupiahShort(lead.estimatedValue),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = if (creatorName == handlerName) "Oleh $creatorName" else "$creatorName → $handlerName",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                when {
+                    thrownToOther -> ThrowBadge("Dilempar", Color(0xFFB5670C))
+                    thrownToMe -> ThrowBadge("Limpahan", Color(0xFF0E7490))
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = formatShortDate(lead.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Surface(
+                    onClick = onWhatsApp,
+                    shape = CircleShape,
+                    color = Color(0xFF25D366).copy(alpha = 0.15f),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.Chat,
+                            contentDescription = "Chat WhatsApp ${lead.nama}",
+                            tint = Color(0xFF1B9E4B),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/** Marks a lead that was created offline and is still queued to sync to the server. */
+/** Badge suhu Cold/Warm/Hot — ikon + label dengan tint warna suhunya. */
 @Composable
-private fun PendingBadge() {
-    val amber = Color(0xFFB5670C)
-    Surface(color = amber.copy(alpha = 0.14f), shape = RoundedCornerShape(8.dp)) {
+private fun TemperatureBadge(temp: LeadTemperature) {
+    Surface(shape = RoundedCornerShape(50), color = temp.color.copy(alpha = 0.13f)) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Rounded.CloudUpload, contentDescription = null, tint = amber, modifier = Modifier.size(12.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "Antre",
-                color = amber,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-/** Current pipeline stage of the lead — a primary-tinted pill with a flag icon. */
-@Composable
-private fun StagePill(stage: String) {
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Rounded.Flag,
+                imageVector = temp.icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = temp.color,
                 modifier = Modifier.size(12.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = stage,
+                text = temp.label,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                color = temp.color
             )
         }
     }
 }
 
+/** Badge kecil penanda prospek limpahan antar sales. */
 @Composable
-private fun SourcePill(source: String) {
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Text(
-            text = source,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-        )
-    }
-}
-
-@Composable
-private fun LeadCardSkeleton() {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SkeletonBox(modifier = Modifier.size(48.dp), shape = CircleShape)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                SkeletonLine(widthFraction = 0.55f, height = 15.dp)
-                Spacer(modifier = Modifier.height(8.dp))
-                SkeletonLine(widthFraction = 0.35f, height = 12.dp)
-            }
-        }
-    }
-}
-
-/** Sort menu in the header actions. */
-@Composable
-private fun LeadSortMenu(current: LeadSortOption, onSelect: (LeadSortOption) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Rounded.SwapVert, contentDescription = "Urutkan")
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.widthIn(min = 220.dp)
-        ) {
-            LeadSortOption.entries.forEach { option ->
-                val selected = option == current
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = option.label,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                        )
-                    },
-                    trailingIcon = {
-                        if (selected) {
-                            Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
-/** Custom, professional search bar revealed by the header search icon — pill field, live filter. */
-@Composable
-private fun LeadSearchBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onClose: () -> Unit,
-    focusRequester: FocusRequester
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 2.dp,
-        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Rounded.Search,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Box(modifier = Modifier.weight(1f)) {
-                if (query.isEmpty()) {
-                    Text(
-                        text = "Cari nama atau nomor WA…",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                BasicTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester),
-                    textStyle = LocalTextStyle.current.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = MaterialTheme.typography.bodyLarge.fontSize
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
-                )
-            }
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Rounded.Clear, contentDescription = "Hapus teks", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                }
-            } else {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Rounded.Clear, contentDescription = "Tutup pencarian", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                }
-            }
-        }
-    }
-}
-
-/** Rhythm-style swipeable tab row: pills inside one rounded Surface, selected fills with primary. */
-@Composable
-private fun LibraryTabRow(
-    tabs: List<LeadFilter>,
-    selectedIndex: Int,
-    onTabClick: (Int) -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp
-    ) {
-        androidx.compose.foundation.lazy.LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp)
-        ) {
-            itemsIndexed(tabs) { index, tab ->
-                LibraryTab(
-                    selected = index == selectedIndex,
-                    label = tab.label,
-                    icon = tab.icon,
-                    onClick = { onTabClick(index) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LibraryTab(
-    selected: Boolean,
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val container by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
-        label = "tab_container"
-    )
-    val content by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-        label = "tab_content"
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.95f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "tab_scale"
-    )
-    Surface(
-        modifier = modifier
-            .padding(all = 2.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale },
-        onClick = rememberHapticClick(onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = container,
-        contentColor = content
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatusBadge(status: String) {
-    val (label, color) = when (status.lowercase()) {
-        "won" -> "Menang" to Color(0xFF2E7D32)
-        "lost" -> "Hilang" to Color(0xFFC62828)
-        else -> "Open" to Color(0xFF1565C0)
-    }
-    Surface(color = color.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
+private fun ThrowBadge(label: String, color: Color) {
+    Spacer(modifier = Modifier.width(6.dp))
+    Surface(shape = RoundedCornerShape(50), color = color.copy(alpha = 0.13f)) {
         Text(
             text = label,
-            color = color,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            color = color,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
+    }
+}
+
+/** Bottom sheet urutkan + cakupan (pengganti dropdown sort lama). */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun LeadSortFilterSheet(
+    sort: LeadSortOption,
+    scope: LeadScope,
+    onSelectSort: (LeadSortOption) -> Unit,
+    onSelectScope: (LeadScope) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp)
+        ) {
+            Text(
+                text = "Urutkan",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            LeadSortOption.entries.forEach { option ->
+                val selected = option == sort
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = rememberHapticClick { onSelectSort(option) })
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = option.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (selected) {
+                        Icon(
+                            Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Tampilkan",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LeadScope.entries.forEach { option ->
+                    FilterChip(
+                        selected = scope == option,
+                        onClick = { onSelectScope(option) },
+                        label = { Text(option.label) },
+                        shape = RoundedCornerShape(50),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Prospek yang Anda lempar ke sales lain baru terlihat setelah tersinkron dari server.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -722,4 +690,14 @@ private fun formatRupiahShort(value: Double): String {
         value >= 1_000 -> "Rp %.0fRb".format(value / 1_000)
         else -> "Rp ${value.toInt()}"
     }
+}
+
+/** "yyyy-MM-dd…" → "d/M" (compact list date); falls back to empty string. */
+private fun formatShortDate(raw: String): String {
+    val datePart = raw.substringBefore('T').substringBefore(' ').trim()
+    val parts = datePart.split("-")
+    if (parts.size != 3) return ""
+    val month = parts[1].toIntOrNull() ?: return ""
+    val day = parts[2].toIntOrNull() ?: return ""
+    return "$day/$month"
 }

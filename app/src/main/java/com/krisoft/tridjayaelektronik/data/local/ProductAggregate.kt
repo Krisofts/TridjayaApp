@@ -12,5 +12,8 @@ data class ProductAggregate(
     val kategori: String,
     val merk: String,
     val harga: Double,
-    val totalStok: Double
+    val totalStok: Double,
+    val gambar: String? = null,
+    /** Umur stok TERTUA (hari) di antara semua dealer dalam grup — basis badge aging di list. */
+    val maxUmurHari: Long? = null
 )

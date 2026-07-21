@@ -3,9 +3,11 @@ package com.krisoft.tridjayaelektronik.ui.leads
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
 import com.krisoft.tridjayaelektronik.data.model.PipelineDto
+import com.krisoft.tridjayaelektronik.domain.leads.GetAssigneesUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.GetLeadDetailUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.MarkLeadLostUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.MarkLeadWonUseCase
@@ -25,6 +27,10 @@ data class LeadDetailUiState(
     val pipeline: PipelineDto? = null,
     val isMovingStage: Boolean = false,
     val isUpdatingStatus: Boolean = false,
+    /** UUID karyawan → nama, untuk label penginput/penanggung jawab. */
+    val employeeNames: Map<String, String> = emptyMap(),
+    val myId: String? = null,
+    val myName: String? = null,
     val errorMessage: String? = null
 )
 
@@ -35,16 +41,26 @@ class LeadDetailViewModel @Inject constructor(
     private val markLeadWonUseCase: MarkLeadWonUseCase,
     private val markLeadLostUseCase: MarkLeadLostUseCase,
     private val reopenLeadUseCase: ReopenLeadUseCase,
+    private val getAssigneesUseCase: GetAssigneesUseCase,
+    authRepository: AuthRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val leadId: Long = checkNotNull(savedStateHandle.get<Long>("leadId"))
 
-    private val _uiState = MutableStateFlow(LeadDetailUiState())
+    private val _uiState = MutableStateFlow(
+        LeadDetailUiState(myId = authRepository.currentUserId, myName = authRepository.currentUserName)
+    )
     val uiState: StateFlow<LeadDetailUiState> = _uiState.asStateFlow()
 
     init {
         load()
+        viewModelScope.launch {
+            val result = getAssigneesUseCase()
+            if (result is AuthResult.Success) {
+                _uiState.update { state -> state.copy(employeeNames = result.data.associate { it.id to it.name }) }
+            }
+        }
     }
 
     fun load() {

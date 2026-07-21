@@ -1,6 +1,9 @@
 package com.krisoft.tridjayaelektronik.ui.leads
 
-import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,19 +25,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Cancel
-import androidx.compose.material.icons.rounded.Notes
+import androidx.compose.material.icons.rounded.Category
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Payments
-import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.ShoppingBag
+import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -48,34 +59,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
 import com.krisoft.tridjayaelektronik.data.model.PipelineDto
+import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveShapes
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
-
-private fun statusColor(status: String): Color = when (status.lowercase()) {
-    "won" -> Color(0xFF2E7D32)
-    "lost" -> Color(0xFFC62828)
-    else -> Color(0xFF1565C0)
-}
-
-private fun statusLabel(status: String): String = when (status.lowercase()) {
-    "won" -> "Menang"
-    "lost" -> "Hilang"
-    else -> "Open"
-}
+import com.krisoft.tridjayaelektronik.ui.theme.rememberHapticClick
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,7 +94,7 @@ fun LeadDetailScreen(
     var showLostDialog by remember { mutableStateOf(false) }
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    TridjayaCollapsibleHeader(title = state.lead?.nama ?: "Detail Prospek", onBack = onBack) { contentModifier ->
+    TridjayaCollapsibleHeader(title = "Detail Prospek", onBack = onBack) { contentModifier ->
         Box(modifier = contentModifier) {
             when {
                 state.isLoading -> {
@@ -111,56 +117,84 @@ fun LeadDetailScreen(
                 }
                 else -> {
                     val lead = state.lead!!
+                    val isOpen = lead.status.equals("open", ignoreCase = true)
+                    // Prospek yang ditangani sales lain hanya bisa DILIHAT — server menolak
+                    // mutasi (ubah tahap / DEAL / GAGAL) dari non-pemilik, jadi aksinya
+                    // dikunci di UI sekalian agar tidak antre gagal terus di sync offline.
+                    val canManage = lead.assignedTo.isNullOrBlank() || lead.assignedTo == state.myId
+                    val handlerName = resolveHandlerName(lead, state.myId, state.employeeNames)
+                    val stages = remember(state.pipeline) {
+                        state.pipeline?.stages?.sortedBy { it.urutan }.orEmpty()
+                    }
+                    val currentStageIndex = stages.indexOfFirst { it.id == lead.stageId }.coerceAtLeast(0)
+                    val probability = leadProbability(
+                        lead.status,
+                        if (stages.isEmpty()) null else StageProgress(currentStageIndex, stages.size)
+                    )
+
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = navBarInset + 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = navBarInset + 24.dp)
                     ) {
-                        LeadHeroCard(lead = lead)
-
-                        QuickActions(
+                        ProspectHeroCard(
+                            lead = lead,
+                            probability = probability,
                             onWhatsApp = {
-                                val text = "Halo ${lead.nama}, "
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, "https://wa.me/${lead.phone}?text=${android.net.Uri.encode(text)}".toUri())
-                                    )
-                                }
+                                openWhatsApp(context, lead.phone, buildPromoMessage(lead, state.myName))
                             },
                             onCall = {
                                 runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_DIAL, "tel:${lead.phone}".toUri()))
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_DIAL,
+                                            "tel:${lead.phone}".toUri()
+                                        )
+                                    )
                                 }
                             }
                         )
 
-                        if (lead.estimatedValue > 0) {
-                            EstimatedValueCard(lead.estimatedValue)
+                        if (!canManage) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            ReadOnlyBanner(handlerName = handlerName)
                         }
 
-                        StatusActionsRow(
-                            status = lead.status,
-                            isUpdating = state.isUpdatingStatus,
-                            onMarkWon = viewModel::markWon,
-                            onMarkLost = { showLostDialog = true },
-                            onReopen = viewModel::reopen
-                        )
-
-                        if (state.pipeline != null) {
-                            PipelineCard(
+                        if (stages.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            HorizontalStepperCard(
                                 pipeline = state.pipeline!!,
-                                currentStageId = lead.stageId,
+                                currentIndex = currentStageIndex,
                                 isMoving = state.isMovingStage,
+                                isOpen = isOpen && canManage,
                                 onSelectStage = viewModel::moveStage
                             )
                         }
 
-                        LeadInfoCard(lead = lead)
+                        if (canManage) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutcomeSection(
+                                status = lead.status,
+                                isUpdating = state.isUpdatingStatus,
+                                onMarkWon = viewModel::markWon,
+                                onMarkLost = { showLostDialog = true },
+                                onReopen = viewModel::reopen
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        InfoListCard(
+                            lead = lead,
+                            creatorName = resolveCreatorName(lead, state.myId, state.employeeNames),
+                            handlerName = handlerName,
+                            thrownToOther = isThrownToOther(lead, state.myId),
+                            thrownToMe = isThrownToMe(lead, state.myId)
+                        )
 
                         if (state.errorMessage != null) {
-                            Text(text = state.errorMessage ?: "", color = MaterialTheme.colorScheme.error)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            ExpressiveFormError(message = state.errorMessage ?: "")
                         }
                     }
                 }
@@ -179,130 +213,337 @@ fun LeadDetailScreen(
     }
 }
 
-/** Hero header: large status-tinted avatar, name, phone and a status badge. */
+/**
+ * Kartu identitas bergaya profil terpusat: avatar besar, nama & nomor di tengah, badge status,
+ * meter suhu Cold/Warm/Hot (pemetaan probabilitas — hanya utk lead aktif), chip minat/kategori/
+ * estimasi, lalu tombol WhatsApp promo & telepon.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LeadHeroCard(lead: LeadDto) {
-    val accent = statusColor(lead.status)
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.primaryContainer
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
+private fun ProspectHeroCard(
+    lead: LeadDto,
+    probability: Int,
+    onWhatsApp: () -> Unit,
+    onCall: () -> Unit
+) {
+    val accent = leadAccentColor(lead.status)
+    val isOpen = lead.status.equals("open", ignoreCase = true)
+    val temp = leadTemperature(probability)
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface, modifier = Modifier.size(64.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = lead.nama.trim().firstOrNull()?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = accent
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .background(accent.copy(alpha = 0.12f), RoundedCornerShape(24.dp)),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
-                    text = lead.nama,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    text = lead.nama.trim().firstOrNull()?.uppercase() ?: "?",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                    color = accent
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Rounded.Phone,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = lead.nama,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = lead.phone,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(50), color = accent.copy(alpha = 0.13f)) {
                     Text(
-                        text = lead.phone,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
-                    )
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(color = accent, shape = RoundedCornerShape(8.dp)) {
-                    Text(
-                        text = statusLabel(lead.status),
-                        color = Color.White,
+                        text = leadStatusLabel(lead.status),
+                        color = accent,
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun QuickActions(onWhatsApp: () -> Unit, onCall: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        ExpressiveFilledButton(
-            onClick = onWhatsApp,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1FA855), contentColor = Color.White),
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(Icons.AutoMirrored.Rounded.Chat, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("WhatsApp")
-        }
-        ExpressiveOutlinedButton(
-            onClick = onCall,
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(Icons.Rounded.Call, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Telepon")
-        }
-    }
-}
-
-/** Prominent estimated-value card — money is front-and-centre in a CRM. */
-@Composable
-private fun EstimatedValueCard(value: Double) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), modifier = Modifier.size(46.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Payments, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                if (lead.pendingSync) {
+                    Surface(color = Color(0xFFB5670C).copy(alpha = 0.13f), shape = RoundedCornerShape(50)) {
+                        Text(
+                            text = "ANTRE",
+                            color = Color(0xFFB5670C),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(
-                    text = "Estimasi Nilai",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+            if (isOpen) {
+                Spacer(modifier = Modifier.height(14.dp))
+                TemperatureMeter(current = temp)
+            }
+
+            val chips = buildList {
+                lead.minatBarang?.takeIf { it.isNotBlank() }?.let { add(Icons.Rounded.ShoppingBag to it) }
+                lead.kategoriProduk?.takeIf { it.isNotBlank() }?.let { add(Icons.Rounded.Category to it) }
+                if (lead.estimatedValue > 0) add(Icons.Rounded.Payments to formatRupiahShort(lead.estimatedValue))
+            }
+            if (chips.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    chips.forEach { (icon, label) ->
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ExpressiveFilledButton(
+                    onClick = onWhatsApp,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1FA855), contentColor = Color.White),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("WA Promo")
+                }
+                ExpressiveOutlinedButton(
+                    onClick = onCall,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Rounded.Call, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Telepon")
+                }
+            }
+        }
+    }
+}
+
+/** Banner info bahwa prospek ini milik sales lain — hanya bisa dilihat, tidak bisa diubah. */
+@Composable
+private fun ReadOnlyBanner(handlerName: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Rounded.Lock,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = "Followup oleh $handlerName — Anda hanya bisa melihat prospek ini.",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+    }
+}
+
+/** Meter suhu 3 segmen: segmen aktif terisi penuh warna suhunya, sisanya tint lembut. */
+@Composable
+private fun TemperatureMeter(current: LeadTemperature) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        LeadTemperature.entries.forEach { temp ->
+            val active = temp == current
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(
+                        if (active) temp.color else temp.color.copy(alpha = 0.08f),
+                        RoundedCornerShape(14.dp)
+                    )
+                    .padding(vertical = 9.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = temp.icon,
+                    contentDescription = null,
+                    tint = if (active) Color.White else temp.color.copy(alpha = 0.7f),
+                    modifier = Modifier.size(17.dp)
                 )
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = formatRupiah(value),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    text = temp.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (active) FontWeight.Black else FontWeight.Medium,
+                    color = if (active) Color.White else temp.color.copy(alpha = 0.8f)
                 )
             }
         }
     }
 }
 
+/** Horizontal stepper: numbered nodes joined by connector lines, scrollable sideways; the whole
+ *  journey is visible at a glance and each node is tappable. A progress bar + one-tap "Lanjut"
+ *  button sit underneath. */
 @Composable
-private fun StatusActionsRow(
+private fun HorizontalStepperCard(
+    pipeline: PipelineDto,
+    currentIndex: Int,
+    isMoving: Boolean,
+    isOpen: Boolean,
+    onSelectStage: (Long) -> Unit
+) {
+    val stages = remember(pipeline) { pipeline.stages.sortedBy { it.urutan } }
+    val nextStage = stages.getOrNull(currentIndex + 1)
+    val progress = if (stages.isEmpty()) 0f else (currentIndex + 1).toFloat() / stages.size
+
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "Tahap Pengerjaan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (isMoving) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.Top
+            ) {
+                stages.forEachIndexed { index, stage ->
+                    val isCurrent = index == currentIndex
+                    val isDone = index < currentIndex
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(86.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(enabled = isOpen && !isMoving && !isCurrent) { onSelectStage(stage.id) }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(
+                                    color = when {
+                                        isDone || isCurrent -> MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.surfaceVariant
+                                    },
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when {
+                                isDone -> Icon(
+                                    Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                else -> Text(
+                                    text = "${index + 1}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isCurrent) MaterialTheme.colorScheme.onPrimary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stage.nama,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Medium,
+                            color = when {
+                                isCurrent -> MaterialTheme.colorScheme.primary
+                                isDone -> MaterialTheme.colorScheme.onSurface
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (index != stages.lastIndex) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 20.dp)
+                                .width(18.dp)
+                                .height(2.dp)
+                                .background(
+                                    if (index < currentIndex) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant
+                                )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(8.dp),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                strokeCap = StrokeCap.Round
+            )
+
+            if (isOpen && nextStage != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                ExpressiveFilledButton(
+                    onClick = { onSelectStage(nextStage.id) },
+                    enabled = !isMoving,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Lanjut: ${nextStage.nama}")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+/** Hasil prospek: dua tile bergaya tint lembut (open), atau banner hasil + buka kembali. */
+@Composable
+private fun OutcomeSection(
     status: String,
     isUpdating: Boolean,
     onMarkWon: () -> Unit,
@@ -311,104 +552,76 @@ private fun StatusActionsRow(
 ) {
     when (status.lowercase()) {
         "open" -> {
+            Text(
+                text = "HASIL PROSPEK",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ExpressiveFilledButton(
+                OutcomeTile(
+                    icon = Icons.Rounded.ThumbUp,
+                    label = "DEAL",
+                    caption = "Pelanggan setuju",
+                    accent = Color(0xFF2E7D32),
+                    enabled = !isUpdating,
                     onClick = onMarkWon,
-                    enabled = !isUpdating,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White),
                     modifier = Modifier.weight(1f)
-                ) {
-                    Text("Tandai Menang")
-                }
-                ExpressiveOutlinedButton(
+                )
+                OutcomeTile(
+                    icon = Icons.Rounded.Cancel,
+                    label = "GAGAL",
+                    caption = "Prospek batal",
+                    accent = Color(0xFFC62828),
+                    enabled = !isUpdating,
                     onClick = onMarkLost,
-                    enabled = !isUpdating,
                     modifier = Modifier.weight(1f)
-                ) {
-                    Text("Tandai Hilang")
-                }
+                )
+            }
+            if (isUpdating) {
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
         }
         "won", "lost" -> {
-            ExpressiveOutlinedButton(
-                onClick = onReopen,
-                enabled = !isUpdating,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Buka Kembali")
-            }
-        }
-    }
-}
-
-/** Pipeline stage card: progress bar + tappable stage chips (current highlighted). */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PipelineCard(
-    pipeline: PipelineDto,
-    currentStageId: Long,
-    isMoving: Boolean,
-    onSelectStage: (Long) -> Unit
-) {
-    val stages = remember(pipeline) { pipeline.stages.sortedBy { it.urutan } }
-    val currentIndex = stages.indexOfFirst { it.id == currentStageId }.coerceAtLeast(0)
-    val progress = if (stages.isEmpty()) 0f else (currentIndex + 1).toFloat() / stages.size
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Tahap Pipeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    text = "${currentIndex + 1}/${stages.size}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            LinearProgressIndicator(
-                progress = { progress.coerceIn(0f, 1f) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp),
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                stages.forEachIndexed { index, stage ->
-                    val isCurrent = index == currentIndex
-                    val isDone = index < currentIndex
-                    val container = when {
-                        isCurrent -> MaterialTheme.colorScheme.primary
-                        isDone -> MaterialTheme.colorScheme.primaryContainer
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    }
-                    val contentColor = when {
-                        isCurrent -> MaterialTheme.colorScheme.onPrimary
-                        isDone -> MaterialTheme.colorScheme.onPrimaryContainer
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    Surface(
-                        onClick = { if (!isMoving) onSelectStage(stage.id) },
-                        shape = RoundedCornerShape(50),
-                        color = container,
-                        contentColor = contentColor
+            val won = status.equals("won", ignoreCase = true)
+            val accent = if (won) Color(0xFF2E7D32) else Color(0xFFC62828)
+            ClayCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(accent.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${index + 1}. ${stage.nama}",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                        Icon(
+                            imageVector = if (won) Icons.Rounded.ThumbUp else Icons.Rounded.Cancel,
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(22.dp)
                         )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (won) "Prospek ini sudah DEAL 🎉" else "Prospek ini GAGAL",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = accent
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (isUpdating) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ExpressiveOutlinedButton(
+                        onClick = onReopen,
+                        enabled = !isUpdating,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Buka Kembali")
                     }
                 }
             }
@@ -416,67 +629,124 @@ private fun PipelineCard(
     }
 }
 
-/** Labeled info card with icon rows — source, location, created date, note, lost reason. */
 @Composable
-private fun LeadInfoCard(lead: LeadDto) {
-    val rows = buildList {
-        if (!lead.source.isNullOrBlank()) add(Triple(Icons.Rounded.Campaign, "Sumber", lead.source!!))
-        if (!lead.lokasi.isNullOrBlank()) add(Triple(Icons.Rounded.Place, "Lokasi", lead.lokasi!!))
-        if (lead.createdAt.isNotBlank()) add(Triple(Icons.Rounded.CalendarMonth, "Ditambahkan", formatDate(lead.createdAt)))
-        if (!lead.catatan.isNullOrBlank()) add(Triple(Icons.Rounded.Notes, "Catatan", lead.catatan!!))
-        if (lead.status.equals("lost", ignoreCase = true) && !lead.lostReason.isNullOrBlank()) {
-            add(Triple(Icons.Rounded.Cancel, "Alasan Hilang", lead.lostReason!!))
-        }
-    }
-    if (rows.isEmpty()) return
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp
+private fun OutcomeTile(
+    icon: ImageVector,
+    label: String,
+    caption: String,
+    accent: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(accent.copy(alpha = if (enabled) 0.10f else 0.05f))
+            .border(1.dp, accent.copy(alpha = 0.30f), RoundedCornerShape(18.dp))
+            .clickable(enabled = enabled, onClick = rememberHapticClick(onClick))
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(modifier = Modifier.padding(vertical = 6.dp)) {
-            Text(
-                text = "Informasi",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
-            )
-            rows.forEach { (icon, label, value) ->
-                InfoRow(icon = icon, label = label, value = value)
-            }
-            Spacer(modifier = Modifier.height(6.dp))
+        Box(
+            modifier = Modifier.size(40.dp).background(accent, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            color = accent
+        )
+        Text(
+            text = caption,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
+/** Informasi lengkap prospek — termasuk penginput, penanggung jawab, minat & kategori. */
 @Composable
-private fun InfoRow(icon: ImageVector, label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(14.dp))
-        Column {
+private fun InfoListCard(
+    lead: LeadDto,
+    creatorName: String,
+    handlerName: String,
+    thrownToOther: Boolean,
+    thrownToMe: Boolean
+) {
+    val handlerSuffix = when {
+        thrownToOther -> "  ·  Dilempar"
+        thrownToMe -> "  ·  Limpahan"
+        else -> ""
+    }
+    val rows = buildList {
+        add(Triple(Icons.Rounded.PersonAdd, "Dibuat oleh", creatorName))
+        add(Triple(Icons.Rounded.Person, "Followup oleh", handlerName + handlerSuffix))
+        if (!lead.minatBarang.isNullOrBlank()) add(Triple(Icons.Rounded.ShoppingBag, "Minat Barang", lead.minatBarang!!))
+        if (!lead.kategoriProduk.isNullOrBlank()) add(Triple(Icons.Rounded.Category, "Kategori Produk", lead.kategoriProduk!!))
+        if (!lead.source.isNullOrBlank()) add(Triple(Icons.Rounded.Campaign, "Sumber", lead.source!!))
+        if (!lead.lokasi.isNullOrBlank()) add(Triple(Icons.Rounded.Place, "Alamat", lead.lokasi!!))
+        if (!lead.catatan.isNullOrBlank()) add(Triple(Icons.AutoMirrored.Rounded.Notes, "Keterangan", lead.catatan!!))
+        if (lead.createdAt.isNotBlank()) add(Triple(Icons.Rounded.CalendarMonth, "Tanggal Masuk", formatDate(lead.createdAt)))
+        if (lead.status.equals("lost", ignoreCase = true) && !lead.lostReason.isNullOrBlank()) {
+            add(Triple(Icons.Rounded.Cancel, "Alasan Gagal", lead.lostReason!!))
+        }
+    }
+
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Informasi Prospek",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
             )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            rows.forEachIndexed { index, (icon, label, value) ->
+                val isLostReason = label == "Alasan Gagal"
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(
+                                if (isLostReason) MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                RoundedCornerShape(11.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = if (isLostReason) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = value,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isLostReason) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                if (index != rows.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                }
+            }
         }
     }
 }
@@ -491,12 +761,13 @@ private fun LostReasonDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = ExpressiveShapes.Large,
-        title = { Text("Tandai Hilang", fontWeight = FontWeight.Bold) },
+        title = { Text("Tandai GAGAL", fontWeight = FontWeight.Bold) },
         text = {
             ExpressiveTextField(
                 value = reason,
                 onValueChange = { reason = it },
-                label = "Alasan",
+                label = "Alasan gagal",
+                placeholder = "Harga, stok kosong, pindah toko, dsb.",
                 modifier = Modifier.fillMaxWidth()
             )
         },
@@ -516,10 +787,16 @@ private fun LostReasonDialog(
     )
 }
 
-private fun formatRupiah(value: Double): String {
-    val rounded = value.toLong()
-    val text = rounded.toString().reversed().chunked(3).joinToString(".").reversed()
-    return "Rp $text"
+/** Compact currency for the stats strip, e.g. Rp 1,8M / Rp 3,7Jt. */
+private fun formatRupiahShort(value: Double): String {
+    val abs = kotlin.math.abs(value)
+    val sign = if (value < 0) "-" else ""
+    return when {
+        abs >= 1_000_000_000 -> "%sRp %.1fM".format(sign, abs / 1_000_000_000)
+        abs >= 1_000_000 -> "%sRp %.1fJt".format(sign, abs / 1_000_000)
+        abs >= 1_000 -> "%sRp %.0fRb".format(sign, abs / 1_000)
+        else -> "%sRp %.0f".format(sign, abs)
+    }
 }
 
 /** Best-effort "yyyy-MM-dd…" → "d Mmm yyyy" (Indonesian months); falls back to the raw string. */

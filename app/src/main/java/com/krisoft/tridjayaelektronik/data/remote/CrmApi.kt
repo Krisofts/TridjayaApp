@@ -1,7 +1,9 @@
 package com.krisoft.tridjayaelektronik.data.remote
 
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
-import com.krisoft.tridjayaelektronik.data.model.CreateLeadRequest
+import com.krisoft.tridjayaelektronik.data.model.AssigneesData
+import com.krisoft.tridjayaelektronik.data.model.CreateProspekData
+import com.krisoft.tridjayaelektronik.data.model.CreateProspekRequest
 import com.krisoft.tridjayaelektronik.data.model.LeadDetailData
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
 import com.krisoft.tridjayaelektronik.data.model.LeadListData
@@ -23,6 +25,7 @@ interface CrmApi {
     @GET("api/crm/leads")
     suspend fun listLeads(
         @Query("assignedTo") assignedTo: String? = null,
+        @Query("createdBy") createdBy: String? = null,
         @Query("search") search: String? = null,
         @Query("page") page: Int? = null,
         @Query("limit") limit: Int? = null
@@ -31,8 +34,15 @@ interface CrmApi {
     @GET("api/crm/leads/{id}")
     suspend fun leadDetail(@Path("id") id: Long): Response<ApiResponse<LeadDetailData>>
 
-    @POST("api/crm/leads")
-    suspend fun createLead(@Body body: CreateLeadRequest): Response<ApiResponse<LeadDto>>
+    // Create goes through /api/prospek-harian (kinerja-service) — the same endpoint as the web's
+    // Submit Prospek form — so mobile-created prospects count toward the daily target/raport and
+    // trigger the assignment notification, instead of silently bypassing them via /api/crm/leads.
+    @POST("api/prospek-harian")
+    suspend fun createProspek(@Body body: CreateProspekRequest): Response<ApiResponse<CreateProspekData>>
+
+    /** Active employees (all branches, sales & non-sales) selectable as the prospect's assignee. */
+    @GET("api/prospek-harian/assignees")
+    suspend fun assignees(): Response<ApiResponse<AssigneesData>>
 
     @POST("api/crm/leads/{id}/move-stage")
     suspend fun moveStage(@Path("id") id: Long, @Body body: MoveStageRequest): Response<ApiResponse<LeadDto>>

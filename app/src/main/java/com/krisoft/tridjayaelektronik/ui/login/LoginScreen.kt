@@ -35,6 +35,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.R
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -114,11 +115,7 @@ fun LoginScreen(
                 )
 
                 if (state.errorMessage != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = state.errorMessage ?: "",
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    ExpressiveFormError(message = state.errorMessage ?: "")
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))

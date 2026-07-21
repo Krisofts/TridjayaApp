@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.data
 
+import com.krisoft.tridjayaelektronik.data.local.AppDatabase
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.ChangePasswordRequest
 import com.krisoft.tridjayaelektronik.data.model.ForgotPasswordRequest
@@ -8,7 +9,9 @@ import com.krisoft.tridjayaelektronik.data.model.LogoutRequest
 import com.krisoft.tridjayaelektronik.data.model.ResetPasswordRequest
 import com.krisoft.tridjayaelektronik.data.model.UserDto
 import com.krisoft.tridjayaelektronik.data.remote.AuthApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import retrofit2.Response
 import javax.inject.Inject
@@ -22,7 +25,8 @@ sealed class AuthResult<out T> {
 @Singleton
 class AuthRepository @Inject constructor(
     private val api: AuthApi,
-    private val tokenStore: TokenStore
+    private val tokenStore: TokenStore,
+    private val appDatabase: AppDatabase
 ) {
 
     private val errorJson = Json { ignoreUnknownKeys = true }
@@ -43,6 +47,12 @@ class AuthRepository @Inject constructor(
         }
     }
 
+    /**
+     * Profile with an offline fallback: a plain network error (no connection) serves the profile
+     * cached in [TokenStore] from the last login/fetch, so Settings still renders offline. A real
+     * HTTP rejection (e.g. 401 with a dead refresh token) still surfaces as a Failure — offline
+     * must never mask a genuinely invalid session.
+     */
     suspend fun profile(): AuthResult<UserDto> {
         return try {
             val response = api.profile()
@@ -55,6 +65,7 @@ class AuthRepository @Inject constructor(
                 parseError(response)
             }
         } catch (e: Exception) {
+            tokenStore.cachedProfile()?.let { return AuthResult.Success(it) }
             AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
         }
     }
@@ -66,6 +77,10 @@ class AuthRepository @Inject constructor(
             // Best-effort: clear local session regardless of server reachability.
         } finally {
             tokenStore.clear()
+            // Wipe every cached table (stock, leads, dashboard cache, sync meta) so the next
+            // login — possibly a different user on a shared device — never sees stale or
+            // another account's data before the first fresh sync completes.
+            withContext(Dispatchers.IO) { appDatabase.clearAllTables() }
         }
     }
 
@@ -110,6 +125,8 @@ class AuthRepository @Inject constructor(
     val currentUserName: String? get() = tokenStore.userName
     val currentCabangName: String? get() = tokenStore.cabangName
     val currentUserWhatsapp: String? get() = tokenStore.whatsapp
+    /** Profil dari cache sesi (sinkron, tanpa network) — untuk render instan sebelum refresh. */
+    val cachedUser get() = tokenStore.cachedProfile()
 
     /** Reactive login state — flips to false on logout or when a background refresh fails. */
     val sessionState: StateFlow<Boolean> get() = tokenStore.sessionState

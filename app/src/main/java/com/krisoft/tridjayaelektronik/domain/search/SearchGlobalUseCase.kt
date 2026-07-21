@@ -27,10 +27,12 @@ class SearchGlobalUseCase @Inject constructor(
             inventoryRepository.exportProducts(
                 query,
                 productFilters.region,
+                "",
                 productFilters.readyOnly,
                 productFilters.category,
                 productFilters.merk,
-                productFilters.sortOrder
+                productFilters.sortOrder,
+                deadstockOnly = false
             )
         }.getOrDefault(emptyList()).take(MAX_RESULTS_PER_TYPE)
         val leads = runCatching { crmRepository.cachedLeads(query) }.getOrDefault(emptyList()).take(MAX_RESULTS_PER_TYPE)

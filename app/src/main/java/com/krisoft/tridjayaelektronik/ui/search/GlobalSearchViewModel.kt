@@ -3,9 +3,11 @@ package com.krisoft.tridjayaelektronik.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.SearchHistoryPreferences
+import com.krisoft.tridjayaelektronik.data.local.BranchStockEntity
 import com.krisoft.tridjayaelektronik.data.local.ProductAggregate
 import com.krisoft.tridjayaelektronik.data.local.ProductSortOrder
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
+import com.krisoft.tridjayaelektronik.domain.inventory.GetBranchBreakdownUseCase
 import com.krisoft.tridjayaelektronik.domain.inventory.GetProductFiltersUseCase
 import com.krisoft.tridjayaelektronik.domain.search.SearchGlobalUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -51,7 +53,11 @@ data class GlobalSearchUiState(
     val productFilters: ProductFilters = ProductFilters(),
     val categories: List<String> = emptyList(),
     val merks: List<String> = emptyList(),
-    val history: List<String> = emptyList()
+    val history: List<String> = emptyList(),
+    /** Expanded per-branch stock dropdowns, keyed "kode|kodeCabang" (Inventory pattern). */
+    val expanded: Set<String> = emptySet(),
+    val branchDetails: Map<String, List<BranchStockEntity>> = emptyMap(),
+    val loadingBranchFor: String? = null
 ) {
     val isEmpty: Boolean get() = products.isEmpty() && leads.isEmpty()
     val showProducts: Boolean get() = filter != SearchFilter.LEADS
@@ -62,6 +68,7 @@ data class GlobalSearchUiState(
 class GlobalSearchViewModel @Inject constructor(
     private val searchGlobalUseCase: SearchGlobalUseCase,
     private val getProductFiltersUseCase: GetProductFiltersUseCase,
+    private val getBranchBreakdownUseCase: GetBranchBreakdownUseCase,
     private val searchHistory: SearchHistoryPreferences
 ) : ViewModel() {
 
@@ -98,6 +105,24 @@ class GlobalSearchViewModel @Inject constructor(
     private fun updateProductFilters(transform: (ProductFilters) -> ProductFilters) {
         _uiState.update { it.copy(productFilters = transform(it.productFilters)) }
         runSearch(debounce = false)
+    }
+
+    /** Per-branch stock dropdown toggle — same behaviour as the Inventory list's ProductCard. */
+    fun toggleExpand(kode: String, kodeCabang: String) {
+        val key = "$kode|$kodeCabang"
+        val isExpanded = key in _uiState.value.expanded
+        _uiState.update {
+            it.copy(expanded = if (isExpanded) it.expanded - key else it.expanded + key)
+        }
+        if (!isExpanded && key !in _uiState.value.branchDetails) {
+            _uiState.update { it.copy(loadingBranchFor = key) }
+            viewModelScope.launch {
+                val branches = runCatching { getBranchBreakdownUseCase(kode, kodeCabang) }.getOrDefault(emptyList())
+                _uiState.update {
+                    it.copy(loadingBranchFor = null, branchDetails = it.branchDetails + (key to branches))
+                }
+            }
+        }
     }
 
     /** Commit the current query to history (called on submit / when a result is opened). */

@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
  * so contrast + elevation stay consistent across presets.
  */
 enum class AppColorScheme(val label: String, val swatch: Color) {
-    DEFAULT("Biru Tridjaya", Color(0xFF1E63E9)),
+    DEFAULT("Tridjaya Web", Color(0xFF465FFF)),
     LAVENDER("Lavender", Color(0xFF7C4DFF)),
     ROSE("Rose", Color(0xFFE91E63)),
     WARM("Warm", Color(0xFFFF6B35)),
@@ -29,9 +29,10 @@ enum class AppColorScheme(val label: String, val swatch: Color) {
 }
 
 fun colorSchemeFor(scheme: AppColorScheme, dark: Boolean): ColorScheme = when (scheme) {
-    // Default is now a blue scheme matching the product-detail flyer's brand blue (#1E63E9),
-    // with softly blue-tinted neutrals for an airy, flyer-like feel — not the shared purple neutrals.
-    AppColorScheme.DEFAULT -> blueDefaultScheme(dark)
+    // Default is now matched 1:1 to the web dashboard's design tokens (tridjaya.com, React/Tailwind)
+    // at the user's request — indigo primary #465FFF + the web's own 6-tier surface scale, not the
+    // shared M3-purple neutrals other presets use. Supersedes the old flyer-blue "Biru Tridjaya" look.
+    AppColorScheme.DEFAULT -> tridjayaWebScheme(dark)
 
     AppColorScheme.WARM ->
         if (dark) darkTriad(Color(0xFFFFB59A), Color(0xFF5F1500), Color(0xFFC84520), Color(0xFFFFDDD2), Color(0xFFFFD499), Color(0xFF4A2800), Color(0xFFD97E00), Color(0xFFFFDDB6), Color(0xFFFFE099), Color(0xFF442B00), Color(0xFFFFA91F), Color(0xFFFFE8B6))
@@ -67,33 +68,36 @@ fun colorSchemeFor(scheme: AppColorScheme, dark: Boolean): ColorScheme = when (s
 }
 
 /**
- * Full blue default scheme (the app's brand look), keyed to the flyer's brand blue #1E63E9.
- * Unlike the other presets, this also blue-tints the neutral roles (background / surface /
- * containers) so the whole app reads with the flyer's cool, airy nuance instead of the M3 purple
- * neutrals. Tuned for contrast in both light and dark.
+ * Default scheme matched 1:1 to the web dashboard's design tokens (tridjaya.com — React/Tailwind,
+ * `frontend/src/index.css`): indigo primary #465FFF (same value in both modes), cyan secondary,
+ * orange tertiary, and the web's own 6-tier surface scale (surface/surface-low/surface-container/
+ * surface-high/surface-highest) mapped onto M3's surface-container roles — not the shared M3-purple
+ * neutrals the other presets use. `outline`/`outlineVariant` intentionally use the web's *dashboard*
+ * override value (crisper `--color-outline`, not the softer public-site `--color-outline-variant`)
+ * since this app is the "dashboard" context, not the marketing site.
  */
-private fun blueDefaultScheme(dark: Boolean): ColorScheme = if (dark) darkColorScheme(
-    primary = Color(0xFFAEC6FF), onPrimary = Color(0xFF002E69), primaryContainer = Color(0xFF00429A), onPrimaryContainer = Color(0xFFD8E2FF),
-    secondary = Color(0xFFBEC6DC), onSecondary = Color(0xFF283141), secondaryContainer = Color(0xFF3E4759), onSecondaryContainer = Color(0xFFDAE2F9),
-    tertiary = Color(0xFF8BCEFF), onTertiary = Color(0xFF00344F), tertiaryContainer = Color(0xFF004B70), onTertiaryContainer = Color(0xFFCBE6FF),
-    error = ErrorDark, onError = OnErrorDark, errorContainer = ErrorContainerDark, onErrorContainer = OnErrorContainerDark,
-    background = Color(0xFF111318), onBackground = Color(0xFFE1E2E9), surface = Color(0xFF111318), onSurface = Color(0xFFE1E2E9),
-    surfaceVariant = Color(0xFF44474F), onSurfaceVariant = Color(0xFFC4C6D0), outline = Color(0xFF8E9099), outlineVariant = Color(0xFF44474F),
-    scrim = Color.Black, inverseSurface = Color(0xFFE1E2E9), inverseOnSurface = Color(0xFF2E3036), inversePrimary = Color(0xFF2A5EA6),
-    surfaceDim = Color(0xFF111318), surfaceBright = Color(0xFF37393E),
-    surfaceContainerLowest = Color(0xFF0C0E13), surfaceContainerLow = Color(0xFF191C20), surfaceContainer = Color(0xFF1D2024),
-    surfaceContainerHigh = Color(0xFF282A2F), surfaceContainerHighest = Color(0xFF33353A)
+private fun tridjayaWebScheme(dark: Boolean): ColorScheme = if (dark) darkColorScheme(
+    primary = Color(0xFF465FFF), onPrimary = Color(0xFFFFFFFF), primaryContainer = Color(0xFF7592FF), onPrimaryContainer = Color(0xFF001A43),
+    secondary = Color(0xFF0BA5EC), onSecondary = Color(0xFFFFFFFF), secondaryContainer = Color(0xFF065986), onSecondaryContainer = Color(0xFFE0F2FE),
+    tertiary = Color(0xFFFB6514), onTertiary = Color(0xFFFFFFFF), tertiaryContainer = Color(0xFF9C2A10), onTertiaryContainer = Color(0xFFFFE0CC),
+    error = Color(0xFFF04438), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFF7A271A), onErrorContainer = Color(0xFFFEE4E2),
+    background = Color(0xFF101828), onBackground = Color(0xFFF2F4F7), surface = Color(0xFF101828), onSurface = Color(0xFFF2F4F7),
+    surfaceVariant = Color(0xFF344054), onSurfaceVariant = Color(0xFF98A2B3), outline = Color(0xFF344054), outlineVariant = Color(0xFF344054),
+    scrim = Color.Black, inverseSurface = Color(0xFFFFFFFF), inverseOnSurface = Color(0xFF101828), inversePrimary = Color(0xFF3641F5),
+    surfaceDim = Color(0xFF0A0F1C), surfaceBright = Color(0xFF667085),
+    surfaceContainerLowest = Color(0xFF0A0F1C), surfaceContainerLow = Color(0xFF141C2E), surfaceContainer = Color(0xFF1D2939),
+    surfaceContainerHigh = Color(0xFF344054), surfaceContainerHighest = Color(0xFF475467)
 ) else lightColorScheme(
-    primary = Color(0xFF1E63E9), onPrimary = Color(0xFFFFFFFF), primaryContainer = Color(0xFFDAE2FF), onPrimaryContainer = Color(0xFF001A43),
-    secondary = Color(0xFF575E71), onSecondary = Color(0xFFFFFFFF), secondaryContainer = Color(0xFFDBE2F9), onSecondaryContainer = Color(0xFF141B2C),
-    tertiary = Color(0xFF006C8E), onTertiary = Color(0xFFFFFFFF), tertiaryContainer = Color(0xFFC5E7FF), onTertiaryContainer = Color(0xFF001E2E),
-    error = ErrorLight, onError = OnErrorLight, errorContainer = ErrorContainerLight, onErrorContainer = OnErrorContainerLight,
-    background = Color(0xFFF6F8FF), onBackground = Color(0xFF191C20), surface = Color(0xFFF6F8FF), onSurface = Color(0xFF191C20),
-    surfaceVariant = Color(0xFFE0E2EC), onSurfaceVariant = Color(0xFF44474F), outline = Color(0xFF74777F), outlineVariant = Color(0xFFC4C6D0),
-    scrim = Color.Black, inverseSurface = Color(0xFF2E3036), inverseOnSurface = Color(0xFFEFF0F7), inversePrimary = Color(0xFFAEC6FF),
-    surfaceDim = Color(0xFFD8DAE0), surfaceBright = Color(0xFFF6F8FF),
-    surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFF0F3FB), surfaceContainer = Color(0xFFEAEEF6),
-    surfaceContainerHigh = Color(0xFFE5E8F0), surfaceContainerHighest = Color(0xFFDFE2EA)
+    primary = Color(0xFF465FFF), onPrimary = Color(0xFFFFFFFF), primaryContainer = Color(0xFFDDE9FF), onPrimaryContainer = Color(0xFF001A43),
+    secondary = Color(0xFF0086C9), onSecondary = Color(0xFFFFFFFF), secondaryContainer = Color(0xFFF0F9FF), onSecondaryContainer = Color(0xFF003544),
+    tertiary = Color(0xFFEC4A0A), onTertiary = Color(0xFFFFFFFF), tertiaryContainer = Color(0xFFFFF6ED), onTertiaryContainer = Color(0xFF4A1D02),
+    error = Color(0xFFF04438), onError = Color(0xFFFFFFFF), errorContainer = Color(0xFFFEE4E2), onErrorContainer = Color(0xFF7A271A),
+    background = Color(0xFFFFFFFF), onBackground = Color(0xFF101828), surface = Color(0xFFFFFFFF), onSurface = Color(0xFF101828),
+    surfaceVariant = Color(0xFFF2F4F7), onSurfaceVariant = Color(0xFF667085), outline = Color(0xFFE4E7EC), outlineVariant = Color(0xFFE4E7EC),
+    scrim = Color.Black, inverseSurface = Color(0xFF101828), inverseOnSurface = Color(0xFFF2F4F7), inversePrimary = Color(0xFF7592FF),
+    surfaceDim = Color(0xFFE4E7EC), surfaceBright = Color(0xFFFFFFFF),
+    surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFFCFCFD), surfaceContainer = Color(0xFFF9FAFB),
+    surfaceContainerHigh = Color(0xFFF2F4F7), surfaceContainerHighest = Color(0xFFE4E7EC)
 )
 
 private fun lightTriad(
