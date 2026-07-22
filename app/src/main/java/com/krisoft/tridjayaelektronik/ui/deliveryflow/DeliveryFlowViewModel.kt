@@ -156,7 +156,7 @@ class DeliveryFlowViewModel @Inject constructor(
     // ── Aksi tahap ───────────────────────────────────────────────────────────
 
     fun createSpk(
-        customerName: String, customerPhone: String, address: String, item: CreateDeliveryItemBody,
+        customerName: String, customerPhone: String, address: String, mapUrl: String, item: CreateDeliveryItemBody,
         keterangan: String, onDone: () -> Unit
     ) = action {
         repository.create(
@@ -164,6 +164,7 @@ class DeliveryFlowViewModel @Inject constructor(
                 customerName = customerName.trim(),
                 customerPhone = customerPhone.trim(),
                 customerAddress = address.trim().ifBlank { null },
+                customerMapUrl = mapUrl.trim().ifBlank { null },
                 keterangan = keterangan.trim().ifBlank { null },
                 items = listOf(item)
             )
