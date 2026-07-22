@@ -10,12 +10,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 /**
  * Single source of truth for every app destination. [bottomNavItems] is what
  * actually shows on the bottom bar — matches Rhythm's 3-tab pattern (Home,
- * Prospek, Cari). SETTINGS still exists as a destination but is reached via a
+ * CRM, Cari). SETTINGS still exists as a destination but is reached via a
  * gear icon on Home rather than occupying a 4th bottom-nav slot.
  */
 enum class AppDestination(val route: String, val label: String, val icon: ImageVector) {
     HOME("home", "Home", Icons.Rounded.Home),
-    LEADS("leads", "Prospek", Icons.Rounded.Groups),
+    LEADS("leads", "CRM", Icons.Rounded.Groups),
     INVENTORY("inventory", "Cari", Icons.Rounded.Search),
     SETTINGS("settings", "Settings", Icons.Rounded.Settings);
 

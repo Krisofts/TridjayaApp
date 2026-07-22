@@ -438,7 +438,7 @@ private fun QuickAccessRow(
         item {
             QuickAccessTile(
                 icon = Icons.Rounded.Groups,
-                label = "Prospek",
+                label = "CRM",
                 tint = MaterialTheme.colorScheme.tertiary,
                 onClick = onLeads,
                 modifier = Modifier.width(86.dp)
