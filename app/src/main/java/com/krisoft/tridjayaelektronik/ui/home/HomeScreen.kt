@@ -224,6 +224,7 @@ private fun LazyListScope.homeSection(
             item { SectionHeader(title = "Akses Cepat", icon = Icons.Rounded.Bolt) }
             item {
                 val role = state.user?.role
+                val dlvRoles = effectiveRoles(state.user)
                 QuickAccessRow(
                     onInventory = onQuickAccessInventory,
                     onLeads = onQuickAccessLeads,
@@ -235,9 +236,15 @@ private fun LazyListScope.homeSection(
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
                     showOpname = canAccessOpname(role),
-                    // Fitur dummy untuk review desain — belum digating role (aktifkan
-                    // canAccessDelivery(role) begitu di-wire ke API delivery-schedules).
-                    showDelivery = true
+                    // Tile "Kirim" legacy (list dummy) — gate sesuai TODO lama, tak lagi hardcoded true.
+                    showDelivery = canAccessDelivery(role),
+                    showSpkInput = canCreateSpk(dlvRoles),
+                    showDiskon = canSeeDiscountApproval(state.user),
+                    showPdi = canSeePdiQueue(dlvRoles),
+                    showKasir = canSeeKasirQueue(dlvRoles),
+                    showNote = canSeeNoteQueue(dlvRoles),
+                    showJadwal = canSeeScheduleQueue(dlvRoles),
+                    showDriver = canSeeDriverQueue(dlvRoles)
                 )
             }
         }
@@ -357,10 +364,10 @@ private fun EmptyRankRow(message: String) {
  * Inventory/Prospek/Sales are open to every logged-in role. A null role (profile not loaded
  * yet) hides the gated tiles — they appear as soon as the cached profile lands.
  */
-private val INDENT_MENU_ROLES = setOf("admin", "owner", "indent-approver", "manager", "kepala-cabang")
-private val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "manager", "owner")
+private val INDENT_MENU_ROLES = setOf("admin", "superadmin", "owner", "indent-approver", "manager", "kepala-cabang")
+private val OPNAME_MENU_ROLES = setOf("admin", "superadmin", "admin-stok", "kepala-cabang", "manager", "owner")
 // Selaras DELIVERY_ROLES di backend kinerja-service (admin/sales/admin-sales) + owner/manager.
-private val DELIVERY_MENU_ROLES = setOf("admin", "sales", "admin-sales", "admin_sales", "owner", "manager", "kepala-cabang")
+private val DELIVERY_MENU_ROLES = setOf("admin", "superadmin", "sales", "admin-sales", "admin_sales", "owner", "manager", "kepala-cabang")
 
 internal fun canAccessIndent(role: String?): Boolean =
     role?.trim()?.lowercase() in INDENT_MENU_ROLES
@@ -387,7 +394,14 @@ private fun QuickAccessRow(
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
     showOpname: Boolean = true,
-    showDelivery: Boolean = true
+    showDelivery: Boolean = true,
+    showSpkInput: Boolean = true,
+    showDiskon: Boolean = true,
+    showPdi: Boolean = true,
+    showKasir: Boolean = true,
+    showNote: Boolean = true,
+    showJadwal: Boolean = true,
+    showDriver: Boolean = true
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -404,27 +418,41 @@ private fun QuickAccessRow(
                 modifier = Modifier.width(86.dp)
             )
         }
-        // Alur pengiriman SPK per-tahap (nyata → inventory-service). RBAC di backend; tampil semua.
-        item {
-            QuickAccessTile(Icons.Rounded.Description, "Input SPK", Color(0xFF1E63E9), { onSpkMenu("input") }, Modifier.width(86.dp))
+        // Visibilitas per-role via RoleAccess.kt (cermin gate delivery.rs); backend tetap enforce.
+        if (showSpkInput) {
+            item {
+                QuickAccessTile(Icons.Rounded.Description, "Input SPK", Color(0xFF1E63E9), { onSpkMenu("input") }, Modifier.width(86.dp))
+            }
         }
-        item {
-            QuickAccessTile(Icons.Rounded.Discount, "Diskon", Color(0xFFB5670C), { onSpkMenu("diskon") }, Modifier.width(86.dp))
+        if (showDiskon) {
+            item {
+                QuickAccessTile(Icons.Rounded.Discount, "Diskon", Color(0xFFB5670C), { onSpkMenu("diskon") }, Modifier.width(86.dp))
+            }
         }
-        item {
-            QuickAccessTile(Icons.Rounded.FactCheck, "PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
+        if (showPdi) {
+            item {
+                QuickAccessTile(Icons.Rounded.FactCheck, "PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
+            }
         }
-        item {
-            QuickAccessTile(Icons.Rounded.PointOfSale, "Kasir SPK", Color(0xFF0086C9), { onSpkMenu("kasir") }, Modifier.width(86.dp))
+        if (showKasir) {
+            item {
+                QuickAccessTile(Icons.Rounded.PointOfSale, "Kasir SPK", Color(0xFF0086C9), { onSpkMenu("kasir") }, Modifier.width(86.dp))
+            }
         }
-        item {
-            QuickAccessTile(Icons.Rounded.Receipt, "Surat Jalan", Color(0xFF0E9384), { onSpkMenu("note") }, Modifier.width(86.dp))
+        if (showNote) {
+            item {
+                QuickAccessTile(Icons.Rounded.Receipt, "Surat Jalan", Color(0xFF0E9384), { onSpkMenu("note") }, Modifier.width(86.dp))
+            }
         }
-        item {
-            QuickAccessTile(Icons.Rounded.CalendarToday, "Jadwal", Color(0xFF1565C0), { onSpkMenu("jadwal") }, Modifier.width(86.dp))
+        if (showJadwal) {
+            item {
+                QuickAccessTile(Icons.Rounded.CalendarToday, "Jadwal", Color(0xFF1565C0), { onSpkMenu("jadwal") }, Modifier.width(86.dp))
+            }
         }
-        item {
-            QuickAccessTile(Icons.Rounded.LocalShipping, "Driver", Color(0xFF6941C6), { onSpkMenu("driver") }, Modifier.width(86.dp))
+        if (showDriver) {
+            item {
+                QuickAccessTile(Icons.Rounded.LocalShipping, "Driver", Color(0xFF6941C6), { onSpkMenu("driver") }, Modifier.width(86.dp))
+            }
         }
         item {
             QuickAccessTile(
