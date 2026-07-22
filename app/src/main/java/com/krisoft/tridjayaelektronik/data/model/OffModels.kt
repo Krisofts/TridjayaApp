@@ -17,6 +17,12 @@ data class OffRequestDto(
     val divisi: String = "",
     val tanggal: String = "",
     val alasan: String = "",
+    /**
+     * `izin` | `sakit` | `cuti` | `off`. Default server "izin" saat create (klien belum
+     * kirim kategori); reviewer boleh mengoreksi saat approve. Selaras dgn web
+     * `OFF_KATEGORI_LABEL` — dipakai rekap & status harian agar tidak salah "belum absen".
+     */
+    val kategori: String = "izin",
     /** `pending` | `approved` | `rejected` | `expired`. */
     val status: String = "pending",
     val reviewerNama: String? = null,
