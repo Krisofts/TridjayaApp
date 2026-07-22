@@ -16,6 +16,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryListData
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryUploadResponse
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.StokCabangData
 import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -73,6 +74,14 @@ interface DeliveryFlowApi {
 
     @GET("api/inventory/delivery/config/checklist")
     suspend fun checklist(@Query("kategori") kategori: String): Response<ApiResponse<ChecklistConfigData>>
+
+    /** Autocomplete barang Input SPK, di-scope satu cabang. */
+    @GET("api/inventory/stok-cabang")
+    suspend fun stokCabang(
+        @Query("search") search: String,
+        @Query("kodeDealer") kodeDealer: String,
+        @Query("limit") limit: Int = 24
+    ): Response<ApiResponse<StokCabangData>>
 
     @GET("api/users")
     suspend fun users(@Query("role") role: String): Response<ApiResponse<UsersListData>>
