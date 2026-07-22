@@ -52,8 +52,8 @@ data class DeliveryFlowUiState(
     val stokAttempted: Boolean = false,
     /** Hasil autocomplete broker KBK (Input SPK section 3). */
     val brokerResults: List<com.krisoft.tridjayaelektronik.data.model.BrokerOption> = emptyList(),
-    /** Serial tersedia utk barang terpilih (Input SPK section 2). */
-    val serialOptions: List<String> = emptyList(),
+    /** Serial per `"$kodeDealer|$kodeBarang"` — picker per-item SPK multi-unit. */
+    val serialOptions: Map<String, List<String>> = emptyMap(),
     /** Checklist serah-terima stage=driver (088) — kosong bila kategori tak ber-item / pre-088. */
     val driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList()
 )
@@ -80,6 +80,8 @@ class DeliveryFlowViewModel @Inject constructor(
     private var deliverPhotoBytes: ByteArray? = null
     private var pdiPhotoBytes: ByteArray? = null
     private var cashPhotoBytes: ByteArray? = null
+
+    private val serialFetched = mutableSetOf<String>()
 
     fun loadQueue(status: String?, view: String? = null) {
         _state.update { it.copy(loading = true, error = null) }
@@ -228,15 +230,22 @@ class DeliveryFlowViewModel @Inject constructor(
 
     fun clearBrokerResults() = _state.update { it.copy(brokerResults = emptyList()) }
 
-    fun loadSerials(kodeDealer: String, kodeBarang: String) {
-        if (kodeDealer.isBlank() || kodeBarang.isBlank()) {
-            _state.update { it.copy(serialOptions = emptyList()) }; return
-        }
+    /** Fetch serial sekali per `cabang|kode` (cache); fail-soft. */
+    fun ensureSerials(kodeDealer: String, kodeBarang: String) {
+        if (kodeDealer.isBlank() || kodeBarang.isBlank()) return
+        val key = "$kodeDealer|$kodeBarang"
+        if (!serialFetched.add(key)) return
         viewModelScope.launch {
             (repository.serialNumbers(kodeDealer, kodeBarang) as? AuthResult.Success)?.let { r ->
-                _state.update { it.copy(serialOptions = r.data) }
+                _state.update { it.copy(serialOptions = it.serialOptions + (key to r.data)) }
             }
         }
+    }
+
+    /** Reset cache serial (ganti cabang SPK). */
+    fun clearSerialCache() {
+        serialFetched.clear()
+        _state.update { it.copy(serialOptions = emptyMap()) }
     }
 
     fun createSpk(body: CreateDeliveryBody, onDone: () -> Unit) = action {
