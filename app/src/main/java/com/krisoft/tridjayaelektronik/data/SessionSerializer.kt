@@ -23,7 +23,9 @@ data class PersistedSession(
     val role: String = "",
     val nik: String = "",
     val email: String = "",
-    val mustChangePassword: Boolean = false
+    val mustChangePassword: Boolean = false,
+    val roles: List<String> = emptyList(),
+    val pageGrantPrefixes: List<String> = emptyList()
 )
 
 /**

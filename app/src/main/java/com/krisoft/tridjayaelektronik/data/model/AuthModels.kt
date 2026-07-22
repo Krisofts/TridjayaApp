@@ -37,6 +37,13 @@ data class ResetPasswordRequest(
     val newPassword: String
 )
 
+/** Izin halaman per-user dari auth-service (`page_grants`, snake_case). */
+@Serializable
+data class PageGrantDto(
+    val prefix: String = "",
+    val label: String = ""
+)
+
 @Serializable
 data class UserDto(
     val id: String,
@@ -44,6 +51,9 @@ data class UserDto(
     val email: String,
     val name: String,
     val role: String,
+    /** Multi-role RBAC: role utama + tambahan. Kosong pada server lama → fallback listOf(role). */
+    val roles: List<String> = emptyList(),
+    @SerialName("page_grants") val pageGrants: List<PageGrantDto> = emptyList(),
     val jabatan: String = "",
     val divisi: String = "",
     @SerialName("cabang_id") val cabangId: String = "",

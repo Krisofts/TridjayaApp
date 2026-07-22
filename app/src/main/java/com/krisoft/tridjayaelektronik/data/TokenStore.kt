@@ -6,6 +6,7 @@ import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.dataStoreFile
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.krisoft.tridjayaelektronik.data.model.PageGrantDto
 import com.krisoft.tridjayaelektronik.data.model.SessionData
 import com.krisoft.tridjayaelektronik.data.model.UserDto
 import kotlinx.coroutines.CoroutineScope
@@ -91,6 +92,8 @@ class TokenStore(private val context: Context) {
             email = s.email,
             name = s.userName,
             role = s.role,
+            roles = s.roles,
+            pageGrants = s.pageGrantPrefixes.map { PageGrantDto(prefix = it) },
             cabangName = s.cabangName,
             whatsapp = s.whatsapp,
             mustChangePassword = s.mustChangePassword
@@ -119,6 +122,8 @@ class TokenStore(private val context: Context) {
             cabangName = session.user.cabangName,
             whatsapp = session.user.whatsapp,
             role = session.user.role,
+            roles = session.user.roles,
+            pageGrantPrefixes = session.user.pageGrants.map { g -> g.prefix },
             nik = session.user.nik,
             email = session.user.email,
             mustChangePassword = session.user.mustChangePassword
@@ -142,6 +147,8 @@ class TokenStore(private val context: Context) {
             cabangName = user.cabangName,
             whatsapp = user.whatsapp,
             role = user.role,
+            roles = user.roles,
+            pageGrantPrefixes = user.pageGrants.map { g -> g.prefix },
             nik = user.nik,
             email = user.email,
             mustChangePassword = user.mustChangePassword
