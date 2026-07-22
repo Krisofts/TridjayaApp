@@ -1,5 +1,7 @@
 package com.krisoft.tridjayaelektronik.data.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -225,6 +227,7 @@ data class DecisionBody(val decisionNote: String? = null)
 
 // ── Request bodies ───────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class CreateDeliveryItemBody(
     val kodeBarang: String,
@@ -235,6 +238,9 @@ data class CreateDeliveryItemBody(
     val qty: Int = 1,
     val warna: String? = null,
     val serialNumber: String? = null,
+    // ponytail: paksa selalu ter-serialize — Retrofit Json (encodeDefaults=false) buang field
+    // yang = default, tapi backend butuh paymentType eksplisit walau nilainya "cash".
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val paymentType: String = "cash",
     val fincoy: String? = null,
     val hargaOtr: Double,

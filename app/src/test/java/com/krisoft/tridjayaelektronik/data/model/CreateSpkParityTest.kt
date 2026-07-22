@@ -53,4 +53,14 @@ class CreateSpkParityTest {
         assertEquals(1, data.items.size)
         assertEquals("SN123", data.items[0].serialNumber)
     }
+
+    @Test
+    fun `paymentType tetap ter-serialize saat nilai default cash`() {
+        val cash = CreateDeliveryItemBody(
+            kodeBarang = "TE-1", namaBarang = "AC", kategori = "AC", merk = "AQUA", tipe = "X",
+            hargaOtr = 1000.0
+        ) // paymentType defaults to "cash"
+        val s = json.encodeToString(CreateDeliveryItemBody.serializer(), cash)
+        assertTrue("paymentType hilang saat cash: $s", s.contains("\"paymentType\""))
+    }
 }
