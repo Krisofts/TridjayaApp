@@ -53,7 +53,9 @@ data class DeliveryFlowUiState(
     /** Hasil autocomplete broker KBK (Input SPK section 3). */
     val brokerResults: List<com.krisoft.tridjayaelektronik.data.model.BrokerOption> = emptyList(),
     /** Serial tersedia utk barang terpilih (Input SPK section 2). */
-    val serialOptions: List<String> = emptyList()
+    val serialOptions: List<String> = emptyList(),
+    /** Checklist serah-terima stage=driver (088) — kosong bila kategori tak ber-item / pre-088. */
+    val driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList()
 )
 
 /**
@@ -77,6 +79,7 @@ class DeliveryFlowViewModel @Inject constructor(
     /** Foto serah-terima terkompres siap upload (dipisah dari state). */
     private var deliverPhotoBytes: ByteArray? = null
     private var pdiPhotoBytes: ByteArray? = null
+    private var cashPhotoBytes: ByteArray? = null
 
     fun loadQueue(status: String?, view: String? = null) {
         _state.update { it.copy(loading = true, error = null) }
@@ -89,9 +92,10 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     fun loadDetail(id: String) {
-        _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null) }
+        _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null, driverChecklist = emptyList()) }
         deliverPhotoBytes = null
         pdiPhotoBytes = null
+        cashPhotoBytes = null
         viewModelScope.launch {
             when (val res = repository.detail(id)) {
                 is AuthResult.Success -> {
@@ -114,6 +118,17 @@ class DeliveryFlowViewModel @Inject constructor(
             }
             com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_SCHEDULING -> viewModelScope.launch {
                 (repository.drivers() as? AuthResult.Success)?.let { r -> _state.update { it.copy(drivers = r.data) } }
+            }
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.ASSIGNED,
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.IN_TRANSIT -> {
+                // 088 aktif? (driverTerimaUang selalu terisi pasca-088). Pre-088 JANGAN
+                // fetch stage=driver — backend lama abaikan param & balik item PDI.
+                val kategori = job.kategori?.trim().orEmpty()
+                if (job.driverTerimaUang != null && kategori.isNotEmpty()) viewModelScope.launch {
+                    (repository.checklist(kategori, stage = "driver") as? AuthResult.Success)?.let { r ->
+                        _state.update { it.copy(driverChecklist = r.data) }
+                    }
+                }
             }
         }
     }
@@ -162,6 +177,13 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     fun hasDeliverPhoto(): Boolean = deliverPhotoBytes != null
+
+    fun onCashPhotoCaptured(file: File) = viewModelScope.launch {
+        cashPhotoBytes = withContext(Dispatchers.Default) { compress(file) }
+        _state.update { it.copy() }
+    }
+
+    fun hasCashPhoto(): Boolean = cashPhotoBytes != null
 
     // ── Aksi tahap ───────────────────────────────────────────────────────────
 
@@ -245,14 +267,39 @@ class DeliveryFlowViewModel @Inject constructor(
 
     fun dispatch(id: String, onDone: () -> Unit) = action { repository.dispatch(id).mapOk { onDone() } }
 
-    fun deliver(id: String, rating: Int, comment: String, onDone: () -> Unit) = action {
+    /** 088: tandai sudah chat konsumen — refresh detail job (consumerChatAt terisi). */
+    fun chatConsumer(id: String) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.chatConsumer(id)) {
+                is AuthResult.Success -> _state.update { it.copy(submitting = false, detail = res.data) }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
+    fun deliver(id: String, rating: Int, comment: String, checklist: List<PdiChecklistItemBody>, onDone: () -> Unit) = action {
         val bytes = deliverPhotoBytes ?: return@action AuthResult.Failure("validation", "Foto serah terima wajib diambil")
         val photoUrl = when (val up = repository.uploadPhoto(bytes, "deliver_${System.currentTimeMillis()}.jpg")) {
             is AuthResult.Success -> up.data
             is AuthResult.Failure -> return@action up
         }
-        repository.deliver(id, DeliverBody(photoUrl = photoUrl, reviewRating = rating, reviewComment = comment.trim().ifBlank { null }))
-            .mapOk { onDone() }
+        // Foto uang (088) — hanya di-upload bila diambil; gate wajib ada di UI + backend.
+        val cashUrl = cashPhotoBytes?.let { cb ->
+            when (val up = repository.uploadPhoto(cb, "cash_${System.currentTimeMillis()}.jpg")) {
+                is AuthResult.Success -> up.data
+                is AuthResult.Failure -> return@action up
+            }
+        }
+        repository.deliver(
+            id,
+            DeliverBody(
+                photoUrl = photoUrl, reviewRating = rating,
+                reviewComment = comment.trim().ifBlank { null },
+                checklist = checklist.ifEmpty { null }, cashPhotoUrl = cashUrl
+            )
+        ).mapOk { onDone() }
     }
 
     fun cancel(id: String, reason: String, onDone: () -> Unit) = action {
