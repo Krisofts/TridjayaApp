@@ -45,6 +45,8 @@ data class DeliveryJobDto(
     val customerName: String? = null,
     val customerAddress: String? = null,
     val customerPhone: String? = null,
+    /** Link Google Maps konsumen (086) — prasyarat backend sebelum assign driver. */
+    val customerMapUrl: String? = null,
     val customerNik: String? = null,
     val fincoy: String? = null,
     val paymentType: String? = null,
@@ -304,7 +306,8 @@ data class DeliveryNoteBody(
 data class AssignBody(
     val driverId: String,
     val driverName: String? = null,
-    val scheduledDate: String
+    val scheduledDate: String,
+    val customerMapUrl: String? = null
 )
 
 @Serializable
