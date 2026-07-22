@@ -188,8 +188,8 @@ class DeliveryFlowViewModel @Inject constructor(
         repository.issueDeliveryNote(id, DeliveryNoteBody(sourceBranch = sourceBranch.trim())).mapOk { onDone() }
     }
 
-    fun assign(id: String, driverId: String, driverName: String, scheduledDate: String, onDone: () -> Unit) = action {
-        repository.assign(id, AssignBody(driverId = driverId.trim(), driverName = driverName.trim().ifBlank { null }, scheduledDate = scheduledDate.trim()))
+    fun assign(id: String, driverId: String, driverName: String, scheduledDate: String, customerMapUrl: String?, onDone: () -> Unit) = action {
+        repository.assign(id, AssignBody(driverId = driverId.trim(), driverName = driverName.trim().ifBlank { null }, scheduledDate = scheduledDate.trim(), customerMapUrl = customerMapUrl))
             .mapOk { onDone() }
     }
 

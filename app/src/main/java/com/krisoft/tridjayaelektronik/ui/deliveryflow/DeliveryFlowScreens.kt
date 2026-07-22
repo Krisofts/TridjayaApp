@@ -226,7 +226,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist)
                     DeliveryStatusKey.PENDING_SPK -> SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
                     DeliveryStatusKey.PENDING_DELIVERY_NOTE -> DeliveryNoteAction(job, viewModel, state.submitting)
-                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job.id, viewModel, state.submitting, state.drivers)
+                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job, viewModel, state.submitting, state.drivers)
                     DeliveryStatusKey.ASSIGNED -> SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
                     DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job.id, viewModel, state.submitting)
                     else -> Text("Tidak ada aksi pada tahap ini.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -319,10 +319,14 @@ private fun DeliveryNoteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
 }
 
 @Composable
-private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean, drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto>) {
+private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean, drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto>) {
+    val id = job.id
     var driverId by remember { mutableStateOf("") }
     var driverName by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf("2026-07-22") }
+    // minSdk 24 tanpa coreLibraryDesugaring (dicek app/build.gradle.kts) — java.time.LocalDate
+    // butuh API 26, jadi pakai SimpleDateFormat.
+    var date by remember { mutableStateOf(java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())) }
+    var mapUrl by remember { mutableStateOf(job.customerMapUrl.orEmpty()) }
 
     Text("Assign Driver + Jadwal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
@@ -347,8 +351,16 @@ private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Bool
     }
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(date, { date = it }, label = "Jadwal kirim (yyyy-mm-dd)", modifier = Modifier.fillMaxWidth())
+    if (job.customerMapUrl.isNullOrBlank()) {
+        Spacer(Modifier.height(10.dp))
+        ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Google Maps konsumen (wajib)", modifier = Modifier.fillMaxWidth())
+    }
     Spacer(Modifier.height(14.dp))
-    ExpressiveFilledButton(onClick = { vm.assign(id, driverId, driverName, date) {} }, enabled = !submitting && driverId.trim().isNotEmpty() && date.trim().isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+    ExpressiveFilledButton(
+        onClick = { vm.assign(id, driverId, driverName, date, mapUrl.trim().ifBlank { null }) {} },
+        enabled = !submitting && driverId.trim().isNotEmpty() && date.trim().isNotEmpty() && mapUrl.trim().isNotEmpty(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Assign Driver")
     }
 }

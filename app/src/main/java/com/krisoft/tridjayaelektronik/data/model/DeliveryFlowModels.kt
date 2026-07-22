@@ -252,7 +252,8 @@ data class DeliveryNoteBody(
 data class AssignBody(
     val driverId: String,
     val driverName: String? = null,
-    val scheduledDate: String
+    val scheduledDate: String,
+    val customerMapUrl: String? = null
 )
 
 @Serializable
