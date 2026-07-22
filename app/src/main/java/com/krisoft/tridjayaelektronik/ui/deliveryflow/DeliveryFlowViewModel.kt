@@ -43,7 +43,13 @@ data class DeliveryFlowUiState(
     /** Daftar driver (untuk tahap pending_scheduling); kosong → form fallback input manual. */
     val drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto> = emptyList(),
     /** Pengajuan diskon menunggu approval (layar approval diskon). */
-    val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList()
+    val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
+    /** Konteks cabang login sales — default selektor Cabang SPK (Input SPK). */
+    val deliveryContext: com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto? = null,
+    /** Hasil autocomplete stok GS (Input SPK). */
+    val stokResults: List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow> = emptyList(),
+    val stokLoading: Boolean = false,
+    val stokAttempted: Boolean = false
 )
 
 /**
@@ -154,6 +160,35 @@ class DeliveryFlowViewModel @Inject constructor(
     fun hasDeliverPhoto(): Boolean = deliverPhotoBytes != null
 
     // ── Aksi tahap ───────────────────────────────────────────────────────────
+
+    // ── Input SPK: cabang + autocomplete stok ────────────────────────────────
+
+    /** Muat konteks cabang login sekali (default selektor Cabang SPK). Fail-soft. */
+    fun loadDeliveryContextForCreate() {
+        if (_state.value.deliveryContext != null) return
+        viewModelScope.launch {
+            (repository.context() as? AuthResult.Success)?.let { r ->
+                _state.update { it.copy(deliveryContext = r.data) }
+            }
+        }
+    }
+
+    /** Autocomplete barang — dipanggil UI setelah debounce. `query` < 2 char atau
+     *  `kodeDealer` kosong → kosongkan hasil tanpa panggil server. */
+    fun searchStok(query: String, kodeDealer: String) {
+        val term = query.trim()
+        if (term.length < 2 || kodeDealer.isBlank()) {
+            _state.update { it.copy(stokResults = emptyList(), stokLoading = false, stokAttempted = false) }
+            return
+        }
+        _state.update { it.copy(stokLoading = true) }
+        viewModelScope.launch {
+            when (val res = repository.stokCabang(term, kodeDealer)) {
+                is AuthResult.Success -> _state.update { it.copy(stokLoading = false, stokResults = res.data, stokAttempted = true) }
+                is AuthResult.Failure -> _state.update { it.copy(stokLoading = false, stokResults = emptyList(), stokAttempted = true) }
+            }
+        }
+    }
 
     fun createSpk(
         customerName: String, customerPhone: String, address: String, item: CreateDeliveryItemBody,
