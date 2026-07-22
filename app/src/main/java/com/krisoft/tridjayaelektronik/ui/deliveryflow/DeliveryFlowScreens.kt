@@ -317,7 +317,10 @@ private fun PdiAction(
                 },
                 enabled = !submitting && tujuan.trim().isNotEmpty() && merkTipe.trim().isNotEmpty() && (jumlah.toIntOrNull() ?: 0) > 0,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Simpan Form Aki") }
+            ) {
+                if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                else Text("Simpan Form Aki")
+            }
         } else {
             Text("Form aki tercatat ✓ (${akiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
         }
@@ -333,7 +336,7 @@ private fun PdiAction(
         enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan && (!requiresAki || akiForms.isNotEmpty()),
         modifier = Modifier.fillMaxWidth()
     ) {
-        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        if (submitting && !akiPending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         else Text(if (missingCatatan) "Isi catatan item 'Tidak'" else if (akiPending) "Isi form aki dulu" else "Simpan PDI")
     }
 }
