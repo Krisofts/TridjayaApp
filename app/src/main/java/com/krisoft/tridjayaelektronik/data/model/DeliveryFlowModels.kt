@@ -53,8 +53,27 @@ data class DeliveryJobDto(
     val hargaOtr: Double? = null,
     val diskon: Double? = null,
     val hargaTotal: Double? = null,
+    // Pembiayaan per-unit (068)
+    val dpNet: Double? = null,
+    val pembayaran1: Double? = null,
+    val angsuran: Double? = null,
+    val tenor: Int? = null,
+    val biayaAdm: Double? = null,
+    val angsuranPertama: Double? = null,
+    val alasanDiskon: String? = null,
+    // Komisi + sumber order (068/080)
+    val komisiSales: Double? = null,
+    val komisiKbk: Double? = null,
+    val noHpKbk: String? = null,
+    val orderSource: String? = null,
+    val kbkBrokerKode: String? = null,
+    val kbkBrokerNama: String? = null,
     val keterangan: String? = null,
     val salesName: String? = null,
+    // Sosmed konsumen (068, denormalisasi per baris)
+    val sosmedTiktok: String? = null,
+    val sosmedFacebook: String? = null,
+    val sosmedInstagram: String? = null,
     val status: String = DeliveryStatusKey.PENDING_PDI,
     val inputChannel: String? = null,
     val serialNumber: String? = null,
@@ -84,7 +103,13 @@ data class DeliveryJobDto(
     val reviewAt: String? = null,
     val cancelReason: String? = null,
     val createdAt: String? = null,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
+    // 088 — driver checklist/chat/terima uang. `driverTerimaUang != null` = penanda
+    // backend 088 aktif (kolom NOT NULL → selalu terisi pasca-088).
+    val consumerChatAt: String? = null,
+    val driverTerimaUang: Boolean? = null,
+    val driverTerimaNominal: Double? = null,
+    val cashPhotoUrl: String? = null
 )
 
 /** Response `GET /api/inventory/delivery` (di dalam `data`). */
@@ -258,6 +283,9 @@ data class CreateDeliveryItemBody(
     val orderSource: String? = null,
     val kbkBrokerKode: String? = null,
     val kbkBrokerNama: String? = null,
+    /** 088: driver terima uang dari konsumen (gate foto uang saat deliver). */
+    val driverTerimaUang: Boolean? = null,
+    val driverTerimaNominal: Double? = null,
     val kodeDealer: String? = null,
     val kodeCabang: String? = null
 )
@@ -316,5 +344,9 @@ data class DeliverBody(
     val lat: Double? = null,
     val lng: Double? = null,
     val reviewRating: Int,
-    val reviewComment: String? = null
+    val reviewComment: String? = null,
+    /** 088: checklist serah-terima driver (kategori ber-item stage=driver). */
+    val checklist: List<PdiChecklistItemBody>? = null,
+    /** 088: foto bukti terima uang (wajib bila job.driverTerimaUang). */
+    val cashPhotoUrl: String? = null
 )

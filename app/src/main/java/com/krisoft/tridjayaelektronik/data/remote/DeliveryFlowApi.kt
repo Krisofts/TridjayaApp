@@ -75,7 +75,14 @@ interface DeliveryFlowApi {
     suspend fun uploadPhoto(@Part file: MultipartBody.Part): Response<ApiResponse<DeliveryUploadResponse>>
 
     @GET("api/inventory/delivery/config/checklist")
-    suspend fun checklist(@Query("kategori") kategori: String): Response<ApiResponse<ChecklistConfigData>>
+    suspend fun checklist(
+        @Query("kategori") kategori: String,
+        @Query("stage") stage: String? = null
+    ): Response<ApiResponse<ChecklistConfigData>>
+
+    /** 088: catat driver sudah chat konsumen H-1 (idempoten, fan-out per batch SPK). */
+    @POST("api/inventory/delivery/{id}/chat-consumer")
+    suspend fun chatConsumer(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
 
     /** Autocomplete barang Input SPK, di-scope satu cabang. */
     @GET("api/inventory/stok-cabang")

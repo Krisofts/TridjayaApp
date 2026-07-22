@@ -79,14 +79,18 @@ class DeliveryFlowRepository @Inject constructor(
     suspend fun cancel(id: String, reason: String): AuthResult<DeliveryJobDto> =
         call("Gagal membatalkan") { api.cancel(id, reason) }
 
-    suspend fun checklist(kategori: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>> = try {
-        val response = api.checklist(kategori)
+    suspend fun checklist(kategori: String, stage: String? = null): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>> = try {
+        val response = api.checklist(kategori, stage)
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.items.filter { it.aktif })
         else parseError(response, "Gagal memuat checklist PDI")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
+
+    /** 088: tandai sudah chat konsumen (H-1). */
+    suspend fun chatConsumer(id: String): AuthResult<DeliveryJobDto> =
+        call("Gagal mencatat chat konsumen") { api.chatConsumer(id) }
 
     /** Autocomplete barang Input SPK — `search` min. 2 karakter, di-scope `kodeDealer`. */
     suspend fun stokCabang(search: String, kodeDealer: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow>> = try {
