@@ -25,6 +25,7 @@ import com.krisoft.tridjayaelektronik.ui.deliveryflow.CreateSpkScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DiscountApprovalScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryQueueScreen
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkHubScreen
 
 const val HOME_ROUTE_DASHBOARD = "home_dashboard"
 private const val ROUTE_RANKING = "home_ranking/{kind}"
@@ -43,6 +44,7 @@ private const val ROUTE_DLV_SCHEDULE = "home_dlv_schedule"
 private const val ROUTE_DLV_DRIVER = "home_dlv_driver"
 private const val ROUTE_DLV_DETAIL = "home_dlv_detail/{id}"
 const val ROUTE_DLV_HISTORY = "home_dlv_history"
+const val ROUTE_SPK_HUB = "home_spk_hub"
 
 private fun dlvDetailRoute(id: String) = "home_dlv_detail/${Uri.encode(id)}"
 
@@ -103,6 +105,7 @@ fun HomeNavHost(
                 onQuickAccessAbsen = { navController.navigate(ROUTE_ABSEN) { launchSingleTop = true } },
                 onSpkMenu = { key ->
                     val route = when (key) {
+                        "hub" -> ROUTE_SPK_HUB
                         "input" -> ROUTE_DLV_CREATE
                         "diskon" -> ROUTE_DLV_DISKON
                         "pdi" -> ROUTE_DLV_PDI
@@ -152,6 +155,22 @@ fun HomeNavHost(
         }
         composable(ROUTE_ABSEN) {
             AttendanceScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_SPK_HUB) {
+            SpkHubScreen(onBack = { navController.popBackStack() }, onNavigate = { key ->
+                val route = when (key) {
+                    "input" -> ROUTE_DLV_CREATE
+                    "diskon" -> ROUTE_DLV_DISKON
+                    "pdi" -> ROUTE_DLV_PDI
+                    "kasir" -> ROUTE_DLV_KASIR
+                    "note" -> ROUTE_DLV_NOTE
+                    "jadwal" -> ROUTE_DLV_SCHEDULE
+                    "driver" -> ROUTE_DLV_DRIVER
+                    "history" -> ROUTE_DLV_HISTORY
+                    else -> ROUTE_DLV_CREATE
+                }
+                navController.navigate(route) { launchSingleTop = true }
+            })
         }
         composable(ROUTE_DLV_CREATE) { CreateSpkScreen(onBack = { navController.popBackStack() }) }
         composable(ROUTE_DLV_DISKON) { DiscountApprovalScreen(onBack = { navController.popBackStack() }) }
