@@ -60,7 +60,6 @@ data class DeliveryJobDto(
     val tenor: Int? = null,
     val biayaAdm: Double? = null,
     val angsuranPertama: Double? = null,
-    val alasanDiskon: String? = null,
     // Komisi + sumber order (068/080)
     val komisiSales: Double? = null,
     val komisiKbk: Double? = null,

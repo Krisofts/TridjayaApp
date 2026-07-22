@@ -227,7 +227,6 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         InfoLine("Sales", job.salesName)
                         InfoLine("Kategori", job.kategori)
                         InfoLine("Diskon", job.diskon?.takeIf { it > 0 }?.let { rupiah(it) })
-                        InfoLine("Alasan diskon", job.alasanDiskon)
                         InfoLine("DP Net", job.dpNet?.let { rupiah(it) })
                         InfoLine("Pembayaran 1", job.pembayaran1?.let { rupiah(it) })
                         InfoLine("Angsuran", job.angsuran?.let { rupiah(it) })
