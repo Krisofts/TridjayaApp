@@ -78,7 +78,10 @@ fun SpkItemCard(
                     ExpressiveTextField(item.qty, { onUpdate(item.copy(qty = it.filter { c -> c.isDigit() })) }, label = "Qty" + (item.stokTersedia?.let { " (stok $it)" } ?: ""), keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(10.dp))
-                ExpressiveTextField(item.serialNumber, { onUpdate(item.copy(serialNumber = it)) }, label = "No. Rangka/Serial (opsional)", modifier = Modifier.fillMaxWidth())
+                ExpressiveTextField(
+                    item.serialNumber, { onUpdate(item.copy(serialNumber = it)) }, label = "No. Rangka/Serial (opsional)", modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = { BarcodeScanButton { sn -> onUpdate(item.copy(serialNumber = sn)) } }
+                )
                 val availSerial = serialOptions.filter { it != item.serialNumber }
                 if (availSerial.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))

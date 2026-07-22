@@ -354,7 +354,10 @@ private fun PdiAction(
 
     Text("PDI / Inspeksi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
-    ExpressiveTextField(serial, { serial = it }, label = "Nomor serial (wajib)", modifier = Modifier.fillMaxWidth())
+    ExpressiveTextField(
+        serial, { serial = it }, label = "Nomor serial (wajib)", modifier = Modifier.fillMaxWidth(),
+        trailingIcon = { BarcodeScanButton { serial = it } }
+    )
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(engine, { engine = it }, label = "Nomor mesin (opsional)", modifier = Modifier.fillMaxWidth())
 
