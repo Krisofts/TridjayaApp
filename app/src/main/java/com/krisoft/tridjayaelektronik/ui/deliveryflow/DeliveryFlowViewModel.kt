@@ -49,7 +49,11 @@ data class DeliveryFlowUiState(
     /** Hasil autocomplete stok GS (Input SPK). */
     val stokResults: List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow> = emptyList(),
     val stokLoading: Boolean = false,
-    val stokAttempted: Boolean = false
+    val stokAttempted: Boolean = false,
+    /** Hasil autocomplete broker KBK (Input SPK section 3). */
+    val brokerResults: List<com.krisoft.tridjayaelektronik.data.model.BrokerOption> = emptyList(),
+    /** Serial tersedia utk barang terpilih (Input SPK section 2). */
+    val serialOptions: List<String> = emptyList()
 )
 
 /**
@@ -190,19 +194,31 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    fun createSpk(
-        customerName: String, customerPhone: String, address: String, item: CreateDeliveryItemBody,
-        keterangan: String, onDone: () -> Unit
-    ) = action {
-        repository.create(
-            CreateDeliveryBody(
-                customerName = customerName.trim(),
-                customerPhone = customerPhone.trim(),
-                customerAddress = address.trim().ifBlank { null },
-                keterangan = keterangan.trim().ifBlank { null },
-                items = listOf(item)
-            )
-        ).mapOk { onDone() }
+    fun searchBrokers(q: String) {
+        val term = q.trim()
+        if (term.length < 2) { _state.update { it.copy(brokerResults = emptyList()) }; return }
+        viewModelScope.launch {
+            (repository.searchBrokers(term) as? AuthResult.Success)?.let { r ->
+                _state.update { it.copy(brokerResults = r.data) }
+            }
+        }
+    }
+
+    fun clearBrokerResults() = _state.update { it.copy(brokerResults = emptyList()) }
+
+    fun loadSerials(kodeDealer: String, kodeBarang: String) {
+        if (kodeDealer.isBlank() || kodeBarang.isBlank()) {
+            _state.update { it.copy(serialOptions = emptyList()) }; return
+        }
+        viewModelScope.launch {
+            (repository.serialNumbers(kodeDealer, kodeBarang) as? AuthResult.Success)?.let { r ->
+                _state.update { it.copy(serialOptions = r.data) }
+            }
+        }
+    }
+
+    fun createSpk(body: CreateDeliveryBody, onDone: () -> Unit) = action {
+        repository.create(body).mapOk { onDone() }
     }
 
     fun submitPdi(id: String, serial: String, engine: String, checklist: List<PdiChecklistItemBody>, onDone: () -> Unit) = action {

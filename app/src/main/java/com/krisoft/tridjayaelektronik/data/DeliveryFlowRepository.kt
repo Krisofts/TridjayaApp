@@ -98,6 +98,26 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** Autocomplete broker KBK (`q` min. 2 char). Fail-soft di caller. */
+    suspend fun searchBrokers(q: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.BrokerOption>> = try {
+        val response = api.brokers(q)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat broker")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Serial tersedia utk cabang+barang → list string serialNumber. */
+    suspend fun serialNumbers(kodeDealer: String, kodeBarang: String): AuthResult<List<String>> = try {
+        val response = api.serialNumbers(kodeDealer = kodeDealer, kodeBarang = kodeBarang)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items.map { it.serialNumber }.filter { it.isNotBlank() })
+        else parseError(response, "Gagal memuat serial")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     suspend fun drivers(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DriverDto>> = try {
         val response = api.users("driver")
         val data = response.body()?.data

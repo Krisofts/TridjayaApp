@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.data.remote
 
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
+import com.krisoft.tridjayaelektronik.data.model.BrokerListData
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
 import com.krisoft.tridjayaelektronik.data.model.DecisionBody
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
@@ -16,6 +17,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryListData
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryUploadResponse
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangData
 import okhttp3.MultipartBody
 import retrofit2.Response
@@ -82,6 +84,19 @@ interface DeliveryFlowApi {
         @Query("kodeDealer") kodeDealer: String,
         @Query("limit") limit: Int = 24
     ): Response<ApiResponse<StokCabangData>>
+
+    /** Autocomplete broker KBK — di-scope query. */
+    @GET("api/inventory/delivery/brokers")
+    suspend fun brokers(@Query("q") q: String): Response<ApiResponse<BrokerListData>>
+
+    /** Registry serial per cabang+barang (picker No. Rangka Input SPK). */
+    @GET("api/inventory/serial-numbers")
+    suspend fun serialNumbers(
+        @Query("kodeDealer") kodeDealer: String,
+        @Query("kodeBarang") kodeBarang: String,
+        @Query("onlySerial") onlySerial: Boolean = true,
+        @Query("excludeAssigned") excludeAssigned: Boolean = true
+    ): Response<ApiResponse<SerialListData>>
 
     @GET("api/users")
     suspend fun users(@Query("role") role: String): Response<ApiResponse<UsersListData>>
