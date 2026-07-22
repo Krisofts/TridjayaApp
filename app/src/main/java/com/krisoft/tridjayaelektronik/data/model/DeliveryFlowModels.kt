@@ -349,3 +349,49 @@ data class DeliverBody(
     /** 088: foto bukti terima uang (wajib bila job.driverTerimaUang). */
     val cashPhotoUrl: String? = null
 )
+
+// ── Form pengambilan aki (PDI gate, migrasi 082) ─────────────────────────────
+
+/** Kategori PDI (`GET /delivery/config/categories`) — `requiresAkiForm` = gate hard-block submit PDI. */
+@Serializable
+data class DeliveryCategoryDto(
+    val id: String = "",
+    val kategori: String = "",
+    val requiresAkiForm: Boolean = false,
+    val aktif: Boolean = true
+)
+
+@Serializable
+data class DeliveryCategoriesData(val items: List<DeliveryCategoryDto> = emptyList())
+
+/** Form pengambilan aki (`aki.rs` — subset field yang dipakai app). */
+@Serializable
+data class AkiFormDto(
+    val id: String = "",
+    val deliveryJobId: String = "",
+    val tanggal: String = "",
+    val pengambilNama: String = "",
+    val tujuan: String = "",
+    val merkTipe: String = "",
+    val jumlahPcs: Int = 0,
+    val akiBekasStatus: String = "belum"
+)
+
+@Serializable
+data class AkiFormsData(val items: List<AkiFormDto> = emptyList())
+
+/** Wrapper create (`POST /delivery/{id}/aki-form` → `data.form`, BUKAN objek langsung). */
+@Serializable
+data class AkiFormCreateData(val form: AkiFormDto = AkiFormDto())
+
+/** Body create (`aki.rs:107-133`, camelCase; tujuan+merkTipe+jumlahPcs wajib; pengambil = actor). */
+@Serializable
+data class CreateAkiFormBody(
+    val tujuan: String,
+    val merkTipe: String,
+    val jumlahPcs: Int,
+    val tujuanLainnya: String? = null,
+    val kapasitas: String? = null,
+    val jumlahKeterangan: String? = null,
+    val keterangan: String? = null
+)
