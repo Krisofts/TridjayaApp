@@ -31,6 +31,8 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Discount
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Star
@@ -64,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.krisoft.tridjayaelektronik.data.model.BrokerOption
+import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryItemBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
@@ -417,158 +421,296 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     LaunchedEffect(state.actionDone) { if (state.actionDone) onBack() }
     LaunchedEffect(Unit) { viewModel.loadDeliveryContextForCreate() }
 
+    // Section 1 — Pelanggan
     var pelanggan by remember { mutableStateOf("") }
     var telepon by remember { mutableStateOf("") }
     var alamat by remember { mutableStateOf("") }
+    var mapUrl by remember { mutableStateOf("") }
+    var nik by remember { mutableStateOf("") }
+    var sosTiktok by remember { mutableStateOf("") }
+    var sosFb by remember { mutableStateOf("") }
+    var sosIg by remember { mutableStateOf("") }
+    // Section 2 — Barang & Harga
     var spkCabang by remember { mutableStateOf("") }
     var pickedStok by remember { mutableStateOf<StokCabangRow?>(null) }
     var barangSearch by remember { mutableStateOf("") }
+    var serial by remember { mutableStateOf("") }
     var warna by remember { mutableStateOf("") }
     var qty by remember { mutableStateOf("1") }
     var otr by remember { mutableStateOf("") }
+    var diskon by remember { mutableStateOf("") }
+    var alasanDiskon by remember { mutableStateOf("") }
+    // Section 3 — Pembayaran & Order
     var payment by remember { mutableStateOf("cash") }
+    var fincoy by remember { mutableStateOf("") }
+    var fincoyLain by remember { mutableStateOf("") }
+    var dpNet by remember { mutableStateOf("") }
+    var pembayaran1 by remember { mutableStateOf("") }
+    var angsuran by remember { mutableStateOf("") }
+    var tenor by remember { mutableStateOf("") }
+    var orderSource by remember { mutableStateOf("sales") }
+    var komisiSales by remember { mutableStateOf("") }
+    var komisiKbk by remember { mutableStateOf("") }
+    var noHpKbk by remember { mutableStateOf("") }
+    var brokerKode by remember { mutableStateOf("") }
+    var brokerNama by remember { mutableStateOf("") }
+    var brokerSearch by remember { mutableStateOf("") }
     var keterangan by remember { mutableStateOf("") }
+    // Expand state (Section 1 terbuka default)
+    var sec1 by remember { mutableStateOf(true) }
+    var sec2 by remember { mutableStateOf(false) }
+    var sec3 by remember { mutableStateOf(false) }
     var gantiCabangTarget by remember { mutableStateOf<String?>(null) }
 
-    // Default Cabang SPK = cabang login sales, begitu context termuat.
     LaunchedEffect(state.deliveryContext) {
         if (spkCabang.isBlank()) state.deliveryContext?.kodeDealer?.let { spkCabang = it }
     }
-
-    // Autocomplete: debounce 300ms ke stok GS, scoped cabang terpilih.
-    LaunchedEffect(barangSearch, spkCabang) {
-        delay(300)
-        viewModel.searchStok(barangSearch, spkCabang)
-    }
+    LaunchedEffect(barangSearch, spkCabang) { delay(300); viewModel.searchStok(barangSearch, spkCabang) }
+    LaunchedEffect(brokerSearch) { delay(300); viewModel.searchBrokers(brokerSearch) }
 
     fun applyCabangChange(next: String) {
-        spkCabang = next
-        pickedStok = null
-        barangSearch = ""
-        viewModel.searchStok("", next)
+        spkCabang = next; pickedStok = null; barangSearch = ""; serial = ""
+        viewModel.searchStok("", next); viewModel.loadSerials("", "")
     }
 
     val otrValue = otr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+    val diskonValue = diskon.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+    val isCredit = payment == "credit"
+    val isKbk = orderSource == "kbk"
+    val fincoyResolved = if (fincoy == FINCOY_LAINNYA) fincoyLain.trim() else fincoy.trim()
     val canSubmit = pelanggan.trim().length >= 3 && telepon.trim().length >= 6 &&
-        spkCabang.isNotBlank() && pickedStok != null && otrValue > 0
+        spkCabang.isNotBlank() && pickedStok != null && otrValue > 0 &&
+        (!isCredit || fincoyResolved.isNotBlank()) &&
+        (diskonValue <= 0 || alasanDiskon.trim().isNotBlank()) &&
+        (!isKbk || brokerKode.isNotBlank())
 
     TridjayaCollapsibleHeader(title = "Input SPK", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        Column(contentModifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom)) {
-            SectionLabel("Pelanggan")
-            ExpressiveTextField(pelanggan, { pelanggan = it }, label = "Nama pelanggan", modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(telepon, { telepon = it }, label = "No. HP", keyboardType = KeyboardType.Phone, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(16.dp))
-
-            SectionLabel("Barang")
-            CabangSelector(
-                selected = spkCabang,
-                onSelect = { next ->
-                    if (next.isBlank() || next == spkCabang) return@CabangSelector
-                    if (pickedStok != null) gantiCabangTarget = next else applyCabangChange(next)
+        Column(
+            contentModifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // ── Section 1: Pelanggan ──
+            SpkSection("1. Pelanggan", sec1, { sec1 = !sec1 }) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ExpressiveTextField(pelanggan, { pelanggan = it }, label = "Nama pelanggan *", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(telepon, { telepon = it }, label = "No. HP *", keyboardType = KeyboardType.Phone, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Lokasi Maps", keyboardType = KeyboardType.Uri, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(nik, { nik = it }, label = "NIK", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(sosTiktok, { sosTiktok = it }, label = "TikTok", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
                 }
-            )
-            Spacer(Modifier.height(10.dp))
+            }
 
-            val picked = pickedStok
-            if (picked == null) {
-                if (spkCabang.isNotBlank()) {
-                    ExpressiveTextField(
-                        barangSearch, { barangSearch = it },
-                        label = "Ketik nama/kode barang (min. 2 karakter)",
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    when {
-                        state.stokLoading -> Text("Mencari…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                        state.stokAttempted && state.stokResults.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            // ── Section 2: Barang & Harga ──
+            SpkSection("2. Barang & Harga", sec2, { sec2 = !sec2 }) {
+                CabangSelector(
+                    selected = spkCabang,
+                    onSelect = { next ->
+                        if (next.isBlank() || next == spkCabang) return@CabangSelector
+                        if (pickedStok != null) gantiCabangTarget = next else applyCabangChange(next)
                     }
-                    if (state.stokResults.isNotEmpty()) {
-                        Spacer(Modifier.height(6.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            state.stokResults.forEach { row ->
-                                Surface(
-                                    onClick = {
-                                        pickedStok = row
-                                        barangSearch = ""
-                                        row.harga?.let { h -> if (h > 0) otr = h.toLong().toString() }
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                                        Text(row.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${row.kode} · ${row.kategori} · ${row.merk}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                )
+                Spacer(Modifier.height(10.dp))
+                val picked = pickedStok
+                if (picked == null) {
+                    if (spkCabang.isNotBlank()) {
+                        ExpressiveTextField(barangSearch, { barangSearch = it }, label = "Ketik nama/kode barang (min. 2 karakter)", modifier = Modifier.fillMaxWidth())
+                        when {
+                            state.stokLoading -> Text("Mencari…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                            state.stokAttempted && state.stokResults.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        if (state.stokResults.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                state.stokResults.forEach { row ->
+                                    Surface(
+                                        onClick = {
+                                            pickedStok = row; barangSearch = ""
+                                            row.harga?.let { h -> if (h > 0) otr = h.toLong().toString() }
+                                            viewModel.loadSerials(spkCabang, row.kode)
+                                        },
+                                        shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                            Text(row.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text("${row.kode} · ${row.kategori} · ${row.merk}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
                                     }
                                 }
                             }
                         }
+                    } else {
+                        Text("Pilih Cabang SPK dulu untuk mencari stok.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    Text("Pilih Cabang SPK dulu untuk mencari stok.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(picked.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                            val subtitle = "${picked.kode} · ${picked.kategori} · ${picked.merk}" + if (picked.tipe.isNotBlank()) " · ${picked.tipe}" else ""
-                            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            picked.stok?.let { Text("Stok tersedia: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(picked.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                val subtitle = "${picked.kode} · ${picked.kategori} · ${picked.merk}" + if (picked.tipe.isNotBlank()) " · ${picked.tipe}" else ""
+                                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                picked.stok?.let { Text("Stok tersedia: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                            TextButton(onClick = { pickedStok = null; serial = ""; viewModel.loadSerials("", "") }) { Text("Ganti barang") }
                         }
-                        TextButton(onClick = { pickedStok = null }) { Text("Ganti barang") }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    ExpressiveTextField(serial, { serial = it }, label = "No. Rangka / Serial (opsional)", modifier = Modifier.fillMaxWidth())
+                    if (state.serialOptions.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text("Serial tersedia (ketuk):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            state.serialOptions.take(8).forEach { sn ->
+                                Surface(onClick = { serial = sn }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+                                    Text(sn, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ExpressiveTextField(warna, { warna = it }, label = "Warna (opsional)", modifier = Modifier.weight(1f))
+                    ExpressiveTextField(qty, { qty = it.filter { c -> c.isDigit() } }, label = "Qty", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(otr, { otr = it.filter { c -> c.isDigit() } }, label = "OTR / unit *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ExpressiveTextField(diskon, { diskon = it.filter { c -> c.isDigit() } }, label = "Diskon (opsional)", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                    ExpressiveTextField(alasanDiskon, { alasanDiskon = it }, label = if (diskonValue > 0) "Alasan diskon *" else "Alasan diskon", modifier = Modifier.weight(1f))
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExpressiveTextField(warna, { warna = it }, label = "Warna (opsional)", modifier = Modifier.weight(1f))
-                ExpressiveTextField(qty, { qty = it.filter { c -> c.isDigit() } }, label = "Qty", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(otr, { otr = it.filter { c -> c.isDigit() } }, label = "OTR / unit", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(12.dp))
-            Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("cash" to "Cash", "credit" to "Kredit").forEach { (k, l) ->
-                    val sel = payment == k
-                    Surface(onClick = { payment = k }, shape = RoundedCornerShape(50),
-                        color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
-                        Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+            // ── Section 3: Pembayaran & Order ──
+            SpkSection("3. Pembayaran & Order", sec3, { sec3 = !sec3 }) {
+                Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("cash" to "Cash", "credit" to "Kredit").forEach { (k, l) ->
+                        val sel = payment == k
+                        Surface(onClick = { payment = k }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                            Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                        }
                     }
                 }
+                if (isCredit) {
+                    Spacer(Modifier.height(10.dp))
+                    FincoyDropdown(fincoy, { fincoy = it })
+                    if (fincoy == FINCOY_LAINNYA) {
+                        Spacer(Modifier.height(8.dp))
+                        ExpressiveTextField(fincoyLain, { fincoyLain = it }, label = "Nama fincoy/leasing lain *", modifier = Modifier.fillMaxWidth())
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ExpressiveTextField(dpNet, { dpNet = it.filter { c -> c.isDigit() } }, label = "DP Net", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                        ExpressiveTextField(pembayaran1, { pembayaran1 = it.filter { c -> c.isDigit() } }, label = "Pembayaran 1", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ExpressiveTextField(angsuran, { angsuran = it.filter { c -> c.isDigit() } }, label = "Angsuran", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                        ExpressiveTextField(tenor, { tenor = it.filter { c -> c.isDigit() } }, label = "Tenor (bln)", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                Text("Sumber Order", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("sales" to "Sales", "kbk" to "KBK").forEach { (k, l) ->
+                        val sel = orderSource == k
+                        Surface(onClick = { orderSource = k }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                            Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                if (!isKbk) {
+                    ExpressiveTextField(komisiSales, { komisiSales = it.filter { c -> c.isDigit() } }, label = "Komisi Sales", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                } else {
+                    if (brokerKode.isBlank()) {
+                        ExpressiveTextField(brokerSearch, { brokerSearch = it }, label = "Cari broker KBK (min. 2 karakter) *", modifier = Modifier.fillMaxWidth())
+                        if (state.brokerResults.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                state.brokerResults.forEach { b ->
+                                    Surface(onClick = { brokerKode = b.kode; brokerNama = b.nama; brokerSearch = ""; viewModel.clearBrokerResults() }, shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+                                        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                                            Text(b.nama, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(b.kode, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(brokerNama.ifBlank { brokerKode }, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                    Text(brokerKode, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                TextButton(onClick = { brokerKode = ""; brokerNama = "" }) { Text("Ganti") }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ExpressiveTextField(komisiKbk, { komisiKbk = it.filter { c -> c.isDigit() } }, label = "Komisi KBK", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                        ExpressiveTextField(noHpKbk, { noHpKbk = it }, label = "No. HP KBK", keyboardType = KeyboardType.Phone, modifier = Modifier.weight(1f))
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
             }
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
-            state.actionError?.let { Spacer(Modifier.height(8.dp)); Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) }
-            Spacer(Modifier.height(18.dp))
+
+            state.actionError?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) }
             ExpressiveFilledButton(
                 onClick = {
                     val row = pickedStok ?: return@ExpressiveFilledButton
-                    viewModel.createSpk(
-                        pelanggan, telepon, alamat,
-                        CreateDeliveryItemBody(
-                            kodeBarang = row.kode.trim(), namaBarang = row.nama.trim(), kategori = row.kategori,
-                            merk = row.merk, tipe = row.tipe, warna = warna.trim().ifBlank { null },
-                            qty = qty.toIntOrNull() ?: 1, paymentType = payment, hargaOtr = otrValue,
-                            kodeDealer = spkCabang, kodeCabang = BranchRegions.dealerRegion(spkCabang)
-                        ),
-                        keterangan
-                    ) {}
+                    val item = CreateDeliveryItemBody(
+                        kodeBarang = row.kode.trim(), namaBarang = row.nama.trim(), kategori = row.kategori,
+                        merk = row.merk, tipe = row.tipe, qty = qty.toIntOrNull() ?: 1,
+                        warna = warna.trim().ifBlank { null }, serialNumber = serial.trim().ifBlank { null },
+                        paymentType = payment,
+                        fincoy = if (isCredit) fincoyResolved.ifBlank { null } else null,
+                        hargaOtr = otrValue,
+                        diskon = diskonValue.takeIf { it > 0 },
+                        alasanDiskon = if (diskonValue > 0) alasanDiskon.trim().ifBlank { null } else null,
+                        dpNet = if (isCredit) dpNet.filter { it.isDigit() }.toDoubleOrNull() else null,
+                        pembayaran1 = if (isCredit) pembayaran1.filter { it.isDigit() }.toDoubleOrNull() else null,
+                        angsuran = if (isCredit) angsuran.filter { it.isDigit() }.toDoubleOrNull() else null,
+                        tenor = if (isCredit) tenor.filter { it.isDigit() }.toIntOrNull() else null,
+                        komisiSales = if (isKbk) null else komisiSales.filter { it.isDigit() }.toDoubleOrNull(),
+                        komisiKbk = if (isKbk) komisiKbk.filter { it.isDigit() }.toDoubleOrNull() else null,
+                        noHpKbk = if (isKbk) noHpKbk.trim().ifBlank { null } else null,
+                        orderSource = if (isKbk) "kbk" else null,
+                        kbkBrokerKode = if (isKbk) brokerKode.trim().ifBlank { null } else null,
+                        kbkBrokerNama = if (isKbk) brokerNama.trim().ifBlank { null } else null,
+                        kodeDealer = spkCabang, kodeCabang = BranchRegions.dealerRegion(spkCabang)
+                    )
+                    val body = CreateDeliveryBody(
+                        customerName = pelanggan.trim(), customerPhone = telepon.trim(),
+                        customerAddress = alamat.trim().ifBlank { null },
+                        customerMapUrl = mapUrl.trim().ifBlank { null },
+                        customerNik = nik.trim().ifBlank { null },
+                        salesNik = null,
+                        sosmedTiktok = sosTiktok.trim().ifBlank { null },
+                        sosmedFacebook = sosFb.trim().ifBlank { null },
+                        sosmedInstagram = sosIg.trim().ifBlank { null },
+                        keterangan = keterangan.trim().ifBlank { null },
+                        items = listOf(item)
+                    )
+                    viewModel.createSpk(body) {}
                 },
                 enabled = canSubmit && !state.submitting, modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Buat SPK")
             }
-            if (!canSubmit) { Spacer(Modifier.height(6.dp)); Text("Lengkapi pelanggan, HP, cabang, dan pilih barang dari hasil pencarian.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            Spacer(Modifier.height(24.dp))
+            if (!canSubmit) Text("Lengkapi wajib: nama, HP, cabang, barang, OTR" + (if (isCredit) ", fincoy" else "") + (if (diskonValue > 0) ", alasan diskon" else "") + (if (isKbk) ", broker" else "") + ".", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -586,6 +728,30 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
 @Composable
 private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+}
+
+// Mirror web companyFacts.financingPartners. Sentinel Lainnya → free-text.
+private val FINCOY_PARTNERS = listOf("Adira Finance", "Spektra", "Kredivo", "Akulaku", "Indodana", "Home Credit")
+private const val FINCOY_LAINNYA = "__lainnya__"
+
+/** Kartu section collapsible untuk Input SPK — header tap buka/tutup isi. */
+@Composable
+private fun SpkSection(title: String, expanded: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (expanded) {
+                Spacer(Modifier.height(12.dp))
+                content()
+            }
+        }
+    }
 }
 
 /** Selektor Cabang SPK — wajib, tanpa opsi kosong. Pola visual mirror
@@ -624,6 +790,36 @@ private fun CabangSelector(selected: String, onSelect: (String) -> Unit) {
                         DropdownMenuItem(text = { Text(c.label) }, onClick = { onSelect(c.kodeDealer); expanded = false })
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Dropdown fincoy/leasing — 6 partner + "Lainnya…". Pola sama CabangSelector. */
+@Composable
+private fun FincoyDropdown(selected: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = when (selected) {
+        "" -> "Pilih leasing…"
+        FINCOY_LAINNYA -> "Lainnya…"
+        else -> selected
+    }
+    Column {
+        Text("Fincoy / Leasing *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp)).clickable { expanded = true }.padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = if (selected.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                FINCOY_PARTNERS.forEach { p ->
+                    DropdownMenuItem(text = { Text(p) }, onClick = { onSelect(p); expanded = false })
+                }
+                DropdownMenuItem(text = { Text("Lainnya…") }, onClick = { onSelect(FINCOY_LAINNYA); expanded = false })
             }
         }
     }
