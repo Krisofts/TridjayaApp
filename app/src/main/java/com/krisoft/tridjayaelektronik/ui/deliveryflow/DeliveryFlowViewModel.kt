@@ -43,7 +43,10 @@ data class DeliveryFlowUiState(
     /** Daftar driver (untuk tahap pending_scheduling); kosong → form fallback input manual. */
     val drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto> = emptyList(),
     /** Pengajuan diskon menunggu approval (layar approval diskon). */
-    val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList()
+    val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
+    /** Gate form aki (tahap pending_pdi, kategori ber-flag `requiresAkiForm`). */
+    val requiresAki: Boolean = false,
+    val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList()
 )
 
 /**
@@ -100,6 +103,12 @@ class DeliveryFlowViewModel @Inject constructor(
                 val kategori = job.kategori?.trim().orEmpty()
                 if (kategori.isNotEmpty()) viewModelScope.launch {
                     (repository.checklist(kategori) as? AuthResult.Success)?.let { r -> _state.update { it.copy(checklist = r.data) } }
+                }
+                viewModelScope.launch {
+                    val cats = (repository.categories() as? AuthResult.Success)?.data.orEmpty()
+                    val need = cats.any { it.requiresAkiForm && it.kategori.equals(job.kategori?.trim(), ignoreCase = true) }
+                    val forms = if (need) (repository.jobAkiForms(job.id) as? AuthResult.Success)?.data.orEmpty() else emptyList()
+                    _state.update { it.copy(requiresAki = need, akiForms = forms) }
                 }
             }
             com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_SCHEDULING -> viewModelScope.launch {
@@ -179,6 +188,21 @@ class DeliveryFlowViewModel @Inject constructor(
         }
         repository.submitPdi(id, PdiBody(serialNumber = serial.trim(), engineNumber = engine.trim().ifBlank { null }, readyPhotoUrl = photoUrl, checklist = checklist))
             .mapOk { onDone() }
+    }
+
+    /** Simpan satu form pengambilan aki (gate PDI kategori ber-flag `requiresAkiForm`). */
+    fun createAkiForm(id: String, body: com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody, onDone: () -> Unit) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.createAkiForm(id, body)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false, akiForms = it.akiForms + res.data) }
+                    onDone()
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
     }
 
     fun confirmSpk(id: String, onDone: () -> Unit) = action { repository.confirmSpk(id).mapOk { onDone() } }

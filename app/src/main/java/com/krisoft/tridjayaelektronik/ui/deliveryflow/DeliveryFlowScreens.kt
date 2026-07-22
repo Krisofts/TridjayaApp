@@ -223,7 +223,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
                 }
                 when (job.status) {
-                    DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist)
+                    DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
                     DeliveryStatusKey.PENDING_SPK -> SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
                     DeliveryStatusKey.PENDING_DELIVERY_NOTE -> DeliveryNoteAction(job, viewModel, state.submitting)
                     DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job.id, viewModel, state.submitting, state.drivers)
@@ -246,7 +246,11 @@ private fun SimpleAction(label: String, submitting: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean, checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>) {
+private fun PdiAction(
+    id: String, vm: DeliveryFlowViewModel, submitting: Boolean,
+    checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>,
+    requiresAki: Boolean, akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>
+) {
     var serial by remember { mutableStateOf("") }
     var engine by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -291,6 +295,36 @@ private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean
 
     Spacer(Modifier.height(10.dp))
     PhotoBox(if (hasPhoto) file else null, "Foto unit siap (opsional)") { cam.launch(uri) }
+
+    val akiPending = requiresAki && akiForms.isEmpty()
+    if (requiresAki) {
+        Spacer(Modifier.height(14.dp))
+        if (akiPending) {
+            var tujuan by remember { mutableStateOf("") }
+            var merkTipe by remember { mutableStateOf("") }
+            var jumlah by remember { mutableStateOf("") }
+            Text("Form Pengambilan Aki (wajib)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            ExpressiveTextField(tujuan, { tujuan = it }, label = "Tujuan", modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            ExpressiveTextField(merkTipe, { merkTipe = it }, label = "Merk / Tipe", modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            ExpressiveTextField(jumlah, { jumlah = it.filter { c -> c.isDigit() } }, label = "Jumlah (pcs)", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            ExpressiveOutlinedButton(
+                onClick = {
+                    vm.createAkiForm(id, com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody(tujuan.trim(), merkTipe.trim(), jumlah.toIntOrNull() ?: 0)) {}
+                },
+                enabled = !submitting && tujuan.trim().isNotEmpty() && merkTipe.trim().isNotEmpty() && (jumlah.toIntOrNull() ?: 0) > 0,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                else Text("Simpan Form Aki")
+            }
+        } else {
+            Text("Form aki tercatat ✓ (${akiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
+        }
+    }
     Spacer(Modifier.height(14.dp))
 
     val missingCatatan = checklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
@@ -299,10 +333,11 @@ private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean
             val bodies = checklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
             vm.submitPdi(id, serial, engine, bodies) {}
         },
-        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan, modifier = Modifier.fillMaxWidth()
+        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan && (!requiresAki || akiForms.isNotEmpty()),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        else Text(if (missingCatatan) "Isi catatan item 'Tidak'" else "Simpan PDI")
+        if (submitting && !akiPending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        else Text(if (missingCatatan) "Isi catatan item 'Tidak'" else if (akiPending) "Isi form aki dulu" else "Simpan PDI")
     }
 }
 
