@@ -56,13 +56,14 @@ internal fun leadTemperature(probability: Int): LeadTemperature = when {
     else -> LeadTemperature.COLD
 }
 
-/** Nama penginput lead: "Saya" bila saya sendiri; lookup peta assignee utk UUID lain. */
+/** Nama penginput lead: "Saya" bila saya sendiri; utamakan nama hydrated dari API
+ *  (`createdByName`), lalu lookup peta assignee, baru fallback. */
 internal fun resolveCreatorName(lead: LeadDto, myId: String?, names: Map<String, String>): String {
     val creator = lead.createdBy
     return when {
         creator.isNullOrBlank() -> if (lead.pendingSync) "Saya" else "-"
         myId != null && creator == myId -> "Saya"
-        else -> names[creator] ?: "Sales lain"
+        else -> lead.createdByName?.takeIf { it.isNotBlank() } ?: names[creator] ?: "Sales lain"
     }
 }
 

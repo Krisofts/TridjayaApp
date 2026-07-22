@@ -27,7 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,10 +41,10 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -186,7 +186,7 @@ fun LeadsListScreen(
     }
 
     TridjayaCollapsibleHeader(
-        title = "Prospek",
+        title = "CRM",
         actions = {
             ExpressiveFilledIconButton(
                 onClick = {
@@ -315,19 +315,25 @@ fun LeadsListScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(top = 4.dp, bottom = listBottomClearance)
                             ) {
-                                items(visibleLeads, key = { it.id }) { lead ->
-                                    LeadCard(
-                                        lead = lead,
-                                        stageName = state.stageNames[lead.stageId],
-                                        probability = leadProbability(lead.status, state.stageProgress[lead.stageId]),
-                                        creatorName = resolveCreatorName(lead, state.myId, state.employeeNames),
-                                        handlerName = resolveHandlerName(lead, state.myId, state.employeeNames),
-                                        thrownToOther = isThrownToOther(lead, state.myId),
-                                        thrownToMe = isThrownToMe(lead, state.myId),
-                                        onClick = { onLeadClick(lead.id) },
-                                        onWhatsApp = { openWhatsAppPromo(lead) },
-                                        modifier = Modifier.animateItem()
-                                    )
+                                itemsIndexed(visibleLeads, key = { _, lead -> lead.id }) { index, lead ->
+                                    Column(modifier = Modifier.animateItem()) {
+                                        LeadRow(
+                                            lead = lead,
+                                            probability = leadProbability(lead.status, state.stageProgress[lead.stageId]),
+                                            creatorName = resolveCreatorName(lead, state.myId, state.employeeNames),
+                                            handlerName = resolveHandlerName(lead, state.myId, state.employeeNames),
+                                            thrownToOther = isThrownToOther(lead, state.myId),
+                                            thrownToMe = isThrownToMe(lead, state.myId),
+                                            onClick = { onLeadClick(lead.id) },
+                                            onWhatsApp = { openWhatsAppPromo(lead) }
+                                        )
+                                        if (index != visibleLeads.lastIndex) {
+                                            HorizontalDivider(
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                                modifier = Modifier.padding(start = 72.dp, end = 16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -397,14 +403,13 @@ private fun StatusSummaryFilter(
 }
 
 /**
- * Kartu prospek bergaya bersih: avatar kotak lembut, nama + minat + tahap, badge suhu
- * Cold/Warm/Hot (pemetaan probabilitas) atau badge status utk lead selesai, nilai estimasi,
- * lalu baris bawah penginput → penanggung jawab + tanggal + tombol WA promo.
+ * Baris prospek ringkas ala daftar kontak: avatar inisial, nama (+ badge limpahan/antre) & minat,
+ * lalu badge suhu/status + nilai estimasi di kanan dan tombol WA. Dipisah divider tipis (bukan
+ * kartu per baris) supaya lebih banyak lead terlihat sekaligus.
  */
 @Composable
-private fun LeadCard(
+private fun LeadRow(
     lead: LeadDto,
-    stageName: String?,
     probability: Int,
     creatorName: String,
     handlerName: String,
@@ -417,143 +422,132 @@ private fun LeadCard(
     val accent = leadAccentColor(lead.status)
     val isOpen = lead.status.equals("open", ignoreCase = true)
     val temp = leadTemperature(probability)
-    ClayCard(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 5.dp)
             .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .background(accent.copy(alpha = 0.12f), RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = lead.nama.trim().firstOrNull()?.uppercase() ?: "?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = accent
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .background(accent.copy(alpha = 0.12f), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = lead.nama.trim().firstOrNull()?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = accent
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = lead.nama,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        if (lead.pendingSync) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Icon(
-                                Icons.Rounded.CloudUpload,
-                                contentDescription = "Antre sinkron",
-                                tint = Color(0xFFB5670C),
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    val minat = lead.minatBarang?.trim().orEmpty()
-                    Text(
-                        text = minat.ifBlank { lead.phone },
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (minat.isNotBlank()) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (isOpen && !stageName.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Tahap: $stageName",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (isOpen) {
-                        TemperatureBadge(temp)
-                    } else {
-                        Surface(shape = RoundedCornerShape(50), color = accent.copy(alpha = 0.13f)) {
-                            Text(
-                                text = leadStatusLabel(lead.status),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = accent,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
-                    if (lead.estimatedValue > 0) {
-                        Text(
-                            text = formatRupiahShort(lead.estimatedValue),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.Person,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(13.dp)
-                )
-                Spacer(modifier = Modifier.width(5.dp))
                 Text(
-                    text = if (creatorName == handlerName) "Oleh $creatorName" else "$creatorName → $handlerName",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = lead.nama,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
+                if (lead.pendingSync) {
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Icon(
+                        Icons.Rounded.CloudUpload,
+                        contentDescription = "Antre sinkron",
+                        tint = Color(0xFFB5670C),
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
                 when {
                     thrownToOther -> ThrowBadge("Dilempar", Color(0xFFB5670C))
                     thrownToMe -> ThrowBadge("Limpahan", Color(0xFF0E7490))
                 }
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = formatShortDate(lead.createdAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Surface(
-                    onClick = onWhatsApp,
-                    shape = CircleShape,
-                    color = Color(0xFF25D366).copy(alpha = 0.15f),
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.Chat,
-                            contentDescription = "Chat WhatsApp ${lead.nama}",
-                            tint = Color(0xFF1B9E4B),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            val minat = lead.minatBarang?.trim().orEmpty()
+            Text(
+                text = minat.ifBlank { lead.phone },
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (minat.isNotBlank()) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            // Baris konteks kepemilikan: dilempar KE saya → tampil pembuatnya ("Dari X");
+            // saya lempar ke orang → tampil penanggung jawab sekarang ("Untuk Y").
+            val relation: Pair<String, Color>? = when {
+                thrownToMe -> "Dari $creatorName" to Color(0xFF0E7490)
+                thrownToOther -> "Untuk $handlerName" to Color(0xFFB5670C)
+                else -> null
+            }
+            if (relation != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.SwapHoriz,
+                        contentDescription = null,
+                        tint = relation.second,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = relation.first,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = relation.second,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
+            }
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            if (isOpen) {
+                TemperatureBadge(temp)
+            } else {
+                Surface(shape = RoundedCornerShape(50), color = accent.copy(alpha = 0.13f)) {
+                    Text(
+                        text = leadStatusLabel(lead.status),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = accent,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                    )
+                }
+            }
+            if (lead.estimatedValue > 0) {
+                Text(
+                    text = formatRupiahShort(lead.estimatedValue),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Surface(
+            onClick = onWhatsApp,
+            shape = CircleShape,
+            color = Color(0xFF25D366).copy(alpha = 0.15f),
+            modifier = Modifier.size(34.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.Chat,
+                    contentDescription = "Chat WhatsApp ${lead.nama}",
+                    tint = Color(0xFF1B9E4B),
+                    modifier = Modifier.size(17.dp)
+                )
             }
         }
     }
@@ -692,12 +686,3 @@ private fun formatRupiahShort(value: Double): String {
     }
 }
 
-/** "yyyy-MM-dd…" → "d/M" (compact list date); falls back to empty string. */
-private fun formatShortDate(raw: String): String {
-    val datePart = raw.substringBefore('T').substringBefore(' ').trim()
-    val parts = datePart.split("-")
-    if (parts.size != 3) return ""
-    val month = parts[1].toIntOrNull() ?: return ""
-    val day = parts[2].toIntOrNull() ?: return ""
-    return "$day/$month"
-}

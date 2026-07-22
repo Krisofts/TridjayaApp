@@ -21,6 +21,10 @@ data class LeadEntity(
     val assignedName: String? = null,
     /** UUID penginput — dipakai membedakan prospek yang dilempar antar sales. */
     val createdBy: String? = null,
+    /** Nama penginput (hydrated server-side); dipakai langsung di kartu list. */
+    val createdByName: String? = null,
+    /** Cabang lead (hydrated server-side); ditampilkan di detail. */
+    val cabang: String? = null,
     val estimatedValue: Double,
     val source: String?,
     val lokasi: String?,

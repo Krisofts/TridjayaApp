@@ -38,6 +38,9 @@ data class LeadDto(
     val assignedName: String? = null,
     /** UUID penginput lead (beda dari assignedTo saat prospek dilempar ke sales lain). */
     val createdBy: String? = null,
+    /** Nama penginput (hydrated server-side) — dipakai langsung, bukan lookup peta klien yang bisa
+     *  meleset ke "Sales lain" untuk user yang tak ada di daftar assignee (mis. non-aktif). */
+    val createdByName: String? = null,
     val estimatedValue: Double = 0.0,
     val source: String? = null,
     val lokasi: String? = null,
@@ -45,6 +48,8 @@ data class LeadDto(
     val catatan: String? = null,
     val minatBarang: String? = null,
     val kategoriProduk: String? = null,
+    /** Cabang lead (dikembalikan backend Lead) — ditampilkan di detail. */
+    val cabang: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
     /** Client-only: set for optimistic local leads awaiting sync. Server responses default it to false. */

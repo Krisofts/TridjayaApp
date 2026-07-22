@@ -187,6 +187,8 @@ class CrmRepository @Inject constructor(
         assignedTo = assignedTo,
         assignedName = assignedName,
         createdBy = createdBy,
+        createdByName = createdByName,
+        cabang = cabang,
         estimatedValue = estimatedValue,
         source = source,
         lokasi = lokasi,
@@ -209,6 +211,8 @@ class CrmRepository @Inject constructor(
         assignedTo = assignedTo,
         assignedName = assignedName,
         createdBy = createdBy,
+        createdByName = createdByName,
+        cabang = cabang,
         estimatedValue = estimatedValue,
         source = source,
         lokasi = lokasi,
@@ -438,6 +442,8 @@ class CrmRepository @Inject constructor(
                         lostReason = if (entity.statusDirtyOp != null) entity.lostReason else data.lostReason,
                         assignedName = data.assignedName ?: entity.assignedName,
                         createdBy = data.createdBy ?: entity.createdBy,
+                        createdByName = data.createdByName ?: entity.createdByName,
+                        cabang = data.cabang ?: entity.cabang,
                         minatBarang = data.minatBarang ?: entity.minatBarang,
                         kategoriProduk = data.kategoriProduk ?: entity.kategoriProduk
                     )
@@ -470,6 +476,8 @@ class CrmRepository @Inject constructor(
                         stageId = if (entity.stageDirty) entity.stageId else data.stageId,
                         assignedName = data.assignedName ?: entity.assignedName,
                         createdBy = data.createdBy ?: entity.createdBy,
+                        createdByName = data.createdByName ?: entity.createdByName,
+                        cabang = data.cabang ?: entity.cabang,
                         minatBarang = data.minatBarang ?: entity.minatBarang,
                         kategoriProduk = data.kategoriProduk ?: entity.kategoriProduk
                     )

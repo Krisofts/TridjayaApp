@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material3.AlertDialog
@@ -686,6 +687,7 @@ private fun InfoListCard(
     val rows = buildList {
         add(Triple(Icons.Rounded.PersonAdd, "Dibuat oleh", creatorName))
         add(Triple(Icons.Rounded.Person, "Followup oleh", handlerName + handlerSuffix))
+        if (!lead.cabang.isNullOrBlank()) add(Triple(Icons.Rounded.Storefront, "Cabang", lead.cabang!!))
         if (!lead.minatBarang.isNullOrBlank()) add(Triple(Icons.Rounded.ShoppingBag, "Minat Barang", lead.minatBarang!!))
         if (!lead.kategoriProduk.isNullOrBlank()) add(Triple(Icons.Rounded.Category, "Kategori Produk", lead.kategoriProduk!!))
         if (!lead.source.isNullOrBlank()) add(Triple(Icons.Rounded.Campaign, "Sumber", lead.source!!))
