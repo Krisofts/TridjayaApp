@@ -225,12 +225,46 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         InfoLine("Driver", job.assignedDriverName)
                         InfoLine("Jadwal", job.scheduledDate)
                         InfoLine("Sales", job.salesName)
+                        InfoLine("Kategori", job.kategori)
+                        InfoLine("Diskon", job.diskon?.takeIf { it > 0 }?.let { rupiah(it) })
+                        InfoLine("Alasan diskon", job.alasanDiskon)
+                        InfoLine("DP Net", job.dpNet?.let { rupiah(it) })
+                        InfoLine("Pembayaran 1", job.pembayaran1?.let { rupiah(it) })
+                        InfoLine("Angsuran", job.angsuran?.let { rupiah(it) })
+                        InfoLine("Tenor", job.tenor?.let { "$it bln" })
+                        InfoLine("Sumber Order", when {
+                            job.orderSource == "kbk" -> "KBK · ${job.kbkBrokerNama ?: job.kbkBrokerKode ?: "-"}"
+                            job.orderSource != null -> "Sales"
+                            else -> null
+                        })
+                        InfoLine("Komisi Sales", job.komisiSales?.let { rupiah(it) })
+                        InfoLine("Komisi KBK", job.komisiKbk?.let { rupiah(it) })
+                        InfoLine("No. HP KBK", job.noHpKbk)
+                        InfoLine("Sosmed", listOfNotNull(
+                            job.sosmedTiktok?.let { "TikTok $it" },
+                            job.sosmedFacebook?.let { "FB $it" },
+                            job.sosmedInstagram?.let { "IG $it" },
+                        ).joinToString(" · ").ifBlank { null })
+                        InfoLine("Terima Uang Driver", job.driverTerimaUang?.takeIf { it }?.let {
+                            job.driverTerimaNominal?.let { n -> rupiah(n) } ?: "Ya"
+                        })
+                        InfoLine("Chat Konsumen", job.consumerChatAt)
                         job.reviewRating?.let { InfoLine("Rating", "★".repeat(it)) }
+                        job.customerMapUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                            TextButton(onClick = { runCatching { uriHandler.openUri(url) } }) { Text("Buka Lokasi Maps") }
+                        }
                     }
                 }
                 Spacer(Modifier.height(14.dp))
                 state.actionError?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
+                }
+                if (job.driverTerimaUang != null &&
+                    (job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT)
+                ) {
+                    ChatConsumerCard(job, viewModel, state.submitting)
+                    Spacer(Modifier.height(14.dp))
                 }
                 when (job.status) {
                     DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist)
@@ -238,7 +272,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     DeliveryStatusKey.PENDING_DELIVERY_NOTE -> DeliveryNoteAction(job, viewModel, state.submitting)
                     DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job, viewModel, state.submitting, state.drivers)
                     DeliveryStatusKey.ASSIGNED -> SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
-                    DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job.id, viewModel, state.submitting)
+                    DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job, viewModel, state.submitting, state.driverChecklist)
                     else -> Text("Tidak ada aksi pada tahap ini.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -376,7 +410,8 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
 }
 
 @Composable
-private fun DeliverAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean) {
+private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean, driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>) {
+    val id = job.id
     var rating by remember { mutableStateOf(5) }
     var comment by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -384,10 +419,46 @@ private fun DeliverAction(id: String, vm: DeliveryFlowViewModel, submitting: Boo
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
     var hasPhoto by remember { mutableStateOf(false) }
     val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onDeliverPhotoCaptured(file); hasPhoto = true } }
+    // 088: foto bukti terima uang (wajib bila job.driverTerimaUang == true)
+    val needCash = job.driverTerimaUang == true
+    val cashFile = remember { File(context.cacheDir, "delivery/cash_$id.jpg").apply { parentFile?.mkdirs() } }
+    val cashUri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cashFile) }
+    var hasCashPhoto by remember { mutableStateOf(false) }
+    val cashCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onCashPhotoCaptured(cashFile); hasCashPhoto = true } }
+    // 088: checklist serah-terima stage=driver (fail-open bila kosong)
+    val hasil = remember(driverChecklist) { mutableStateMapOf<String, String>().apply { driverChecklist.forEach { put(it.id, "ok") } } }
+    val catatan = remember(driverChecklist) { mutableStateMapOf<String, String>() }
 
     Text("Serah Terima", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
     PhotoBox(if (hasPhoto) file else null, "Foto serah terima (wajib)") { cam.launch(uri) }
+    if (needCash) {
+        Spacer(Modifier.height(10.dp))
+        PhotoBox(if (hasCashPhoto) cashFile else null, "Foto serah terima uang (wajib${job.driverTerimaNominal?.let { " · ${rupiah(it)}" } ?: ""})") { cashCam.launch(cashUri) }
+    }
+    if (driverChecklist.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text("Checklist Serah Terima", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        driverChecklist.sortedBy { it.urutan }.forEach { item ->
+            Spacer(Modifier.height(6.dp))
+            Text(item.itemLabel + if (item.wajib) " *" else "", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("ok" to "OK", "tidak" to "Tidak", "na" to "N/A").forEach { (k, l) ->
+                    val sel = hasil[item.id] == k
+                    Surface(onClick = { hasil[item.id] = k }, shape = RoundedCornerShape(50),
+                        color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                        Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+                    }
+                }
+            }
+            if (hasil[item.id] == "tidak") {
+                Spacer(Modifier.height(4.dp))
+                ExpressiveTextField(catatan[item.id].orEmpty(), { catatan[item.id] = it }, label = "Catatan (wajib untuk Tidak)", modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
     Spacer(Modifier.height(12.dp))
     Text("Rating pengiriman (wajib)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
     Row {
@@ -401,11 +472,61 @@ private fun DeliverAction(id: String, vm: DeliveryFlowViewModel, submitting: Boo
     }
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(comment, { comment = it }, label = "Komentar (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
+    // 088: hint gate chat H-1 (backend otoritatif; klien cuma peringatan dini)
+    if (job.driverTerimaUang != null && job.consumerChatAt == null) {
+        Spacer(Modifier.height(8.dp))
+        Text("Belum chat konsumen — serah terima akan ditolak backend (wajib chat ≥1 jam sebelumnya).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+    }
     Spacer(Modifier.height(14.dp))
-    ExpressiveFilledButton(onClick = { vm.deliver(id, rating, comment) {} }, enabled = !submitting && hasPhoto, modifier = Modifier.fillMaxWidth()) {
+    val missingCatatan = driverChecklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
+    val canDeliver = hasPhoto && (!needCash || hasCashPhoto) && !missingCatatan
+    ExpressiveFilledButton(
+        onClick = {
+            val bodies = driverChecklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
+            vm.deliver(id, rating, comment, bodies) {}
+        },
+        enabled = !submitting && canDeliver, modifier = Modifier.fillMaxWidth()
+    ) {
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
-        Text(if (hasPhoto) "Tandai Terkirim" else "Ambil foto dulu")
+        Text(when {
+            !hasPhoto -> "Ambil foto dulu"
+            needCash && !hasCashPhoto -> "Ambil foto uang dulu"
+            missingCatatan -> "Isi catatan item 'Tidak'"
+            else -> "Tandai Terkirim"
+        })
+    }
+}
+
+/** 088: chat konsumen H-1 — wajib ≥1 jam sebelum serah terima (gate backend). */
+@Composable
+private fun ChatConsumerCard(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text("Chat Konsumen (H-1)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            if (job.consumerChatAt != null) {
+                Text("Sudah chat: ${job.consumerChatAt}", style = MaterialTheme.typography.labelMedium, color = Color(0xFF12B76A), fontWeight = FontWeight.SemiBold)
+            } else {
+                Text("Wajib chat konsumen minimal 1 jam sebelum serah terima.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val phone = job.customerPhone?.filter { it.isDigit() }.orEmpty()
+                    .let { if (it.startsWith("0")) "62" + it.drop(1) else it }
+                ExpressiveOutlinedButton(
+                    onClick = { if (phone.isNotBlank()) runCatching { uriHandler.openUri("https://wa.me/$phone") } },
+                    enabled = phone.isNotBlank(), modifier = Modifier.weight(1f)
+                ) { Text("Chat WA") }
+                if (job.consumerChatAt == null) {
+                    ExpressiveFilledButton(onClick = { vm.chatConsumer(job.id) }, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        else Text("Tandai Sudah Chat")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -467,6 +588,8 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     var brokerKode by remember { mutableStateOf("") }
     var brokerNama by remember { mutableStateOf("") }
     var brokerSearch by remember { mutableStateOf("") }
+    var driverTerimaUang by remember { mutableStateOf(false) }
+    var nominalTerimaUang by remember { mutableStateOf("") }
     var keterangan by remember { mutableStateOf("") }
     // Expand state (Section 1 terbuka default)
     var sec1 by remember { mutableStateOf(true) }
@@ -494,7 +617,8 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
         spkCabang.isNotBlank() && pickedStok != null && otrValue > 0 &&
         (!isCredit || fincoyResolved.isNotBlank()) &&
         (diskonValue <= 0 || alasanDiskon.trim().isNotBlank()) &&
-        (!isKbk || brokerKode.isNotBlank())
+        (!isKbk || brokerKode.isNotBlank()) &&
+        (!driverTerimaUang || (nominalTerimaUang.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0) > 0)
 
     TridjayaCollapsibleHeader(title = "Input SPK", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -675,6 +799,14 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                         ExpressiveTextField(noHpKbk, { noHpKbk = it }, label = "No. HP KBK", keyboardType = KeyboardType.Phone, modifier = Modifier.weight(1f))
                     }
                 }
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { driverTerimaUang = !driverTerimaUang }) {
+                    androidx.compose.material3.Checkbox(checked = driverTerimaUang, onCheckedChange = { driverTerimaUang = it })
+                    Text("Driver terima uang dari konsumen", style = MaterialTheme.typography.bodyMedium)
+                }
+                if (driverTerimaUang) {
+                    ExpressiveTextField(nominalTerimaUang, { nominalTerimaUang = it.filter { c -> c.isDigit() } }, label = "Nominal diterima driver *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                }
                 Spacer(Modifier.height(10.dp))
                 ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
             }
@@ -702,6 +834,8 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                         orderSource = if (isKbk) "kbk" else null,
                         kbkBrokerKode = if (isKbk) brokerKode.trim().ifBlank { null } else null,
                         kbkBrokerNama = if (isKbk) brokerNama.trim().ifBlank { null } else null,
+                        driverTerimaUang = if (driverTerimaUang) true else null,
+                        driverTerimaNominal = if (driverTerimaUang) nominalTerimaUang.filter { it.isDigit() }.toDoubleOrNull() else null,
                         kodeDealer = spkCabang, kodeCabang = BranchRegions.dealerRegion(spkCabang)
                     )
                     val body = CreateDeliveryBody(
@@ -722,7 +856,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
             ) {
                 if (state.submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Buat SPK")
             }
-            if (!canSubmit) Text("Lengkapi wajib: nama, HP, cabang, barang, OTR" + (if (isCredit) ", fincoy" else "") + (if (diskonValue > 0) ", alasan diskon" else "") + (if (isKbk) ", broker" else "") + ".", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!canSubmit) Text("Lengkapi wajib: nama, HP, cabang, barang, OTR" + (if (isCredit) ", fincoy" else "") + (if (diskonValue > 0) ", alasan diskon" else "") + (if (isKbk) ", broker" else "") + (if (driverTerimaUang && (nominalTerimaUang.toDoubleOrNull() ?: 0.0) <= 0) ", nominal terima uang" else "") + ".", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 

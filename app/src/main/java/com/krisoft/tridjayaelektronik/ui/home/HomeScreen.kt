@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
@@ -425,6 +426,9 @@ private fun QuickAccessRow(
         }
         item {
             QuickAccessTile(Icons.Rounded.LocalShipping, "Driver", Color(0xFF6941C6), { onSpkMenu("driver") }, Modifier.width(86.dp))
+        }
+        item {
+            QuickAccessTile(Icons.Rounded.History, "Riwayat", Color(0xFF667085), { onSpkMenu("history") }, Modifier.width(86.dp))
         }
         item {
             QuickAccessTile(

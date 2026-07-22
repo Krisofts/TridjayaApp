@@ -42,6 +42,7 @@ private const val ROUTE_DLV_NOTE = "home_dlv_note"
 private const val ROUTE_DLV_SCHEDULE = "home_dlv_schedule"
 private const val ROUTE_DLV_DRIVER = "home_dlv_driver"
 private const val ROUTE_DLV_DETAIL = "home_dlv_detail/{id}"
+const val ROUTE_DLV_HISTORY = "home_dlv_history"
 
 private fun dlvDetailRoute(id: String) = "home_dlv_detail/${Uri.encode(id)}"
 
@@ -109,6 +110,7 @@ fun HomeNavHost(
                         "note" -> ROUTE_DLV_NOTE
                         "jadwal" -> ROUTE_DLV_SCHEDULE
                         "driver" -> ROUTE_DLV_DRIVER
+                        "history" -> ROUTE_DLV_HISTORY
                         else -> ROUTE_DLV_CREATE
                     }
                     navController.navigate(route) { launchSingleTop = true }
@@ -172,6 +174,10 @@ fun HomeNavHost(
         composable(ROUTE_DLV_DRIVER) {
             // Driver: backend meng-scope antrian (assigned + in_transit) berdasarkan role, tanpa filter status.
             DeliveryQueueScreen("Tugas Antar", status = null, onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
+        }
+        composable(ROUTE_DLV_HISTORY) {
+            DeliveryQueueScreen("Riwayat SPK", status = null, view = "history", onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
         composable(
