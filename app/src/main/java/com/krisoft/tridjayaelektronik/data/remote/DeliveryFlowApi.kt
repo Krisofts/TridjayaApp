@@ -1,9 +1,13 @@
 package com.krisoft.tridjayaelektronik.data.remote
 
+import com.krisoft.tridjayaelektronik.data.model.AkiFormCreateData
+import com.krisoft.tridjayaelektronik.data.model.AkiFormsData
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
+import com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody
 import com.krisoft.tridjayaelektronik.data.model.DecisionBody
+import com.krisoft.tridjayaelektronik.data.model.DeliveryCategoriesData
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
 import com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto
 import com.krisoft.tridjayaelektronik.data.model.UsersListData
@@ -73,6 +77,15 @@ interface DeliveryFlowApi {
 
     @GET("api/inventory/delivery/config/checklist")
     suspend fun checklist(@Query("kategori") kategori: String): Response<ApiResponse<ChecklistConfigData>>
+
+    @GET("api/inventory/delivery/config/categories")
+    suspend fun categories(): Response<ApiResponse<DeliveryCategoriesData>>
+
+    @GET("api/inventory/delivery/{id}/aki-form")
+    suspend fun jobAkiForms(@Path("id") id: String): Response<ApiResponse<AkiFormsData>>
+
+    @POST("api/inventory/delivery/{id}/aki-form")
+    suspend fun createAkiForm(@Path("id") id: String, @Body body: CreateAkiFormBody): Response<ApiResponse<AkiFormCreateData>>
 
     @GET("api/users")
     suspend fun users(@Query("role") role: String): Response<ApiResponse<UsersListData>>
