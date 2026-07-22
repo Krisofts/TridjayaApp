@@ -156,7 +156,7 @@ class DeliveryFlowViewModel @Inject constructor(
     // ── Aksi tahap ───────────────────────────────────────────────────────────
 
     fun createSpk(
-        customerName: String, customerPhone: String, address: String, item: CreateDeliveryItemBody,
+        customerName: String, customerPhone: String, address: String, mapUrl: String, item: CreateDeliveryItemBody,
         keterangan: String, onDone: () -> Unit
     ) = action {
         repository.create(
@@ -164,6 +164,7 @@ class DeliveryFlowViewModel @Inject constructor(
                 customerName = customerName.trim(),
                 customerPhone = customerPhone.trim(),
                 customerAddress = address.trim().ifBlank { null },
+                customerMapUrl = mapUrl.trim().ifBlank { null },
                 keterangan = keterangan.trim().ifBlank { null },
                 items = listOf(item)
             )
@@ -187,8 +188,8 @@ class DeliveryFlowViewModel @Inject constructor(
         repository.issueDeliveryNote(id, DeliveryNoteBody(sourceBranch = sourceBranch.trim())).mapOk { onDone() }
     }
 
-    fun assign(id: String, driverId: String, driverName: String, scheduledDate: String, onDone: () -> Unit) = action {
-        repository.assign(id, AssignBody(driverId = driverId.trim(), driverName = driverName.trim().ifBlank { null }, scheduledDate = scheduledDate.trim()))
+    fun assign(id: String, driverId: String, driverName: String, scheduledDate: String, customerMapUrl: String?, onDone: () -> Unit) = action {
+        repository.assign(id, AssignBody(driverId = driverId.trim(), driverName = driverName.trim().ifBlank { null }, scheduledDate = scheduledDate.trim(), customerMapUrl = customerMapUrl))
             .mapOk { onDone() }
     }
 

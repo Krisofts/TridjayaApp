@@ -41,6 +41,7 @@ data class DeliveryJobDto(
     val warna: String? = null,
     val customerName: String? = null,
     val customerAddress: String? = null,
+    val customerMapUrl: String? = null,
     val customerPhone: String? = null,
     val customerNik: String? = null,
     val fincoy: String? = null,
@@ -215,6 +216,7 @@ data class CreateDeliveryBody(
     val customerName: String,
     val customerPhone: String,
     val customerAddress: String? = null,
+    val customerMapUrl: String? = null,
     val customerNik: String? = null,
     val salesNik: String? = null,
     val keterangan: String? = null,
@@ -250,7 +252,8 @@ data class DeliveryNoteBody(
 data class AssignBody(
     val driverId: String,
     val driverName: String? = null,
-    val scheduledDate: String
+    val scheduledDate: String,
+    val customerMapUrl: String? = null
 )
 
 @Serializable

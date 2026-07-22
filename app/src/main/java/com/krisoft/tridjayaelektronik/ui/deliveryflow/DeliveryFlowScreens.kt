@@ -226,7 +226,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist)
                     DeliveryStatusKey.PENDING_SPK -> SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
                     DeliveryStatusKey.PENDING_DELIVERY_NOTE -> DeliveryNoteAction(job, viewModel, state.submitting)
-                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job.id, viewModel, state.submitting, state.drivers)
+                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job, viewModel, state.submitting, state.drivers)
                     DeliveryStatusKey.ASSIGNED -> SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
                     DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job.id, viewModel, state.submitting)
                     else -> Text("Tidak ada aksi pada tahap ini.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -319,10 +319,14 @@ private fun DeliveryNoteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
 }
 
 @Composable
-private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean, drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto>) {
+private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean, drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto>) {
+    val id = job.id
     var driverId by remember { mutableStateOf("") }
     var driverName by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf("2026-07-22") }
+    // minSdk 24 tanpa coreLibraryDesugaring (dicek app/build.gradle.kts) — java.time.LocalDate
+    // butuh API 26, jadi pakai SimpleDateFormat.
+    var date by remember { mutableStateOf(java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())) }
+    var mapUrl by remember { mutableStateOf(job.customerMapUrl.orEmpty()) }
 
     Text("Assign Driver + Jadwal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
@@ -347,8 +351,16 @@ private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Bool
     }
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(date, { date = it }, label = "Jadwal kirim (yyyy-mm-dd)", modifier = Modifier.fillMaxWidth())
+    if (job.customerMapUrl.isNullOrBlank()) {
+        Spacer(Modifier.height(10.dp))
+        ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Google Maps konsumen (wajib)", modifier = Modifier.fillMaxWidth())
+    }
     Spacer(Modifier.height(14.dp))
-    ExpressiveFilledButton(onClick = { vm.assign(id, driverId, driverName, date) {} }, enabled = !submitting && driverId.trim().isNotEmpty() && date.trim().isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+    ExpressiveFilledButton(
+        onClick = { vm.assign(id, driverId, driverName, date, mapUrl.trim().ifBlank { null }) {} },
+        enabled = !submitting && driverId.trim().isNotEmpty() && date.trim().isNotEmpty() && mapUrl.trim().isNotEmpty(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Assign Driver")
     }
 }
@@ -413,6 +425,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     var pelanggan by remember { mutableStateOf("") }
     var telepon by remember { mutableStateOf("") }
     var alamat by remember { mutableStateOf("") }
+    var mapUrl by remember { mutableStateOf("") }
     var kodeBarang by remember { mutableStateOf("") }
     var namaBarang by remember { mutableStateOf("") }
     var kategori by remember { mutableStateOf("") }
@@ -422,12 +435,14 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     var qty by remember { mutableStateOf("1") }
     var otr by remember { mutableStateOf("") }
     var payment by remember { mutableStateOf("cash") }
+    var fincoy by remember { mutableStateOf("") }
     var keterangan by remember { mutableStateOf("") }
 
     val otrValue = otr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
     val canSubmit = pelanggan.trim().length >= 3 && telepon.trim().length >= 6 &&
         kodeBarang.trim().isNotEmpty() && namaBarang.trim().isNotEmpty() && kategori.trim().isNotEmpty() &&
-        merk.trim().isNotEmpty() && tipe.trim().isNotEmpty() && otrValue > 0
+        merk.trim().isNotEmpty() && tipe.trim().isNotEmpty() && otrValue > 0 &&
+        (payment != "credit" || fincoy.trim().isNotEmpty())
 
     TridjayaCollapsibleHeader(title = "Input SPK", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -438,6 +453,8 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
             ExpressiveTextField(telepon, { telepon = it }, label = "No. HP", keyboardType = KeyboardType.Phone, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Google Maps konsumen (wajib utk penugasan driver)", modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(16.dp))
             SectionLabel("Unit")
             ExpressiveTextField(kodeBarang, { kodeBarang = it }, label = "Kode barang", modifier = Modifier.fillMaxWidth())
@@ -472,6 +489,10 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                     }
                 }
             }
+            if (payment == "credit") {
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(fincoy, { fincoy = it }, label = "Leasing / Fincoy (wajib utk kredit)", modifier = Modifier.fillMaxWidth())
+            }
             Spacer(Modifier.height(10.dp))
             ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
             state.actionError?.let { Spacer(Modifier.height(8.dp)); Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) }
@@ -479,11 +500,11 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
             ExpressiveFilledButton(
                 onClick = {
                     viewModel.createSpk(
-                        pelanggan, telepon, alamat,
+                        pelanggan, telepon, alamat, mapUrl,
                         CreateDeliveryItemBody(
                             kodeBarang = kodeBarang.trim(), namaBarang = namaBarang.trim(), kategori = kategori.trim(),
                             merk = merk.trim(), tipe = tipe.trim(), warna = warna.trim().ifBlank { null },
-                            qty = qty.toIntOrNull() ?: 1, paymentType = payment, hargaOtr = otrValue
+                            qty = qty.toIntOrNull() ?: 1, paymentType = payment, fincoy = fincoy.trim().ifBlank { null }, hargaOtr = otrValue
                         ),
                         keterangan
                     ) {}
@@ -492,7 +513,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
             ) {
                 if (state.submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Buat SPK")
             }
-            if (!canSubmit) { Spacer(Modifier.height(6.dp)); Text("Lengkapi pelanggan, HP, dan data unit + OTR.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (!canSubmit) { Spacer(Modifier.height(6.dp)); Text("Lengkapi pelanggan, HP, data unit + OTR (kredit: isi fincoy).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Spacer(Modifier.height(24.dp))
         }
     }
