@@ -110,7 +110,7 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, onMarkReturned: () ->
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                form.tujuan + (form.tujuanLainnya?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""),
+                akiTujuanLabel(form.tujuan) + (form.tujuanLainnya?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""),
                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )

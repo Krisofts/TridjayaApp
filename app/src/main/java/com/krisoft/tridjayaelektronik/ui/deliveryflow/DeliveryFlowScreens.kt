@@ -121,6 +121,17 @@ private fun InfoLine(label: String, value: String?) {
     }
 }
 
+// Tujuan pengambilan aki — WAJIB salah satu slug enum backend (aki.rs TUJUAN_VALID).
+private val AKI_TUJUAN_OPTIONS = listOf(
+    "pemasangan_unit_baru" to "Pemasangan unit baru",
+    "penggantian_garansi" to "Penggantian garansi",
+    "service_repair" to "Service / repair",
+    "display" to "Display",
+    "lainnya" to "Lainnya…",
+)
+internal fun akiTujuanLabel(slug: String?): String =
+    AKI_TUJUAN_OPTIONS.firstOrNull { it.first == slug }?.second ?: (slug ?: "-")
+
 @Composable
 private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
     val base = Modifier.fillMaxWidth()
@@ -284,7 +295,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                 ExpressiveOutlinedButton(onClick = {
                     val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                         type = "text/plain"
-                        putExtra(android.content.Intent.EXTRA_TEXT, "Lacak pengiriman Anda: https://tridjaya.com/cek-resi/${job.id}")
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Lacak pengiriman Anda: " + com.krisoft.tridjayaelektronik.BuildConfig.API_BASE_URL.trimEnd('/') + "/cek-resi/" + job.id)
                     }
                     shareContext.startActivity(android.content.Intent.createChooser(send, "Bagikan resi"))
                 }, modifier = Modifier.fillMaxWidth()) {
@@ -379,11 +390,16 @@ private fun PdiAction(
         Spacer(Modifier.height(14.dp))
         if (akiPending) {
             var tujuan by remember { mutableStateOf("") }
+            var tujuanLainnya by remember { mutableStateOf("") }
             var merkTipe by remember { mutableStateOf("") }
             var jumlah by remember { mutableStateOf("") }
             Text("Form Pengambilan Aki (wajib)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            ExpressiveTextField(tujuan, { tujuan = it }, label = "Tujuan", modifier = Modifier.fillMaxWidth())
+            AkiTujuanDropdown(tujuan, { tujuan = it })
+            if (tujuan == "lainnya") {
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(tujuanLainnya, { tujuanLainnya = it }, label = "Tujuan lainnya *", modifier = Modifier.fillMaxWidth())
+            }
             Spacer(Modifier.height(10.dp))
             ExpressiveTextField(merkTipe, { merkTipe = it }, label = "Merk / Tipe", modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
@@ -391,9 +407,16 @@ private fun PdiAction(
             Spacer(Modifier.height(10.dp))
             ExpressiveOutlinedButton(
                 onClick = {
-                    vm.createAkiForm(id, com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody(tujuan.trim(), merkTipe.trim(), jumlah.toIntOrNull() ?: 0)) {}
+                    vm.createAkiForm(
+                        id,
+                        com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody(
+                            tujuan = tujuan, merkTipe = merkTipe.trim(), jumlahPcs = jumlah.toIntOrNull() ?: 0,
+                            tujuanLainnya = if (tujuan == "lainnya") tujuanLainnya.trim().ifBlank { null } else null
+                        )
+                    ) {}
                 },
-                enabled = !submitting && tujuan.trim().isNotEmpty() && merkTipe.trim().isNotEmpty() && (jumlah.toIntOrNull() ?: 0) > 0,
+                enabled = !submitting && tujuan.isNotBlank() && (tujuan != "lainnya" || tujuanLainnya.trim().isNotEmpty()) &&
+                    merkTipe.trim().isNotEmpty() && (jumlah.toIntOrNull() ?: 0) > 0,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
@@ -860,6 +883,39 @@ private fun CabangSelector(selected: String, onSelect: (String) -> Unit) {
                     group.cabang.forEach { c ->
                         DropdownMenuItem(text = { Text(c.label) }, onClick = { onSelect(c.kodeDealer); expanded = false })
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Dropdown tujuan pengambilan aki — slug enum backend (pola CabangSelector/ItemFincoyDropdown). */
+@Composable
+private fun AkiTujuanDropdown(selected: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Text("Tujuan *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = akiTujuanLabel(selected).let { if (selected.isBlank()) "Pilih tujuan…" else it },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (selected.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                AKI_TUJUAN_OPTIONS.forEach { (slug, label) ->
+                    DropdownMenuItem(text = { Text(label) }, onClick = { onSelect(slug); expanded = false })
                 }
             }
         }
