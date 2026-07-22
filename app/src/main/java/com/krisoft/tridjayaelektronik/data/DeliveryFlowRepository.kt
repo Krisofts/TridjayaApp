@@ -9,6 +9,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryCreateResult
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -91,6 +92,15 @@ class DeliveryFlowRepository @Inject constructor(
     /** 088: tandai sudah chat konsumen (H-1). */
     suspend fun chatConsumer(id: String): AuthResult<DeliveryJobDto> =
         call("Gagal mencatat chat konsumen") { api.chatConsumer(id) }
+
+    /** Simpan urutan muatan driver; abaikan body sukses, hanya status. */
+    suspend fun reorderLoads(ids: List<String>): AuthResult<Unit> = try {
+        val response = api.reorderLoads(ReorderBody(ids))
+        if (response.isSuccessful) AuthResult.Success(Unit)
+        else parseError(response, "Gagal menyimpan urutan muatan")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
 
     /** Autocomplete barang Input SPK — `search` min. 2 karakter, di-scope `kodeDealer`. */
     suspend fun stokCabang(search: String, kodeDealer: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow>> = try {

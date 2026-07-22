@@ -197,7 +197,7 @@ fun HomeNavHost(
         }
         composable(ROUTE_DLV_DRIVER) {
             // Driver: backend meng-scope antrian (assigned + in_transit) berdasarkan role, tanpa filter status.
-            DeliveryQueueScreen("Tugas Antar", status = null, onBack = { navController.popBackStack() },
+            DeliveryQueueScreen("Tugas Antar", status = null, reorderable = true, onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
         composable(ROUTE_DLV_HISTORY) {

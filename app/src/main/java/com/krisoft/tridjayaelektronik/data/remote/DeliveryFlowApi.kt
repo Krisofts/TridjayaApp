@@ -21,6 +21,8 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryListData
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryUploadResponse
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.ReorderBody
+import com.krisoft.tridjayaelektronik.data.model.ReorderResult
 import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangData
@@ -88,6 +90,10 @@ interface DeliveryFlowApi {
     /** 088: catat driver sudah chat konsumen H-1 (idempoten, fan-out per batch SPK). */
     @POST("api/inventory/delivery/{id}/chat-consumer")
     suspend fun chatConsumer(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
+
+    /** Urutan muatan driver (posisi array = urutan muat); hanya job milik driver pemanggil. */
+    @POST("api/inventory/delivery/driver/reorder")
+    suspend fun reorderLoads(@Body body: ReorderBody): Response<ApiResponse<ReorderResult>>
 
     /** Autocomplete barang Input SPK, di-scope satu cabang. */
     @GET("api/inventory/stok-cabang")

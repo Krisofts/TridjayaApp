@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,7 +35,9 @@ import androidx.compose.material.icons.rounded.Discount
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.LocalShipping
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -42,6 +45,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -148,6 +152,7 @@ fun DeliveryQueueScreen(
     title: String,
     status: String?,
     view: String? = null,
+    reorderable: Boolean = false,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     viewModel: DeliveryFlowViewModel = hiltViewModel()
@@ -171,12 +176,34 @@ fun DeliveryQueueScreen(
                         title = "Antrian kosong", subtitle = "Belum ada job pada tahap ini."
                     )
                 }
-            else -> LazyColumn(
-                modifier = contentModifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp).let { PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom) },
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(state.items, key = { it.id }) { job -> JobCard(job, onClick = { onOpen(job.id) }) }
+            else -> Column(modifier = contentModifier.fillMaxSize()) {
+                state.actionError?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp))
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    itemsIndexed(state.items, key = { _, it -> it.id }) { index, job ->
+                        if (reorderable) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.weight(1f)) { JobCard(job, onClick = { onOpen(job.id) }) }
+                                Column {
+                                    IconButton(onClick = { viewModel.moveLoad(job.id, up = true) }, enabled = index > 0) {
+                                        Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Naikkan urutan")
+                                    }
+                                    IconButton(onClick = { viewModel.moveLoad(job.id, up = false) }, enabled = index < state.items.size - 1) {
+                                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Turunkan urutan")
+                                    }
+                                }
+                            }
+                        } else {
+                            JobCard(job, onClick = { onOpen(job.id) })
+                        }
+                    }
+                }
             }
         }
     }
@@ -251,6 +278,17 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                             TextButton(onClick = { runCatching { uriHandler.openUri(url) } }) { Text("Buka Lokasi Maps") }
                         }
                     }
+                }
+                Spacer(Modifier.height(14.dp))
+                val shareContext = LocalContext.current
+                ExpressiveOutlinedButton(onClick = {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Lacak pengiriman Anda: https://tridjaya.com/cek-resi/${job.id}")
+                    }
+                    shareContext.startActivity(android.content.Intent.createChooser(send, "Bagikan resi"))
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Bagikan Resi")
                 }
                 Spacer(Modifier.height(14.dp))
                 state.actionError?.let {

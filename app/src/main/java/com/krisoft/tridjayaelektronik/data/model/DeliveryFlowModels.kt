@@ -350,6 +350,13 @@ data class DeliverBody(
     val cashPhotoUrl: String? = null
 )
 
+/** Body reorder muatan driver (`POST /delivery/driver/reorder`) — array posisi = urutan muat. */
+@Serializable
+data class ReorderBody(val orderedIds: List<String>)
+
+@Serializable
+data class ReorderResult(val count: Int = 0)
+
 // ── Form pengambilan aki (PDI gate, migrasi 082) ─────────────────────────────
 
 /** Kategori PDI (`GET /delivery/config/categories`) — `requiresAkiForm` = gate hard-block submit PDI. */

@@ -98,6 +98,25 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Geser urutan muatan driver (manifest). Optimistic; gagal → reload + error. */
+    fun moveLoad(id: String, up: Boolean) {
+        val current = _state.value.items
+        val idx = current.indexOfFirst { it.id == id }
+        val target = if (up) idx - 1 else idx + 1
+        if (idx == -1 || target < 0 || target >= current.size) return
+        val swapped = current.toMutableList().apply { val t = this[idx]; this[idx] = this[target]; this[target] = t }
+        _state.update { it.copy(items = swapped) }
+        viewModelScope.launch {
+            when (val res = repository.reorderLoads(swapped.map { it.id })) {
+                is AuthResult.Success -> {}
+                is AuthResult.Failure -> {
+                    _state.update { it.copy(actionError = res.message) }
+                    loadQueue(status = null, view = null)
+                }
+            }
+        }
+    }
+
     fun loadDetail(id: String) {
         _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null, driverChecklist = emptyList()) }
         deliverPhotoBytes = null
