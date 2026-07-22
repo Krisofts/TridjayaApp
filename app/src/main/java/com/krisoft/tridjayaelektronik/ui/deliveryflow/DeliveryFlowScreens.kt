@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.ui.deliveryflow
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,12 +32,20 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Discount
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.LocalShipping
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,7 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryItemBody
+import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
@@ -71,6 +81,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import java.io.File
+import kotlinx.coroutines.delay
 
 // ── Meta status ──────────────────────────────────────────────────────────────
 
@@ -110,6 +121,17 @@ private fun InfoLine(label: String, value: String?) {
     }
 }
 
+// Tujuan pengambilan aki — WAJIB salah satu slug enum backend (aki.rs TUJUAN_VALID).
+private val AKI_TUJUAN_OPTIONS = listOf(
+    "pemasangan_unit_baru" to "Pemasangan unit baru",
+    "penggantian_garansi" to "Penggantian garansi",
+    "service_repair" to "Service / repair",
+    "display" to "Display",
+    "lainnya" to "Lainnya…",
+)
+internal fun akiTujuanLabel(slug: String?): String =
+    AKI_TUJUAN_OPTIONS.firstOrNull { it.first == slug }?.second ?: (slug ?: "-")
+
 @Composable
 private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
     val base = Modifier.fillMaxWidth()
@@ -141,6 +163,7 @@ fun DeliveryQueueScreen(
     title: String,
     status: String?,
     view: String? = null,
+    reorderable: Boolean = false,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     viewModel: DeliveryFlowViewModel = hiltViewModel()
@@ -164,12 +187,34 @@ fun DeliveryQueueScreen(
                         title = "Antrian kosong", subtitle = "Belum ada job pada tahap ini."
                     )
                 }
-            else -> LazyColumn(
-                modifier = contentModifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp).let { PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom) },
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(state.items, key = { it.id }) { job -> JobCard(job, onClick = { onOpen(job.id) }) }
+            else -> Column(modifier = contentModifier.fillMaxSize()) {
+                state.actionError?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp))
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    itemsIndexed(state.items, key = { _, it -> it.id }) { index, job ->
+                        if (reorderable) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.weight(1f)) { JobCard(job, onClick = { onOpen(job.id) }) }
+                                Column {
+                                    IconButton(onClick = { viewModel.moveLoad(job.id, up = true) }, enabled = index > 0) {
+                                        Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Naikkan urutan")
+                                    }
+                                    IconButton(onClick = { viewModel.moveLoad(job.id, up = false) }, enabled = index < state.items.size - 1) {
+                                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Turunkan urutan")
+                                    }
+                                }
+                            }
+                        } else {
+                            JobCard(job, onClick = { onOpen(job.id) })
+                        }
+                    }
+                }
             }
         }
     }
@@ -215,20 +260,64 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         InfoLine("Driver", job.assignedDriverName)
                         InfoLine("Jadwal", job.scheduledDate)
                         InfoLine("Sales", job.salesName)
+                        InfoLine("Kategori", job.kategori)
+                        InfoLine("Diskon", job.diskon?.takeIf { it > 0 }?.let { rupiah(it) })
+                        InfoLine("DP Net", job.dpNet?.let { rupiah(it) })
+                        InfoLine("Pembayaran 1", job.pembayaran1?.let { rupiah(it) })
+                        InfoLine("Angsuran", job.angsuran?.let { rupiah(it) })
+                        InfoLine("Tenor", job.tenor?.let { "$it bln" })
+                        InfoLine("Sumber Order", when {
+                            job.orderSource == "kbk" -> "KBK · ${job.kbkBrokerNama ?: job.kbkBrokerKode ?: "-"}"
+                            job.orderSource != null -> "Sales"
+                            else -> null
+                        })
+                        InfoLine("Komisi Sales", job.komisiSales?.let { rupiah(it) })
+                        InfoLine("Komisi KBK", job.komisiKbk?.let { rupiah(it) })
+                        InfoLine("No. HP KBK", job.noHpKbk)
+                        InfoLine("Sosmed", listOfNotNull(
+                            job.sosmedTiktok?.let { "TikTok $it" },
+                            job.sosmedFacebook?.let { "FB $it" },
+                            job.sosmedInstagram?.let { "IG $it" },
+                        ).joinToString(" · ").ifBlank { null })
+                        InfoLine("Terima Uang Driver", job.driverTerimaUang?.takeIf { it }?.let {
+                            job.driverTerimaNominal?.let { n -> rupiah(n) } ?: "Ya"
+                        })
+                        InfoLine("Chat Konsumen", job.consumerChatAt)
                         job.reviewRating?.let { InfoLine("Rating", "★".repeat(it)) }
+                        job.customerMapUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                            TextButton(onClick = { runCatching { uriHandler.openUri(url) } }) { Text("Buka Lokasi Maps") }
+                        }
                     }
+                }
+                Spacer(Modifier.height(14.dp))
+                val shareContext = LocalContext.current
+                ExpressiveOutlinedButton(onClick = {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Lacak pengiriman Anda: " + com.krisoft.tridjayaelektronik.BuildConfig.API_BASE_URL.trimEnd('/') + "/cek-resi/" + job.id)
+                    }
+                    shareContext.startActivity(android.content.Intent.createChooser(send, "Bagikan resi"))
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Bagikan Resi")
                 }
                 Spacer(Modifier.height(14.dp))
                 state.actionError?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
                 }
+                if (job.driverTerimaUang != null &&
+                    (job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT)
+                ) {
+                    ChatConsumerCard(job, viewModel, state.submitting)
+                    Spacer(Modifier.height(14.dp))
+                }
                 when (job.status) {
-                    DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist)
+                    DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
                     DeliveryStatusKey.PENDING_SPK -> SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
                     DeliveryStatusKey.PENDING_DELIVERY_NOTE -> DeliveryNoteAction(job, viewModel, state.submitting)
-                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job.id, viewModel, state.submitting, state.drivers)
+                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job, viewModel, state.submitting, state.drivers)
                     DeliveryStatusKey.ASSIGNED -> SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
-                    DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job.id, viewModel, state.submitting)
+                    DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job, viewModel, state.submitting, state.driverChecklist)
                     else -> Text("Tidak ada aksi pada tahap ini.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -246,7 +335,11 @@ private fun SimpleAction(label: String, submitting: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean, checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>) {
+private fun PdiAction(
+    id: String, vm: DeliveryFlowViewModel, submitting: Boolean,
+    checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>,
+    requiresAki: Boolean, akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>
+) {
     var serial by remember { mutableStateOf("") }
     var engine by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -291,6 +384,48 @@ private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean
 
     Spacer(Modifier.height(10.dp))
     PhotoBox(if (hasPhoto) file else null, "Foto unit siap (opsional)") { cam.launch(uri) }
+
+    val akiPending = requiresAki && akiForms.isEmpty()
+    if (requiresAki) {
+        Spacer(Modifier.height(14.dp))
+        if (akiPending) {
+            var tujuan by remember { mutableStateOf("") }
+            var tujuanLainnya by remember { mutableStateOf("") }
+            var merkTipe by remember { mutableStateOf("") }
+            var jumlah by remember { mutableStateOf("") }
+            Text("Form Pengambilan Aki (wajib)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            AkiTujuanDropdown(tujuan, { tujuan = it })
+            if (tujuan == "lainnya") {
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(tujuanLainnya, { tujuanLainnya = it }, label = "Tujuan lainnya *", modifier = Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(10.dp))
+            ExpressiveTextField(merkTipe, { merkTipe = it }, label = "Merk / Tipe", modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            ExpressiveTextField(jumlah, { jumlah = it.filter { c -> c.isDigit() } }, label = "Jumlah (pcs)", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            ExpressiveOutlinedButton(
+                onClick = {
+                    vm.createAkiForm(
+                        id,
+                        com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody(
+                            tujuan = tujuan, merkTipe = merkTipe.trim(), jumlahPcs = jumlah.toIntOrNull() ?: 0,
+                            tujuanLainnya = if (tujuan == "lainnya") tujuanLainnya.trim().ifBlank { null } else null
+                        )
+                    ) {}
+                },
+                enabled = !submitting && tujuan.isNotBlank() && (tujuan != "lainnya" || tujuanLainnya.trim().isNotEmpty()) &&
+                    merkTipe.trim().isNotEmpty() && (jumlah.toIntOrNull() ?: 0) > 0,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                else Text("Simpan Form Aki")
+            }
+        } else {
+            Text("Form aki tercatat ✓ (${akiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
+        }
+    }
     Spacer(Modifier.height(14.dp))
 
     val missingCatatan = checklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
@@ -299,10 +434,11 @@ private fun PdiAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean
             val bodies = checklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
             vm.submitPdi(id, serial, engine, bodies) {}
         },
-        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan, modifier = Modifier.fillMaxWidth()
+        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan && (!requiresAki || akiForms.isNotEmpty()),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        else Text(if (missingCatatan) "Isi catatan item 'Tidak'" else "Simpan PDI")
+        if (submitting && !akiPending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        else Text(if (missingCatatan) "Isi catatan item 'Tidak'" else if (akiPending) "Isi form aki dulu" else "Simpan PDI")
     }
 }
 
@@ -319,10 +455,14 @@ private fun DeliveryNoteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
 }
 
 @Composable
-private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean, drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto>) {
+private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean, drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto>) {
+    val id = job.id
     var driverId by remember { mutableStateOf("") }
     var driverName by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf("2026-07-22") }
+    // minSdk 24 tanpa coreLibraryDesugaring (dicek app/build.gradle.kts) — java.time.LocalDate
+    // butuh API 26, jadi pakai SimpleDateFormat.
+    var date by remember { mutableStateOf(java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())) }
+    var mapUrl by remember { mutableStateOf(job.customerMapUrl.orEmpty()) }
 
     Text("Assign Driver + Jadwal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
@@ -347,14 +487,23 @@ private fun AssignAction(id: String, vm: DeliveryFlowViewModel, submitting: Bool
     }
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(date, { date = it }, label = "Jadwal kirim (yyyy-mm-dd)", modifier = Modifier.fillMaxWidth())
+    if (job.customerMapUrl.isNullOrBlank()) {
+        Spacer(Modifier.height(10.dp))
+        ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Google Maps konsumen (wajib)", modifier = Modifier.fillMaxWidth())
+    }
     Spacer(Modifier.height(14.dp))
-    ExpressiveFilledButton(onClick = { vm.assign(id, driverId, driverName, date) {} }, enabled = !submitting && driverId.trim().isNotEmpty() && date.trim().isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+    ExpressiveFilledButton(
+        onClick = { vm.assign(id, driverId, driverName, date, mapUrl.trim().ifBlank { null }) {} },
+        enabled = !submitting && driverId.trim().isNotEmpty() && date.trim().isNotEmpty() && mapUrl.trim().isNotEmpty(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Assign Driver")
     }
 }
 
 @Composable
-private fun DeliverAction(id: String, vm: DeliveryFlowViewModel, submitting: Boolean) {
+private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean, driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>) {
+    val id = job.id
     var rating by remember { mutableStateOf(5) }
     var comment by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -362,10 +511,46 @@ private fun DeliverAction(id: String, vm: DeliveryFlowViewModel, submitting: Boo
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
     var hasPhoto by remember { mutableStateOf(false) }
     val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onDeliverPhotoCaptured(file); hasPhoto = true } }
+    // 088: foto bukti terima uang (wajib bila job.driverTerimaUang == true)
+    val needCash = job.driverTerimaUang == true
+    val cashFile = remember { File(context.cacheDir, "delivery/cash_$id.jpg").apply { parentFile?.mkdirs() } }
+    val cashUri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cashFile) }
+    var hasCashPhoto by remember { mutableStateOf(false) }
+    val cashCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onCashPhotoCaptured(cashFile); hasCashPhoto = true } }
+    // 088: checklist serah-terima stage=driver (fail-open bila kosong)
+    val hasil = remember(driverChecklist) { mutableStateMapOf<String, String>().apply { driverChecklist.forEach { put(it.id, "ok") } } }
+    val catatan = remember(driverChecklist) { mutableStateMapOf<String, String>() }
 
     Text("Serah Terima", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
     PhotoBox(if (hasPhoto) file else null, "Foto serah terima (wajib)") { cam.launch(uri) }
+    if (needCash) {
+        Spacer(Modifier.height(10.dp))
+        PhotoBox(if (hasCashPhoto) cashFile else null, "Foto serah terima uang (wajib${job.driverTerimaNominal?.let { " · ${rupiah(it)}" } ?: ""})") { cashCam.launch(cashUri) }
+    }
+    if (driverChecklist.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text("Checklist Serah Terima", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        driverChecklist.sortedBy { it.urutan }.forEach { item ->
+            Spacer(Modifier.height(6.dp))
+            Text(item.itemLabel + if (item.wajib) " *" else "", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("ok" to "OK", "tidak" to "Tidak", "na" to "N/A").forEach { (k, l) ->
+                    val sel = hasil[item.id] == k
+                    Surface(onClick = { hasil[item.id] = k }, shape = RoundedCornerShape(50),
+                        color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                        Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+                    }
+                }
+            }
+            if (hasil[item.id] == "tidak") {
+                Spacer(Modifier.height(4.dp))
+                ExpressiveTextField(catatan[item.id].orEmpty(), { catatan[item.id] = it }, label = "Catatan (wajib untuk Tidak)", modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
     Spacer(Modifier.height(12.dp))
     Text("Rating pengiriman (wajib)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
     Row {
@@ -379,11 +564,61 @@ private fun DeliverAction(id: String, vm: DeliveryFlowViewModel, submitting: Boo
     }
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(comment, { comment = it }, label = "Komentar (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
+    // 088: hint gate chat H-1 (backend otoritatif; klien cuma peringatan dini)
+    if (job.driverTerimaUang != null && job.consumerChatAt == null) {
+        Spacer(Modifier.height(8.dp))
+        Text("Belum chat konsumen — serah terima akan ditolak backend (wajib chat ≥1 jam sebelumnya).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+    }
     Spacer(Modifier.height(14.dp))
-    ExpressiveFilledButton(onClick = { vm.deliver(id, rating, comment) {} }, enabled = !submitting && hasPhoto, modifier = Modifier.fillMaxWidth()) {
+    val missingCatatan = driverChecklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
+    val canDeliver = hasPhoto && (!needCash || hasCashPhoto) && !missingCatatan
+    ExpressiveFilledButton(
+        onClick = {
+            val bodies = driverChecklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
+            vm.deliver(id, rating, comment, bodies) {}
+        },
+        enabled = !submitting && canDeliver, modifier = Modifier.fillMaxWidth()
+    ) {
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
-        Text(if (hasPhoto) "Tandai Terkirim" else "Ambil foto dulu")
+        Text(when {
+            !hasPhoto -> "Ambil foto dulu"
+            needCash && !hasCashPhoto -> "Ambil foto uang dulu"
+            missingCatatan -> "Isi catatan item 'Tidak'"
+            else -> "Tandai Terkirim"
+        })
+    }
+}
+
+/** 088: chat konsumen H-1 — wajib ≥1 jam sebelum serah terima (gate backend). */
+@Composable
+private fun ChatConsumerCard(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text("Chat Konsumen (H-1)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            if (job.consumerChatAt != null) {
+                Text("Sudah chat: ${job.consumerChatAt}", style = MaterialTheme.typography.labelMedium, color = Color(0xFF12B76A), fontWeight = FontWeight.SemiBold)
+            } else {
+                Text("Wajib chat konsumen minimal 1 jam sebelum serah terima.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val phone = job.customerPhone?.filter { it.isDigit() }.orEmpty()
+                    .let { if (it.startsWith("0")) "62" + it.drop(1) else it }
+                ExpressiveOutlinedButton(
+                    onClick = { if (phone.isNotBlank()) runCatching { uriHandler.openUri("https://wa.me/$phone") } },
+                    enabled = phone.isNotBlank(), modifier = Modifier.weight(1f)
+                ) { Text("Chat WA") }
+                if (job.consumerChatAt == null) {
+                    ExpressiveFilledButton(onClick = { vm.chatConsumer(job.id) }, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        else Text("Tandai Sudah Chat")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -409,98 +644,282 @@ private fun PhotoBox(file: File?, label: String, onCapture: () -> Unit) {
 fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(state.actionDone) { if (state.actionDone) onBack() }
+    LaunchedEffect(Unit) { viewModel.loadDeliveryContextForCreate() }
 
+    // Header — Pelanggan
     var pelanggan by remember { mutableStateOf("") }
     var telepon by remember { mutableStateOf("") }
     var alamat by remember { mutableStateOf("") }
-    var kodeBarang by remember { mutableStateOf("") }
-    var namaBarang by remember { mutableStateOf("") }
-    var kategori by remember { mutableStateOf("") }
-    var merk by remember { mutableStateOf("") }
-    var tipe by remember { mutableStateOf("") }
-    var warna by remember { mutableStateOf("") }
-    var qty by remember { mutableStateOf("1") }
-    var otr by remember { mutableStateOf("") }
-    var payment by remember { mutableStateOf("cash") }
+    var mapUrl by remember { mutableStateOf("") }
+    var nik by remember { mutableStateOf("") }
+    var sosTiktok by remember { mutableStateOf("") }
+    var sosFb by remember { mutableStateOf("") }
+    var sosIg by remember { mutableStateOf("") }
     var keterangan by remember { mutableStateOf("") }
+    // Barang multi-unit
+    var spkCabang by remember { mutableStateOf("") }
+    var items by remember { mutableStateOf(listOf<SpkItemDraft>()) }
+    var barangSearch by remember { mutableStateOf("") }
+    var brokerSearch by remember { mutableStateOf("") }
+    var attemptedSubmit by remember { mutableStateOf(false) }
+    var sec1 by remember { mutableStateOf(true) }
+    var sec2 by remember { mutableStateOf(true) }
+    var gantiCabangTarget by remember { mutableStateOf<String?>(null) }
 
-    val otrValue = otr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+    LaunchedEffect(state.deliveryContext) {
+        if (spkCabang.isBlank()) state.deliveryContext?.kodeDealer?.let { spkCabang = it }
+    }
+    LaunchedEffect(barangSearch, spkCabang) { delay(300); viewModel.searchStok(barangSearch, spkCabang) }
+    LaunchedEffect(brokerSearch) { delay(300); viewModel.searchBrokers(brokerSearch) }
+
+    fun applyCabangChange(next: String) {
+        spkCabang = next; items = emptyList(); barangSearch = ""
+        viewModel.searchStok("", next); viewModel.clearSerialCache()
+    }
+
+    val totalUnits = items.sumOf { it.qtyInt ?: 0 }
+    val itemsValid = items.isNotEmpty() && items.all { it.issues().isEmpty() }
     val canSubmit = pelanggan.trim().length >= 3 && telepon.trim().length >= 6 &&
-        kodeBarang.trim().isNotEmpty() && namaBarang.trim().isNotEmpty() && kategori.trim().isNotEmpty() &&
-        merk.trim().isNotEmpty() && tipe.trim().isNotEmpty() && otrValue > 0
+        spkCabang.isNotBlank() && itemsValid && totalUnits in 1..200
 
     TridjayaCollapsibleHeader(title = "Input SPK", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        Column(contentModifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom)) {
-            SectionLabel("Pelanggan")
-            ExpressiveTextField(pelanggan, { pelanggan = it }, label = "Nama pelanggan", modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(telepon, { telepon = it }, label = "No. HP", keyboardType = KeyboardType.Phone, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(16.dp))
-            SectionLabel("Unit")
-            ExpressiveTextField(kodeBarang, { kodeBarang = it }, label = "Kode barang", modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(namaBarang, { namaBarang = it }, label = "Nama barang", modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExpressiveTextField(kategori, { kategori = it }, label = "Kategori", modifier = Modifier.weight(1f))
-                ExpressiveTextField(merk, { merk = it }, label = "Merk", modifier = Modifier.weight(1f))
+        Column(
+            contentModifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SpkSection("1. Pelanggan", sec1, { sec1 = !sec1 }) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ExpressiveTextField(pelanggan, { pelanggan = it }, label = "Nama pelanggan *", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(telepon, { telepon = it }, label = "No. HP *", keyboardType = KeyboardType.Phone, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Lokasi Maps", keyboardType = KeyboardType.Uri, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(nik, { nik = it }, label = "NIK", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(sosTiktok, { sosTiktok = it }, label = "TikTok", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
+                }
             }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExpressiveTextField(tipe, { tipe = it }, label = "Tipe", modifier = Modifier.weight(1f))
-                ExpressiveTextField(warna, { warna = it }, label = "Warna", modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExpressiveTextField(qty, { qty = it.filter { c -> c.isDigit() } }, label = "Qty", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
-                ExpressiveTextField(otr, { otr = it.filter { c -> c.isDigit() } }, label = "OTR / unit", keyboardType = KeyboardType.Number, modifier = Modifier.weight(2f))
-            }
-            Spacer(Modifier.height(12.dp))
-            Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("cash" to "Cash", "credit" to "Kredit").forEach { (k, l) ->
-                    val sel = payment == k
-                    Surface(onClick = { payment = k }, shape = RoundedCornerShape(50),
-                        color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
-                        Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+
+            SpkSection("2. Barang (${items.size} barang · $totalUnits unit)", sec2, { sec2 = !sec2 }) {
+                CabangSelector(
+                    selected = spkCabang,
+                    onSelect = { next ->
+                        if (next.isBlank() || next == spkCabang) return@CabangSelector
+                        if (items.isNotEmpty()) gantiCabangTarget = next else applyCabangChange(next)
+                    }
+                )
+                Spacer(Modifier.height(10.dp))
+                if (spkCabang.isNotBlank()) {
+                    ExpressiveTextField(barangSearch, { barangSearch = it }, label = "Cari & tambah barang (min. 2 karakter)", modifier = Modifier.fillMaxWidth())
+                    when {
+                        state.stokLoading -> Text("Mencari…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                        state.stokAttempted && state.stokResults.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                    }
+                    if (state.stokResults.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            state.stokResults.forEach { row ->
+                                Surface(
+                                    onClick = {
+                                        // Prepend + collapse kartu lain (baru = fokus)
+                                        items = listOf(newSpkItemDraft(row)) + items.map { it.copy(expanded = false) }
+                                        barangSearch = ""
+                                        viewModel.ensureSerials(spkCabang, row.kode.trim())
+                                    },
+                                    shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                        Text(row.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${row.kode} · ${row.kategori} · ${row.merk}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text("Pilih Cabang SPK dulu untuk mencari stok.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                if (items.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items.forEachIndexed { idx, item ->
+                            val key = "$spkCabang|${item.kodeBarang}"
+                            val usedElsewhere = items.filterIndexed { i, o -> i != idx && o.serialNumber.isNotBlank() }.map { it.serialNumber }
+                            SpkItemCard(
+                                index = idx,
+                                item = item,
+                                issues = if (attemptedSubmit) item.issues() else emptyList(),
+                                serialOptions = (state.serialOptions[key] ?: emptyList()).filter { it !in usedElsewhere },
+                                brokerResults = state.brokerResults,
+                                brokerSearch = brokerSearch,
+                                onBrokerSearch = { brokerSearch = it },
+                                onUpdate = { updated ->
+                                    // Maks 1 kartu expand — expand kartu ini = collapse lainnya
+                                    // (state pencarian broker dibagi bersama; cegah bocor antar kartu).
+                                    val collapseOthers = updated.expanded && !item.expanded
+                                    items = items.mapIndexed { i, o ->
+                                        if (i == idx) updated else if (collapseOthers) o.copy(expanded = false) else o
+                                    }
+                                },
+                                onRemove = { items = items.filterIndexed { i, _ -> i != idx } },
+                                onSerialFocus = { viewModel.ensureSerials(spkCabang, item.kodeBarang) },
+                            )
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
-            state.actionError?.let { Spacer(Modifier.height(8.dp)); Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) }
-            Spacer(Modifier.height(18.dp))
+
+            state.actionError?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) }
+            if (attemptedSubmit && !canSubmit) {
+                Text(
+                    when {
+                        pelanggan.trim().length < 3 || telepon.trim().length < 6 -> "Lengkapi nama & No. HP pelanggan."
+                        items.isEmpty() -> "Tambah minimal 1 barang dari pencarian stok."
+                        totalUnits > 200 -> "Total unit maksimal 200."
+                        else -> "Ada barang belum lengkap — cek tanda merah di kartu."
+                    },
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error
+                )
+            }
             ExpressiveFilledButton(
                 onClick = {
-                    viewModel.createSpk(
-                        pelanggan, telepon, alamat,
-                        CreateDeliveryItemBody(
-                            kodeBarang = kodeBarang.trim(), namaBarang = namaBarang.trim(), kategori = kategori.trim(),
-                            merk = merk.trim(), tipe = tipe.trim(), warna = warna.trim().ifBlank { null },
-                            qty = qty.toIntOrNull() ?: 1, paymentType = payment, hargaOtr = otrValue
-                        ),
-                        keterangan
-                    ) {}
+                    attemptedSubmit = true
+                    if (!canSubmit) return@ExpressiveFilledButton
+                    val body = CreateDeliveryBody(
+                        customerName = pelanggan.trim(), customerPhone = telepon.trim(),
+                        customerAddress = alamat.trim().ifBlank { null },
+                        customerMapUrl = mapUrl.trim().ifBlank { null },
+                        customerNik = nik.trim().ifBlank { null },
+                        salesNik = null,
+                        sosmedTiktok = sosTiktok.trim().ifBlank { null },
+                        sosmedFacebook = sosFb.trim().ifBlank { null },
+                        sosmedInstagram = sosIg.trim().ifBlank { null },
+                        keterangan = keterangan.trim().ifBlank { null },
+                        items = items.map { it.toItemBody(spkCabang, BranchRegions.dealerRegion(spkCabang)) }
+                    )
+                    viewModel.createSpk(body) {}
                 },
-                enabled = canSubmit && !state.submitting, modifier = Modifier.fillMaxWidth()
+                enabled = !state.submitting, modifier = Modifier.fillMaxWidth()
             ) {
-                if (state.submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Buat SPK")
+                if (state.submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                else Text(if (totalUnits > 0) "Catat Penjualan ($totalUnits unit)" else "Catat Penjualan")
             }
-            if (!canSubmit) { Spacer(Modifier.height(6.dp)); Text("Lengkapi pelanggan, HP, dan data unit + OTR.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            Spacer(Modifier.height(24.dp))
+            Text("Tiap unit fisik jadi baris antrian PDI terpisah.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+
+    gantiCabangTarget?.let { next ->
+        AlertDialog(
+            onDismissRequest = { gantiCabangTarget = null },
+            title = { Text("Ganti cabang?", fontWeight = FontWeight.Bold) },
+            text = { Text("Ganti cabang akan mengosongkan semua barang terpilih. Lanjutkan?") },
+            confirmButton = { TextButton(onClick = { applyCabangChange(next); gantiCabangTarget = null }) { Text("Ya") } },
+            dismissButton = { TextButton(onClick = { gantiCabangTarget = null }) { Text("Batal") } }
+        )
     }
 }
 
 @Composable
 private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+}
+
+/** Kartu section collapsible untuk Input SPK — header tap buka/tutup isi. */
+@Composable
+private fun SpkSection(title: String, expanded: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (expanded) {
+                Spacer(Modifier.height(12.dp))
+                content()
+            }
+        }
+    }
+}
+
+/** Selektor Cabang SPK — wajib, tanpa opsi kosong. Pola visual mirror
+ *  `OptionDropdownField` (`ui/leads/AddLeadScreen.kt`), grouped per region. */
+@Composable
+private fun CabangSelector(selected: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val currentLabel = BranchRegions.DEALER_LABEL[selected] ?: ""
+    Column {
+        Text("Cabang SPK *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = currentLabel.ifBlank { "Pilih cabang…" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (currentLabel.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                BranchRegions.cabangOptionsByRegion().forEach { group ->
+                    Text(
+                        group.label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                    group.cabang.forEach { c ->
+                        DropdownMenuItem(text = { Text(c.label) }, onClick = { onSelect(c.kodeDealer); expanded = false })
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Dropdown tujuan pengambilan aki — slug enum backend (pola CabangSelector/ItemFincoyDropdown). */
+@Composable
+private fun AkiTujuanDropdown(selected: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Text("Tujuan *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = akiTujuanLabel(selected).let { if (selected.isBlank()) "Pilih tujuan…" else it },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (selected.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                AKI_TUJUAN_OPTIONS.forEach { (slug, label) ->
+                    DropdownMenuItem(text = { Text(label) }, onClick = { onSelect(slug); expanded = false })
+                }
+            }
+        }
+    }
 }
 
 // ── Approval Diskon per-baris ────────────────────────────────────────────────

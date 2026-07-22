@@ -1,9 +1,14 @@
 package com.krisoft.tridjayaelektronik.data.remote
 
+import com.krisoft.tridjayaelektronik.data.model.AkiFormCreateData
+import com.krisoft.tridjayaelektronik.data.model.AkiFormsData
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
+import com.krisoft.tridjayaelektronik.data.model.BrokerListData
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
+import com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody
 import com.krisoft.tridjayaelektronik.data.model.DecisionBody
+import com.krisoft.tridjayaelektronik.data.model.DeliveryCategoriesData
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
 import com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto
 import com.krisoft.tridjayaelektronik.data.model.UsersListData
@@ -16,6 +21,11 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryListData
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryUploadResponse
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.ReorderBody
+import com.krisoft.tridjayaelektronik.data.model.ReorderResult
+import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
+import com.krisoft.tridjayaelektronik.data.model.SerialListData
+import com.krisoft.tridjayaelektronik.data.model.StokCabangData
 import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -72,7 +82,56 @@ interface DeliveryFlowApi {
     suspend fun uploadPhoto(@Part file: MultipartBody.Part): Response<ApiResponse<DeliveryUploadResponse>>
 
     @GET("api/inventory/delivery/config/checklist")
-    suspend fun checklist(@Query("kategori") kategori: String): Response<ApiResponse<ChecklistConfigData>>
+    suspend fun checklist(
+        @Query("kategori") kategori: String,
+        @Query("stage") stage: String? = null
+    ): Response<ApiResponse<ChecklistConfigData>>
+
+    /** 088: catat driver sudah chat konsumen H-1 (idempoten, fan-out per batch SPK). */
+    @POST("api/inventory/delivery/{id}/chat-consumer")
+    suspend fun chatConsumer(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
+
+    /** Urutan muatan driver (posisi array = urutan muat); hanya job milik driver pemanggil. */
+    @POST("api/inventory/delivery/driver/reorder")
+    suspend fun reorderLoads(@Body body: ReorderBody): Response<ApiResponse<ReorderResult>>
+
+    /** Autocomplete barang Input SPK, di-scope satu cabang. */
+    @GET("api/inventory/stok-cabang")
+    suspend fun stokCabang(
+        @Query("search") search: String,
+        @Query("kodeDealer") kodeDealer: String,
+        @Query("limit") limit: Int = 24
+    ): Response<ApiResponse<StokCabangData>>
+
+    /** Autocomplete broker KBK — di-scope query. */
+    @GET("api/inventory/delivery/brokers")
+    suspend fun brokers(@Query("q") q: String): Response<ApiResponse<BrokerListData>>
+
+    /** Registry serial per cabang+barang (picker No. Rangka Input SPK). */
+    @GET("api/inventory/serial-numbers")
+    suspend fun serialNumbers(
+        @Query("kodeDealer") kodeDealer: String,
+        @Query("kodeBarang") kodeBarang: String,
+        @Query("onlySerial") onlySerial: Boolean = true,
+        @Query("excludeAssigned") excludeAssigned: Boolean = true
+    ): Response<ApiResponse<SerialListData>>
+
+    @GET("api/inventory/delivery/config/categories")
+    suspend fun categories(): Response<ApiResponse<DeliveryCategoriesData>>
+
+    @GET("api/inventory/delivery/{id}/aki-form")
+    suspend fun jobAkiForms(@Path("id") id: String): Response<ApiResponse<AkiFormsData>>
+
+    @POST("api/inventory/delivery/{id}/aki-form")
+    suspend fun createAkiForm(@Path("id") id: String, @Body body: CreateAkiFormBody): Response<ApiResponse<AkiFormCreateData>>
+
+    /** Daftar riwayat form aki (admin/manager lintas cabang; PDI cabang sendiri). */
+    @GET("api/inventory/delivery/aki-forms")
+    suspend fun akiForms(): Response<ApiResponse<AkiFormsData>>
+
+    /** Tandai aki bekas dikembalikan. */
+    @POST("api/inventory/delivery/aki-forms/{id}/return")
+    suspend fun returnAkiForm(@Path("id") id: String, @Body body: ReturnAkiBody): Response<ApiResponse<AkiFormCreateData>>
 
     @GET("api/users")
     suspend fun users(@Query("role") role: String): Response<ApiResponse<UsersListData>>
