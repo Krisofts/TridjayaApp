@@ -661,7 +661,14 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                                 brokerResults = state.brokerResults,
                                 brokerSearch = brokerSearch,
                                 onBrokerSearch = { brokerSearch = it },
-                                onUpdate = { updated -> items = items.mapIndexed { i, o -> if (i == idx) updated else o } },
+                                onUpdate = { updated ->
+                                    // Maks 1 kartu expand — expand kartu ini = collapse lainnya
+                                    // (state pencarian broker dibagi bersama; cegah bocor antar kartu).
+                                    val collapseOthers = updated.expanded && !item.expanded
+                                    items = items.mapIndexed { i, o ->
+                                        if (i == idx) updated else if (collapseOthers) o.copy(expanded = false) else o
+                                    }
+                                },
                                 onRemove = { items = items.filterIndexed { i, _ -> i != idx } },
                                 onSerialFocus = { viewModel.ensureSerials(spkCabang, item.kodeBarang) },
                             )
