@@ -445,6 +445,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
         spkCabang = next
         pickedStok = null
         barangSearch = ""
+        viewModel.searchStok("", next)
     }
 
     val otrValue = otr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
@@ -554,7 +555,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                     viewModel.createSpk(
                         pelanggan, telepon, alamat,
                         CreateDeliveryItemBody(
-                            kodeBarang = row.kode, namaBarang = row.nama.trim(), kategori = row.kategori,
+                            kodeBarang = row.kode.trim(), namaBarang = row.nama.trim(), kategori = row.kategori,
                             merk = row.merk, tipe = row.tipe, warna = warna.trim().ifBlank { null },
                             qty = qty.toIntOrNull() ?: 1, paymentType = payment, hargaOtr = otrValue,
                             kodeDealer = spkCabang, kodeCabang = BranchRegions.dealerRegion(spkCabang)
