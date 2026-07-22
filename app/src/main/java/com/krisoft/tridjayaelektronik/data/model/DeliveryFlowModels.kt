@@ -160,6 +160,20 @@ data class StokCabangRow(
 @Serializable
 data class StokCabangData(val items: List<StokCabangRow> = emptyList())
 
+/** Broker KBK (`GET /inventory/delivery/brokers?q=`). camelCase 1:1. */
+@Serializable
+data class BrokerOption(val kode: String = "", val nama: String = "")
+
+@Serializable
+data class BrokerListData(val items: List<BrokerOption> = emptyList())
+
+/** Baris registry serial (`GET /inventory/serial-numbers`). Hanya serialNumber dipakai. */
+@Serializable
+data class SerialRegistryRow(val serialNumber: String = "")
+
+@Serializable
+data class SerialListData(val items: List<SerialRegistryRow> = emptyList())
+
 // ── Approval diskon per-baris (SPK) ──────────────────────────────────────────
 
 @Serializable
@@ -227,6 +241,15 @@ data class CreateDeliveryItemBody(
     val diskon: Double? = null,
     val alasanDiskon: String? = null,
     val dpNet: Double? = null,
+    val pembayaran1: Double? = null,
+    val angsuran: Double? = null,
+    val tenor: Int? = null,
+    val komisiSales: Double? = null,
+    val komisiKbk: Double? = null,
+    val noHpKbk: String? = null,
+    val orderSource: String? = null,
+    val kbkBrokerKode: String? = null,
+    val kbkBrokerNama: String? = null,
     val kodeDealer: String? = null,
     val kodeCabang: String? = null
 )
@@ -236,8 +259,12 @@ data class CreateDeliveryBody(
     val customerName: String,
     val customerPhone: String,
     val customerAddress: String? = null,
+    val customerMapUrl: String? = null,
     val customerNik: String? = null,
     val salesNik: String? = null,
+    val sosmedTiktok: String? = null,
+    val sosmedFacebook: String? = null,
+    val sosmedInstagram: String? = null,
     val keterangan: String? = null,
     val tanggalJual: String? = null,
     val items: List<CreateDeliveryItemBody>
