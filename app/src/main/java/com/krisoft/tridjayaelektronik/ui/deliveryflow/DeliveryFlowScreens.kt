@@ -875,10 +875,6 @@ private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
 }
 
-// Mirror web companyFacts.financingPartners. Sentinel Lainnya → free-text.
-private val FINCOY_PARTNERS = listOf("Adira Finance", "Spektra", "Kredivo", "Akulaku", "Indodana", "Home Credit")
-private const val FINCOY_LAINNYA = "__lainnya__"
-
 /** Kartu section collapsible untuk Input SPK — header tap buka/tutup isi. */
 @Composable
 private fun SpkSection(title: String, expanded: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
