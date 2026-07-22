@@ -372,6 +372,7 @@ data class AkiFormDto(
     val tanggal: String = "",
     val pengambilNama: String = "",
     val tujuan: String = "",
+    val tujuanLainnya: String? = null,
     val merkTipe: String = "",
     val jumlahPcs: Int = 0,
     val akiBekasStatus: String = "belum"
@@ -395,3 +396,7 @@ data class CreateAkiFormBody(
     val jumlahKeterangan: String? = null,
     val keterangan: String? = null
 )
+
+/** Body tandai aki bekas dikembalikan (`POST /aki-forms/{id}/return`); kosong = default backend. */
+@Serializable
+data class ReturnAkiBody(val jumlah: Int? = null, val keterangan: String? = null)

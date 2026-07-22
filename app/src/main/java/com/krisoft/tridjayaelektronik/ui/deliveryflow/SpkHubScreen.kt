@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
@@ -53,6 +54,7 @@ fun SpkHubScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
             Text("Antrian per tahap", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             HubEntry(Icons.Rounded.Discount, "Approval Diskon", "Setujui/tolak pengajuan diskon", Color(0xFFB5670C)) { onNavigate("diskon") }
             HubEntry(Icons.Rounded.FactCheck, "PDI", "Inspeksi unit sebelum kirim", Color(0xFF6941C6)) { onNavigate("pdi") }
+            HubEntry(Icons.Rounded.BatteryChargingFull, "Pengambilan Aki", "Daftar form aki + tandai dikembalikan", Color(0xFF9C27B0)) { onNavigate("aki") }
             HubEntry(Icons.Rounded.PointOfSale, "Kasir SPK", "Konfirmasi SPK ke GS", Color(0xFF0086C9)) { onNavigate("kasir") }
             HubEntry(Icons.Rounded.Receipt, "Surat Jalan", "Terbitkan surat jalan", Color(0xFF0E9384)) { onNavigate("note") }
             HubEntry(Icons.Rounded.CalendarToday, "Penjadwalan", "Assign driver + jadwal kirim", Color(0xFF1565C0)) { onNavigate("jadwal") }

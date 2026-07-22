@@ -21,6 +21,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryListData
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryUploadResponse
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangData
 import okhttp3.MultipartBody
@@ -117,6 +118,14 @@ interface DeliveryFlowApi {
 
     @POST("api/inventory/delivery/{id}/aki-form")
     suspend fun createAkiForm(@Path("id") id: String, @Body body: CreateAkiFormBody): Response<ApiResponse<AkiFormCreateData>>
+
+    /** Daftar riwayat form aki (admin/manager lintas cabang; PDI cabang sendiri). */
+    @GET("api/inventory/delivery/aki-forms")
+    suspend fun akiForms(): Response<ApiResponse<AkiFormsData>>
+
+    /** Tandai aki bekas dikembalikan. */
+    @POST("api/inventory/delivery/aki-forms/{id}/return")
+    suspend fun returnAkiForm(@Path("id") id: String, @Body body: ReturnAkiBody): Response<ApiResponse<AkiFormCreateData>>
 
     @GET("api/users")
     suspend fun users(@Query("role") role: String): Response<ApiResponse<UsersListData>>

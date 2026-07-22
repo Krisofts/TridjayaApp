@@ -58,7 +58,9 @@ data class DeliveryFlowUiState(
     val driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList(),
     /** Gate form aki (tahap pending_pdi, kategori ber-flag `requiresAkiForm`). */
     val requiresAki: Boolean = false,
-    val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList()
+    val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
+    /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
+    val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList()
 )
 
 /**
@@ -281,6 +283,31 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Success -> {
                     _state.update { it.copy(submitting = false, akiForms = it.akiForms + res.data) }
                     onDone()
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
+    /** Riwayat form aki (menu "Pengambilan Aki"). */
+    fun loadAkiForms() {
+        _state.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            when (val res = repository.akiForms()) {
+                is AuthResult.Success -> _state.update { it.copy(loading = false, akiList = res.data, error = null) }
+                is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
+            }
+        }
+    }
+
+    fun markAkiReturned(id: String) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.returnAkiForm(id)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    loadAkiForms()
                 }
                 is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
             }

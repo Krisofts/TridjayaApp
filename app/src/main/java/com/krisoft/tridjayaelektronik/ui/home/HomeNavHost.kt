@@ -21,6 +21,7 @@ import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
 import com.krisoft.tridjayaelektronik.ui.opname.OpnameListScreen
 import com.krisoft.tridjayaelektronik.ui.sales.SalesScreen
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiListScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.CreateSpkScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DiscountApprovalScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
@@ -38,6 +39,7 @@ private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_DLV_CREATE = "home_dlv_create"
 private const val ROUTE_DLV_DISKON = "home_dlv_diskon"
 private const val ROUTE_DLV_PDI = "home_dlv_pdi"
+private const val ROUTE_DLV_AKI = "home_dlv_aki"
 private const val ROUTE_DLV_KASIR = "home_dlv_kasir"
 private const val ROUTE_DLV_NOTE = "home_dlv_note"
 private const val ROUTE_DLV_SCHEDULE = "home_dlv_schedule"
@@ -109,6 +111,7 @@ fun HomeNavHost(
                         "input" -> ROUTE_DLV_CREATE
                         "diskon" -> ROUTE_DLV_DISKON
                         "pdi" -> ROUTE_DLV_PDI
+                        "aki" -> ROUTE_DLV_AKI
                         "kasir" -> ROUTE_DLV_KASIR
                         "note" -> ROUTE_DLV_NOTE
                         "jadwal" -> ROUTE_DLV_SCHEDULE
@@ -162,6 +165,7 @@ fun HomeNavHost(
                     "input" -> ROUTE_DLV_CREATE
                     "diskon" -> ROUTE_DLV_DISKON
                     "pdi" -> ROUTE_DLV_PDI
+                    "aki" -> ROUTE_DLV_AKI
                     "kasir" -> ROUTE_DLV_KASIR
                     "note" -> ROUTE_DLV_NOTE
                     "jadwal" -> ROUTE_DLV_SCHEDULE
@@ -178,6 +182,7 @@ fun HomeNavHost(
             DeliveryQueueScreen("Antri PDI", DeliveryStatusKey.PENDING_PDI, onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
+        composable(ROUTE_DLV_AKI) { AkiListScreen(onBack = { navController.popBackStack() }) }
         composable(ROUTE_DLV_KASIR) {
             DeliveryQueueScreen("Antri Kasir", DeliveryStatusKey.PENDING_SPK, onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })

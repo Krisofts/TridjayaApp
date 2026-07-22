@@ -149,6 +149,25 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** Daftar riwayat form aki (menu Pengambilan Aki). */
+    suspend fun akiForms(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>> = try {
+        val response = api.akiForms()
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat daftar form pengambilan aki")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    suspend fun returnAkiForm(id: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = try {
+        val response = api.returnAkiForm(id, com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody())
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.form)
+        else parseError(response, "Gagal menandai aki bekas dikembalikan")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     suspend fun drivers(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DriverDto>> = try {
         val response = api.users("driver")
         val data = response.body()?.data
