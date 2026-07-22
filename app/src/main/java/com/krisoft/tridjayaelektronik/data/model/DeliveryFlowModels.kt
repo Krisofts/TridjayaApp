@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.data.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -138,6 +139,26 @@ data class DriverDto(
 
 @Serializable
 data class UsersListData(val items: List<DriverDto> = emptyList())
+
+/**
+ * Baris stok GS (`GET /inventory/stok-cabang`) — dipakai autocomplete barang Input SPK.
+ * JSON key PascalCase (asal GS), BEDA dari konvensi camelCase DTO lain di file ini —
+ * kotlinx-serialization TIDAK case-insensitive, `@SerialName` eksplisit wajib per field.
+ */
+@Serializable
+data class StokCabangRow(
+    @SerialName("Kode") val kode: String = "",
+    @SerialName("Nama") val nama: String = "",
+    @SerialName("Kategori") val kategori: String = "",
+    @SerialName("Merk") val merk: String = "",
+    @SerialName("Tipe") val tipe: String = "",
+    @SerialName("Harga") val harga: Double? = null,
+    @SerialName("Stok") val stok: Int? = null
+)
+
+/** Response `GET /api/inventory/stok-cabang` (di dalam `data`). */
+@Serializable
+data class StokCabangData(val items: List<StokCabangRow> = emptyList())
 
 // ── Approval diskon per-baris (SPK) ──────────────────────────────────────────
 
