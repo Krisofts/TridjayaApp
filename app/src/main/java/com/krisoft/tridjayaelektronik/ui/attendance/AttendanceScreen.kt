@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Login
@@ -162,6 +163,11 @@ fun AttendanceScreen(
                 // Sisakan ruang untuk navigation bar sistem agar item riwayat terakhir tidak
                 // terpotong di tepi bawah (edge-to-edge).
                 val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                // Riwayat gabungan absensi + hari izin/OFF disetujui (dihitung di luar
+                // LazyListScope karena remember bukan @Composable yg boleh dipanggil di sana).
+                val timeline = remember(state.history, state.offRequests) {
+                    buildTimeline(state.history, state.offRequests)
+                }
                 LazyColumn(
                     modifier = contentModifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp + navBottom),
@@ -177,9 +183,10 @@ fun AttendanceScreen(
                             onCheckOut = viewModel::checkOut
                         )
                     }
+                    item(key = "aturan") { WorkRuleInfo() }
                     item(key = "rekap") { RekapStrip(state.rekap) }
                     item(key = "izin") { OffSection(state.offRequests, onAjukan = { showOffForm = true }) }
-                    if (state.history.isNotEmpty()) {
+                    if (timeline.isNotEmpty()) {
                         item(key = "riwayat_header") {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                                 Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
@@ -187,7 +194,20 @@ fun AttendanceScreen(
                                 Text("Riwayat Kehadiran", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
                         }
-                        items(state.history, key = { it.id.ifBlank { it.tanggal } }) { record -> HistoryRow(record) }
+                        items(
+                            timeline,
+                            key = {
+                                when (it) {
+                                    is TimelineEntry.Attendance -> "att_" + it.record.id.ifBlank { it.record.tanggal }
+                                    is TimelineEntry.Off -> "off_" + it.off.id.ifBlank { it.off.tanggal }
+                                }
+                            }
+                        ) { entry ->
+                            when (entry) {
+                                is TimelineEntry.Attendance -> HistoryRow(entry.record)
+                                is TimelineEntry.Off -> OffHistoryRow(entry.off)
+                            }
+                        }
                     }
                 }
             }
@@ -212,9 +232,15 @@ private fun ClockCard(userName: String, cabang: String, state: AttendanceUiState
     val primary = MaterialTheme.colorScheme.primary
     val gradient = Brush.linearGradient(listOf(primary, lerp(primary, Color.Black, 0.30f)))
     val white = Color.White
+    // Izin/OFF disetujui utk hari ini → tampilkan kategorinya, bukan "Belum Absen"
+    // (selaras dgn status harian web). Absen tetap menang bila sudah check-in.
+    val todayOff = state.offRequests.firstOrNull {
+        it.status.equals("approved", ignoreCase = true) && it.tanggal == todayIso()
+    }
     val (statusLabel, statusIcon) = when {
         state.hasCheckedOut -> "Selesai" to Icons.Rounded.CheckCircle
         state.hasCheckedIn -> "Sudah Masuk" to Icons.Rounded.Login
+        todayOff != null -> OffKategori.from(todayOff.kategori).label to Icons.Rounded.EventBusy
         else -> "Belum Absen" to Icons.Rounded.Schedule
     }
 
@@ -517,23 +543,30 @@ private fun GeofenceLine(inGeofence: Boolean?, distanceM: Long?) {
 private fun RekapStrip(rekap: AttendanceRekap) {
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text("Rekap Kehadiran Terakhir", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Rekap Kehadiran Bulan Ini", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                RekapCell(rekap.hadir.toString(), "Hadir", Color(0xFF12B76A))
-                RekapCell(rekap.telat.toString(), "Telat", Color(0xFFB5670C))
-                RekapCell(rekap.review.toString(), "Review", Color(0xFF1565C0))
-                RekapCell(rekap.ditolak.toString(), "Ditolak", Color(0xFFF04438))
+            // Enam kategori seperti web (Hadir/Izin/Sakit/Cuti/Off/Belum Absen), dua baris.
+            val order = RekapStatus.entries
+            Row(modifier = Modifier.fillMaxWidth()) {
+                order.take(3).forEach { s ->
+                    RekapCell(rekap.count(s).toString(), s.label, s.color, modifier = Modifier.weight(1f))
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                order.drop(3).forEach { s ->
+                    RekapCell(rekap.count(s).toString(), s.label, s.color, modifier = Modifier.weight(1f))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RekapCell(value: String, label: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun RekapCell(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
 }
 
@@ -563,6 +596,50 @@ private fun HistoryRow(record: AbsensiRecordDto) {
                     Spacer(modifier = Modifier.height(4.dp))
                     MiniChip("Telat", Color(0xFFB5670C))
                 }
+            }
+        }
+    }
+}
+
+/** Baris riwayat untuk hari izin/OFF disetujui (tanpa absensi) — setara kartu "Izin" web. */
+@Composable
+private fun OffHistoryRow(off: OffRequestDto) {
+    val kategori = OffKategori.from(off.kategori)
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(38.dp).background(kategori.color.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.EventBusy, contentDescription = null, tint = kategori.color, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(formatAttendanceDateShort(off.tanggal), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(off.alasan.ifBlank { kategori.label }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Surface(color = kategori.color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+                Text(kategori.label, color = kategori.color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
+            }
+        }
+    }
+}
+
+/** Info aturan jam kerja global — cerminan keterangan di web (batas masuk & shift 12 jam). */
+@Composable
+private fun WorkRuleInfo() {
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+            Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text("Aturan Jam Kerja", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    "Batas masuk 10:00 (lewat = telat). Shift 12 jam sejak check-in (pulang < 12 jam = pulang cepat). Dihitung dari jam server, bukan jam HP.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

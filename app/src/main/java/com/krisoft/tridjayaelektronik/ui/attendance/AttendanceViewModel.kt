@@ -74,7 +74,7 @@ data class AttendanceUiState(
     val hasCheckedIn: Boolean get() = today?.checkInAt != null
     val hasCheckedOut: Boolean get() = today?.checkOutAt != null
     val hasLocation: Boolean get() = lat != null && lng != null
-    val rekap: AttendanceRekap get() = buildRekap(history)
+    val rekap: AttendanceRekap get() = buildRekap(history, offRequests)
 }
 
 /**
