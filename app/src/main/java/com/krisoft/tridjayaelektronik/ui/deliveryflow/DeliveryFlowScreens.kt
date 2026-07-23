@@ -683,6 +683,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     val totalUnits = items.sumOf { it.qtyInt ?: 0 }
     val itemsValid = items.isNotEmpty() && items.all { it.issues().isEmpty() }
     val canSubmit = pelanggan.trim().length >= 3 && telepon.trim().length >= 6 &&
+        (nik.isEmpty() || nik.length == 16) &&
         spkCabang.isNotBlank() && itemsValid && totalUnits in 1..200
 
     TridjayaCollapsibleHeader(title = "Input SPK", onBack = onBack) { contentModifier ->
@@ -698,7 +699,15 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                     ExpressiveTextField(telepon, { telepon = it }, label = "No. HP *", keyboardType = KeyboardType.Phone, modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Lokasi Maps", keyboardType = KeyboardType.Uri, modifier = Modifier.fillMaxWidth())
-                    ExpressiveTextField(nik, { nik = it }, label = "NIK", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                    // NIK KTP = 16 digit; backend menolak <16 digit (delivery.rs
+                    // "NIK konsumen minimal 16 digit angka") — filter + gate di sini
+                    // supaya tak mentok 400 saat submit.
+                    ExpressiveTextField(
+                        nik, { nik = it.filter(Char::isDigit).take(16) }, label = "NIK",
+                        keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth(),
+                        isError = nik.isNotEmpty() && nik.length < 16,
+                        supportingText = if (nik.isNotEmpty() && nik.length < 16) "NIK harus 16 digit angka (${nik.length}/16)" else null
+                    )
                     ExpressiveTextField(sosTiktok, { sosTiktok = it }, label = "TikTok", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
