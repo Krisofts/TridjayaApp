@@ -16,6 +16,7 @@ import com.krisoft.tridjayaelektronik.data.remote.AbsensiApi
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import com.krisoft.tridjayaelektronik.data.remote.CrmApi
 import com.krisoft.tridjayaelektronik.data.remote.DeviceApi
+import com.krisoft.tridjayaelektronik.data.remote.ErpPriceChangesApi
 import com.krisoft.tridjayaelektronik.data.remote.OffApi
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import com.krisoft.tridjayaelektronik.data.remote.NetworkModule
@@ -99,6 +100,11 @@ object AppModule {
     @Singleton
     fun providePayrollApi(tokenStore: TokenStore): PayrollApi =
         NetworkModule.createPayrollApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideErpPriceChangesApi(tokenStore: TokenStore): ErpPriceChangesApi =
+        NetworkModule.createErpPriceChangesApi(tokenStore)
 
     /** v11 → v12: kolom aging stok (umurHari + kondisi) di branch_stock. Migrasi ADDITIVE —
      *  jangan destruktif, supaya antrean offline (pending leads, hitungan opname) tidak terhapus

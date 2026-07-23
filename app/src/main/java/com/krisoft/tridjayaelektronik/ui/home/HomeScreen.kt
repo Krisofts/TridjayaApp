@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
+import androidx.compose.material.icons.rounded.PriceChange
 import androidx.compose.material.icons.rounded.Receipt
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
@@ -133,6 +134,7 @@ fun HomeScreen(
     onQuickAccessOpname: () -> Unit = {},
     onQuickAccessAbsen: () -> Unit = {},
     onQuickAccessGaji: () -> Unit = {},
+    onQuickAccessHargaGs: () -> Unit = {},
     /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
@@ -205,7 +207,8 @@ fun HomeScreen(
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onSpkMenu
+                                onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessHargaGs,
+                                onSpkMenu
                             )
                         }
                     }
@@ -241,6 +244,7 @@ private fun LazyListScope.homeSection(
     onQuickAccessOpname: () -> Unit,
     onQuickAccessAbsen: () -> Unit,
     onQuickAccessGaji: () -> Unit,
+    onQuickAccessHargaGs: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
     when (section) {
@@ -256,9 +260,11 @@ private fun LazyListScope.homeSection(
                     onOpname = onQuickAccessOpname,
                     onAbsen = onQuickAccessAbsen,
                     onGaji = onQuickAccessGaji,
+                    onHargaGs = onQuickAccessHargaGs,
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
-                    showOpname = canAccessOpname(role)
+                    showOpname = canAccessOpname(role),
+                    showHargaGs = canAccessHargaGs(role)
                 )
             }
         }
@@ -381,11 +387,17 @@ private fun EmptyRankRow(message: String) {
 private val INDENT_MENU_ROLES = setOf("admin", "owner", "indent-approver", "manager", "kepala-cabang")
 private val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "manager", "owner")
 
+/** `require_price_changes_reader` gateway guard (baca tanpa `force`) — lihat gateway/src/lib.rs. */
+private val HARGA_GS_MENU_ROLES = setOf("admin", "manager", "owner", "kepala-cabang", "karyawan")
+
 internal fun canAccessIndent(role: String?): Boolean =
     role?.trim()?.lowercase() in INDENT_MENU_ROLES
 
 internal fun canAccessOpname(role: String?): Boolean =
     role?.trim()?.lowercase() in OPNAME_MENU_ROLES
+
+internal fun canAccessHargaGs(role: String?): Boolean =
+    role?.trim()?.lowercase() in HARGA_GS_MENU_ROLES
 
 /**
  * Shortcut row to the app's most-used destinations. Five tiles no longer fit a fixed-width
@@ -400,9 +412,11 @@ private fun QuickAccessRow(
     onOpname: () -> Unit,
     onAbsen: () -> Unit,
     onGaji: () -> Unit,
+    onHargaGs: () -> Unit,
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
-    showOpname: Boolean = true
+    showOpname: Boolean = true,
+    showHargaGs: Boolean = true
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -477,6 +491,17 @@ private fun QuickAccessRow(
                     label = "Opname",
                     tint = Color(0xFF0086C9),
                     onClick = onOpname,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
+        }
+        if (showHargaGs) {
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.PriceChange,
+                    label = "Harga GS",
+                    tint = Color(0xFFB5670C),
+                    onClick = onHargaGs,
                     modifier = Modifier.width(86.dp)
                 )
             }
