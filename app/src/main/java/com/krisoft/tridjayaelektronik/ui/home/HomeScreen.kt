@@ -55,12 +55,15 @@ import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
 import androidx.compose.material.icons.rounded.Receipt
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -106,6 +109,7 @@ import com.krisoft.tridjayaelektronik.domain.sales.KlasemenEntity
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.sales.KlasemenRowCard
 import com.krisoft.tridjayaelektronik.ui.sales.KlasemenViewModel
+import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonBox
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonLine
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
@@ -120,6 +124,7 @@ fun HomeScreen(
     onBranchClick: (LeaderboardBranchItemDto) -> Unit = {},
     onSalesClick: (LeaderboardSalesItemDto) -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
     onQuickAccessIndent: () -> Unit = {},
@@ -136,9 +141,26 @@ fun HomeScreen(
     // Content scrolls behind the floating nav; clear it (pill ≈ 88dp) plus the system nav-bar inset.
     val bottomClearance = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 104.dp
 
+    // Badge unread — instance terpisah dari layar Notifikasi; fetch on-entry (bukan polling), dan
+    // lagi begitu Home kembali tampil setelah pop dari layar itu (LaunchedEffect re-run tiap kali
+    // composable ini masuk komposisi baru, termasuk saat kembali dari navigasi).
+    val notifViewModel: NotificationCenterViewModel = hiltViewModel()
+    val notifState by notifViewModel.state.collectAsState()
+    LaunchedEffect(Unit) { notifViewModel.refreshUnreadCount() }
+
     TridjayaCollapsibleHeader(
         title = "Tridjaya.com",
         actions = {
+            ExpressiveFilledIconButton(onClick = onOpenNotifications) {
+                BadgedBox(badge = {
+                    if (notifState.unreadCount > 0) {
+                        Badge { Text(if (notifState.unreadCount > 99) "99+" else "${notifState.unreadCount}") }
+                    }
+                }) {
+                    Icon(Icons.Rounded.Notifications, contentDescription = "Notifikasi")
+                }
+            }
+            Spacer(modifier = Modifier.size(8.dp))
             ExpressiveFilledIconButton(
                 onClick = { showCustomizeSheet = true },
                 colors = IconButtonDefaults.filledIconButtonColors(

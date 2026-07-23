@@ -26,8 +26,10 @@ import com.krisoft.tridjayaelektronik.ui.deliveryflow.DiscountApprovalScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryQueueScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkHubScreen
+import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 
 const val HOME_ROUTE_DASHBOARD = "home_dashboard"
+private const val ROUTE_NOTIFICATIONS = "home_notifications"
 private const val ROUTE_RANKING = "home_ranking/{kind}"
 private const val ROUTE_TRANSACTIONS = "home_ranking_transactions/{kind}/{code}?name={name}"
 private const val ROUTE_INDENT = "home_indent"
@@ -96,6 +98,7 @@ fun HomeNavHost(
                     navController.navigate(salesTransactionsRoute(sales.sourceCode, sales.name)) { launchSingleTop = true }
                 },
                 onSettingsClick = onSettingsClick,
+                onOpenNotifications = { navController.navigate(ROUTE_NOTIFICATIONS) { launchSingleTop = true } },
                 onQuickAccessInventory = onQuickAccessInventory,
                 onQuickAccessLeads = onQuickAccessLeads,
                 onQuickAccessIndent = { navController.navigate(ROUTE_INDENT) { launchSingleTop = true } },
@@ -143,6 +146,9 @@ fun HomeNavHost(
             )
         ) {
             TransactionListScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_NOTIFICATIONS) {
+            NotificationCenterScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_INDENT) {
             IndentListScreen(onBack = { navController.popBackStack() })
