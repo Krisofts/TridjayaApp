@@ -28,7 +28,7 @@ data class ChangePasswordRequest(
 
 @Serializable
 data class ForgotPasswordRequest(
-    val email: String
+    val identifier: String
 )
 
 @Serializable
