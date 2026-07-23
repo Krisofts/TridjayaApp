@@ -381,7 +381,7 @@ private fun PdiAction(
     Text("PDI / Inspeksi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
     ExpressiveTextField(
-        serial, { serial = it }, label = "Nomor serial (wajib)", modifier = Modifier.fillMaxWidth(),
+        serial, { serial = it }, label = "Nomor serial (opsional)", modifier = Modifier.fillMaxWidth(),
         trailingIcon = { BarcodeScanButton { serial = it } }
     )
     Spacer(Modifier.height(10.dp))
@@ -526,7 +526,7 @@ private fun PdiAction(
             val bodies = checklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
             vm.submitPdi(id, serial, engine, bodies) {}
         },
-        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan && (!requiresAki || akiApproved),
+        enabled = !submitting && !missingCatatan && (!requiresAki || akiApproved),
         modifier = Modifier.fillMaxWidth()
     ) {
         if (submitting && !akiPending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
