@@ -140,7 +140,10 @@ data class DeliveryContextDto(
     /** Kill-switch gate serah-terima driver 088 di server (H-1/checklist/foto uang).
      *  null = backend lama tanpa field → perlakukan seperti OFF (gate klien jadi
      *  warning saja): server yang gate-nya ON PASTI sudah membawa field ini. */
-    val driverGateEnabled: Boolean? = null
+    val driverGateEnabled: Boolean? = null,
+    /** Jeda minimum chat konsumen → serah terima (MENIT; 0 = chat wajib ditandai
+     *  tapi tanpa tunggu). null = backend lama → fallback 60. */
+    val chatMinMinutes: Int? = null
 )
 
 /** Response upload foto (`POST /delivery/upload-photo`). */

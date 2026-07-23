@@ -833,15 +833,18 @@ private fun DeliverAction(
     // field → warning pembiasaan saja, tombol tetap aktif.
     val gate088 = job.driverTerimaUang != null // penanda backend 088 aktif
     val serverGateOn = photoState.deliveryContext?.driverGateEnabled == true
+    // Jeda minimum chat dari SERVER (menit; 0 = chat wajib tanpa tunggu —
+    // pelonggaran live testing 2026-07-23). Backend lama tanpa field → 60.
+    val chatMinMin: Long = (photoState.deliveryContext?.chatMinMinutes ?: 60).coerceAtLeast(0).toLong()
     val chatMillis = parseUtcMillis(job.consumerChatAt)
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(chatMillis) {
         while (true) { nowMillis = System.currentTimeMillis(); delay(30_000) }
     }
-    val chatWaitLeftMin: Long? = if (!gate088 || chatMillis == null) null else {
+    val chatWaitLeftMin: Long? = if (!gate088 || chatMillis == null || chatMinMin <= 0) null else {
         val elapsedMin = (nowMillis - chatMillis) / 60_000
-        // coerceIn: jam device mundur (skew) jangan menampilkan ">60 menit".
-        if (elapsedMin >= 60) null else (60 - elapsedMin).coerceIn(1, 60)
+        // coerceIn: jam device mundur (skew) jangan menampilkan sisa > jeda penuh.
+        if (elapsedMin >= chatMinMin) null else (chatMinMin - elapsedMin).coerceIn(1, chatMinMin)
     }
     val chatBlocked = serverGateOn && !vm.isAdminViewer && gate088 &&
         (job.consumerChatAt == null || chatWaitLeftMin != null)
@@ -849,14 +852,15 @@ private fun DeliverAction(
     // bergaya blocking di atas tombol aktif = menyesatkan).
     if (!vm.isAdminViewer && gate088 && job.consumerChatAt == null) {
         Spacer(Modifier.height(8.dp))
+        val syarat = if (chatMinMin > 0) " (wajib ≥$chatMinMin menit sebelum serah terima)" else ""
         if (serverGateOn) {
-            Text("Belum chat konsumen — tandai chat dulu (wajib ≥1 jam sebelum serah terima).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            Text("Belum chat konsumen — tandai chat dulu$syarat.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
         } else {
-            Text("Belum chat konsumen — biasakan tandai chat H-1 (aturan wajib segera diberlakukan).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Belum chat konsumen — biasakan tandai chat dulu (aturan wajib segera diberlakukan).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     } else if (!vm.isAdminViewer && serverGateOn && chatWaitLeftMin != null) {
         Spacer(Modifier.height(8.dp))
-        Text("Chat konsumen tercatat — tunggu ±$chatWaitLeftMin menit lagi (syarat minimal 1 jam).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        Text("Chat konsumen tercatat — tunggu ±$chatWaitLeftMin menit lagi (syarat minimal $chatMinMin menit).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
     }
     Spacer(Modifier.height(14.dp))
     val missingCatatan = driverChecklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
