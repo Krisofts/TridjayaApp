@@ -506,23 +506,38 @@ private fun PdiAction(
                 if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                 else Text("Simpan Form Aki")
             }
+        } else if (akiForms.all { it.approvalStatus == "approved" }) {
+            Text("Form aki disetujui ✓ (${akiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
         } else {
-            Text("Form aki tercatat ✓ (${akiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
+            Text(
+                "Form aki menunggu persetujuan (kepala cabang, admin penjualan, kasir) — PDI belum bisa disimpan sampai lengkap.",
+                style = MaterialTheme.typography.labelSmall, color = Color(0xFFB5670C)
+            )
         }
     }
     Spacer(Modifier.height(14.dp))
 
+    // Backend meng-gate PDI sampai form aki DISETUJUI lengkap (3 slot), bukan cuma
+    // ADA — cek approvalStatus supaya tombol tak "sukses lalu ditolak backend".
+    val akiApproved = akiForms.isNotEmpty() && akiForms.all { it.approvalStatus == "approved" }
     val missingCatatan = checklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
     ExpressiveFilledButton(
         onClick = {
             val bodies = checklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
             vm.submitPdi(id, serial, engine, bodies) {}
         },
-        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan && (!requiresAki || akiForms.isNotEmpty()),
+        enabled = !submitting && serial.trim().isNotEmpty() && !missingCatatan && (!requiresAki || akiApproved),
         modifier = Modifier.fillMaxWidth()
     ) {
         if (submitting && !akiPending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        else Text(if (missingCatatan) "Isi catatan item 'Tidak'" else if (akiPending) "Isi form aki dulu" else "Simpan PDI")
+        else Text(
+            when {
+                missingCatatan -> "Isi catatan item 'Tidak'"
+                akiPending -> "Isi form aki dulu"
+                requiresAki && !akiApproved -> "Tunggu approval form aki"
+                else -> "Simpan PDI"
+            }
+        )
     }
 }
 

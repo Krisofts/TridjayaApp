@@ -459,7 +459,10 @@ data class AkiFormDto(
     val tujuanLainnya: String? = null,
     val merkTipe: String = "",
     val jumlahPcs: Int = 0,
-    val akiBekasStatus: String = "belum"
+    val akiBekasStatus: String = "belum",
+    /** `approved` bila 3 slot (kepala-cabang + admin-penjualan + kasir/aki-approver)
+     *  sudah mengisi; selain itu `pending`. PDI di-gate backend sampai `approved`. */
+    val approvalStatus: String = "pending"
 )
 
 @Serializable

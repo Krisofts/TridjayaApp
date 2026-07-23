@@ -258,9 +258,14 @@ class DeliveryFlowRepository @Inject constructor(
         val parsed = raw?.let {
             runCatching { errorJson.decodeFromString(ApiErrorResponse.serializer(), it) }.getOrNull()
         }
+        // ApiError::Validation backend → message GENERIK "Input tidak valid" + alasan
+        // SPESIFIK di `errors[]` (mis. "Serial number wajib diisi", "Form pengambilan
+        // aki belum disetujui lengkap"). Utamakan errors[] supaya user tahu penyebab
+        // asli — bukan cuma "Input tidak valid" yang tak bisa ditindaklanjuti.
+        val detail = parsed?.errors?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }?.joinToString("; ")
         return AuthResult.Failure(
             parsed?.code ?: "http_${response.code()}",
-            parsed?.message ?: "$fallback (${response.code()})"
+            detail ?: parsed?.message ?: "$fallback (${response.code()})"
         )
     }
 }
