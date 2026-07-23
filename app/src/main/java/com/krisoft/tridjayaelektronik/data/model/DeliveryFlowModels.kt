@@ -486,3 +486,8 @@ data class CreateAkiFormBody(
 /** Body tandai aki bekas dikembalikan (`POST /aki-forms/{id}/return`); kosong = default backend. */
 @Serializable
 data class ReturnAkiBody(val jumlah: Int? = null, val keterangan: String? = null)
+
+/** Preferensi WA alur SPK (`GET/PUT /inventory/discount-requests/wa-pref`). `spkWaOptout=true`
+ *  → user matikan WA (dapat notif app push saja, anti-double). Default false = WA tetap ON. */
+@Serializable
+data class WaPrefDto(val spkWaOptout: Boolean = false)

@@ -227,6 +227,20 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** Preferensi WA alur SPK (setting mobile). Fail-soft: gagal → default WA ON (optout=false). */
+    suspend fun getWaPref(): com.krisoft.tridjayaelektronik.data.model.WaPrefDto = try {
+        api.getWaPref().body()?.data ?: com.krisoft.tridjayaelektronik.data.model.WaPrefDto()
+    } catch (e: Exception) {
+        com.krisoft.tridjayaelektronik.data.model.WaPrefDto()
+    }
+
+    /** Simpan preferensi WA alur SPK. true bila server konfirmasi sukses. */
+    suspend fun setWaPref(optout: Boolean): Boolean = try {
+        api.setWaPref(com.krisoft.tridjayaelektronik.data.model.WaPrefDto(spkWaOptout = optout)).isSuccessful
+    } catch (e: Exception) {
+        false
+    }
+
     private inline fun call(
         fallback: String,
         block: () -> Response<com.krisoft.tridjayaelektronik.data.model.ApiResponse<DeliveryJobDto>>

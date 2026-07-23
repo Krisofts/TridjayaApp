@@ -12,6 +12,7 @@ import com.krisoft.tridjayaelektronik.data.model.DecisionBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryCategoriesData
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
 import com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto
+import com.krisoft.tridjayaelektronik.data.model.WaPrefDto
 import com.krisoft.tridjayaelektronik.data.model.UsersListData
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliverBody
@@ -180,4 +181,11 @@ interface DeliveryFlowApi {
 
     @POST("api/inventory/discount-requests/{id}/reject")
     suspend fun rejectDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
+
+    // Preferensi per-user: terima/opt-out notifikasi WhatsApp alur SPK (setting mobile).
+    @GET("api/inventory/discount-requests/wa-pref")
+    suspend fun getWaPref(): Response<ApiResponse<WaPrefDto>>
+
+    @retrofit2.http.PUT("api/inventory/discount-requests/wa-pref")
+    suspend fun setWaPref(@Body body: WaPrefDto): Response<ApiResponse<WaPrefDto>>
 }
