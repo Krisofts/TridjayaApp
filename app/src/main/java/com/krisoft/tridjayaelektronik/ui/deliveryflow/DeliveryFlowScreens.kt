@@ -51,6 +51,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -65,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -312,6 +314,12 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         }
                     }
                 }
+                // Foto bukti (PDI siap kirim / serah terima / terima uang) — dimuat
+                // ter-autentikasi via VM (kasir/DC/driver bisa verifikasi dari HP).
+                if (state.jobPhotos.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    JobPhotosCard(state.jobPhotos)
+                }
                 Spacer(Modifier.height(14.dp))
                 val shareContext = LocalContext.current
                 ExpressiveOutlinedButton(onClick = {
@@ -327,23 +335,103 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                 state.actionError?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
                 }
-                if (job.driverTerimaUang != null &&
+                // Aksi per-tahap DIGATE role viewer (SpkAccessPolicy — mirror backend):
+                // buka job lewat Riwayat jangan menampilkan tombol yang pasti 403
+                // (mis. driver lihat "Assign Driver"). Backend tetap otoritatif.
+                val access = viewModel.access
+                val isMyDriverJob = viewModel.isAdminViewer ||
+                    (access.driver && job.assignedDriverId == viewModel.currentUserId)
+                if (job.driverTerimaUang != null && isMyDriverJob &&
                     (job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT)
                 ) {
                     ChatConsumerCard(job, viewModel, state.submitting)
                     Spacer(Modifier.height(14.dp))
                 }
-                when (job.status) {
-                    DeliveryStatusKey.PENDING_PDI -> PdiAction(job.id, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
-                    DeliveryStatusKey.PENDING_SPK -> SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
-                    DeliveryStatusKey.PENDING_DELIVERY_NOTE -> DeliveryNoteAction(job, viewModel, state.submitting)
-                    DeliveryStatusKey.PENDING_SCHEDULING -> AssignAction(job, viewModel, state.submitting, state.drivers)
-                    DeliveryStatusKey.ASSIGNED -> SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
-                    DeliveryStatusKey.IN_TRANSIT -> DeliverAction(job, viewModel, state.submitting, state.driverChecklist)
-                    else -> Text("Tidak ada aksi pada tahap ini.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                when {
+                    job.status == DeliveryStatusKey.PENDING_PDI && access.pdi ->
+                        PdiAction(job.id, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
+                    job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
+                        SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
+                    job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
+                        DeliveryNoteAction(job, viewModel, state.submitting)
+                    job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal ->
+                        AssignAction(job, viewModel, state.submitting, state.drivers)
+                    job.status == DeliveryStatusKey.ASSIGNED && isMyDriverJob ->
+                        SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
+                    job.status == DeliveryStatusKey.IN_TRANSIT && isMyDriverJob ->
+                        DeliverAction(job, viewModel, state.submitting, state.driverChecklist, state.driverChecklistError)
+                    else -> Text(
+                        when (job.status) {
+                            DeliveryStatusKey.PENDING_PDI -> "Tahap ini ditangani tim PDI cabang."
+                            DeliveryStatusKey.PENDING_SPK -> "Tahap ini ditangani kasir cabang."
+                            DeliveryStatusKey.PENDING_DELIVERY_NOTE, DeliveryStatusKey.PENDING_SCHEDULING -> "Tahap ini ditangani Delivery Control."
+                            DeliveryStatusKey.ASSIGNED, DeliveryStatusKey.IN_TRANSIT -> "Tahap ini ditangani driver yang ditugaskan."
+                            else -> "Tidak ada aksi pada tahap ini."
+                        },
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                // Batalkan (admin/DC, status non-terminal) — backend `cancel_job`.
+                val cancellable = job.status != DeliveryStatusKey.DELIVERED && job.status != DeliveryStatusKey.CANCELLED
+                if (cancellable && (viewModel.isAdminViewer || access.note)) {
+                    Spacer(Modifier.height(10.dp))
+                    CancelJobButton(job.id, viewModel, state.submitting)
                 }
             }
         }
+    }
+}
+
+/** Foto bukti job (dimuat ter-autentikasi via VM) — label per jenis. */
+@Composable
+private fun JobPhotosCard(photos: Map<String, Bitmap>) {
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text("Foto Bukti", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            listOf(
+                "pdi" to "Foto PDI (unit siap kirim)",
+                "delivery" to "Foto serah terima",
+                "cash" to "Foto terima uang",
+            ).forEach { (key, label) ->
+                photos[key]?.let { bmp ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(6.dp))
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = label,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Tombol Batalkan + dialog alasan (admin/delivery-control, non-terminal). */
+@Composable
+private fun CancelJobButton(id: String, vm: DeliveryFlowViewModel, submitting: Boolean) {
+    var show by remember { mutableStateOf(false) }
+    var reason by remember { mutableStateOf("") }
+    OutlinedButton(onClick = { show = true }, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
+        Text("Batalkan Pengiriman", color = MaterialTheme.colorScheme.error)
+    }
+    if (show) {
+        AlertDialog(
+            onDismissRequest = { show = false },
+            title = { Text("Batalkan pengiriman?", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Unit keluar dari pipeline (tidak bisa di-undo).", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    ExpressiveTextField(reason, { reason = it }, label = "Alasan", modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { show = false; vm.cancel(id, reason) {} }) { Text("Batalkan", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { show = false }) { Text("Kembali") } }
+        )
     }
 }
 
@@ -565,11 +653,27 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
 
     Text("Assign Driver + Jadwal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
-    if (drivers.isNotEmpty()) {
-        Text("Pilih driver", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // Filter driver SE-REGION (paritas web `driversForRegion` 2026-07-21): job
+    // Jawa hanya driver Jawa, Manado (D-06/D-07) hanya driver Manado. Region
+    // driver dibaca dari `cabang_name` /api/users ("...Manado..." → Manado);
+    // kosong = tak diketahui → fail-soft ikut tampil (pola web saat store gagal).
+    val jobRegion = BranchRegions.dealerRegion(job.kodeDealer)
+    val regionDrivers = drivers.filter { d ->
+        val r = when {
+            d.cabangName.isBlank() -> null
+            d.cabangName.contains("manado", ignoreCase = true) -> BranchRegions.REGION_MANADO
+            else -> BranchRegions.REGION_JAWA
+        }
+        r == null || r == jobRegion
+    }
+    if (regionDrivers.isNotEmpty()) {
+        Text(
+            "Pilih driver (region ${BranchRegions.regionLabel(jobRegion)})",
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(Modifier.height(6.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            drivers.forEach { d ->
+            regionDrivers.forEach { d ->
                 val sel = driverId == d.effectiveId
                 Surface(onClick = { driverId = d.effectiveId; driverName = d.name }, shape = RoundedCornerShape(12.dp),
                     color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
@@ -579,7 +683,16 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
             }
         }
     } else {
-        // Fallback bila daftar driver tak bisa dimuat (role tak berizin / endpoint kosong).
+        // Fallback bila daftar driver tak bisa dimuat (role tak berizin / endpoint
+        // kosong) ATAU tak ada driver se-region — input manual = escape hatch
+        // (enforce region cuma di klien, backend tak menolak lintas region).
+        if (drivers.isNotEmpty()) {
+            Text(
+                "Tidak ada driver terdaftar di region ${BranchRegions.regionLabel(jobRegion)} — isi manual bila memang perlu lintas region.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.height(6.dp))
+        }
         ExpressiveTextField(driverName, { driverName = it }, label = "Nama driver", modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
         ExpressiveTextField(driverId, { driverId = it }, label = "ID driver (user id)", modifier = Modifier.fillMaxWidth())
@@ -600,8 +713,22 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
     }
 }
 
+/** Parse timestamp backend `YYYY-MM-DDTHH:MM:SS` (naive UTC) → epoch millis.
+ *  minSdk 24 tanpa desugaring — SimpleDateFormat, bukan java.time (pola AssignAction). */
+private fun parseUtcMillis(ts: String?): Long? = ts?.let {
+    runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+            .parse(it)?.time
+    }.getOrNull()
+}
+
 @Composable
-private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean, driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>) {
+private fun DeliverAction(
+    job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean,
+    driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>,
+    checklistError: String?
+) {
     val id = job.id
     var rating by remember { mutableStateOf(5) }
     var comment by remember { mutableStateOf("") }
@@ -634,6 +761,19 @@ private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submit
     if (needCash) {
         Spacer(Modifier.height(10.dp))
         PhotoBox(photoState.cashPhoto, "Foto serah terima uang (wajib${job.driverTerimaNominal?.let { " · ${rupiah(it)}" } ?: ""})") { cashCam.launch(cashUri) }
+    }
+    // FAIL-HARD checklist (088): gagal fetch → blok submit + retry. Tanpa ini
+    // checklist null terkirim → 400 backend tanpa petunjuk (temuan audit).
+    if (checklistError != null) {
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Gagal memuat checklist serah terima: $checklistError",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error
+        )
+        Spacer(Modifier.height(6.dp))
+        ExpressiveOutlinedButton(onClick = { vm.loadDriverChecklist(job) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Muat Ulang Checklist")
+        }
     }
     if (driverChecklist.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
@@ -671,16 +811,35 @@ private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submit
     }
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(comment, { comment = it }, label = "Komentar (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
-    // 088: hint gate chat H-1 (backend otoritatif; klien cuma peringatan dini)
-    if (job.driverTerimaUang != null && job.consumerChatAt == null) {
+    // 088: gate chat H-1 — PARITAS backend `deliver_job` (wajib chat ≥1 jam
+    // sebelum serah terima; admin bypass). Hitung mundur live, tombol dikunci
+    // sampai syarat terpenuhi — bukan cuma peringatan (dulu tombol tetap aktif
+    // → 400 backend mendadak, temuan audit 2026-07-23).
+    val gate088 = job.driverTerimaUang != null // penanda backend 088 aktif
+    val chatMillis = parseUtcMillis(job.consumerChatAt)
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(chatMillis) {
+        while (true) { nowMillis = System.currentTimeMillis(); delay(30_000) }
+    }
+    val chatWaitLeftMin: Long? = if (!gate088 || chatMillis == null) null else {
+        val elapsedMin = (nowMillis - chatMillis) / 60_000
+        if (elapsedMin >= 60) null else (60 - elapsedMin).coerceAtLeast(1)
+    }
+    val chatBlocked = !vm.isAdminViewer && gate088 &&
+        (job.consumerChatAt == null || chatWaitLeftMin != null)
+    if (gate088 && job.consumerChatAt == null) {
         Spacer(Modifier.height(8.dp))
-        Text("Belum chat konsumen — serah terima akan ditolak backend (wajib chat ≥1 jam sebelumnya).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        Text("Belum chat konsumen — tandai chat dulu (wajib ≥1 jam sebelum serah terima).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+    } else if (chatWaitLeftMin != null) {
+        Spacer(Modifier.height(8.dp))
+        Text("Chat konsumen tercatat — tunggu ±$chatWaitLeftMin menit lagi (syarat minimal 1 jam).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
     }
     Spacer(Modifier.height(14.dp))
     val missingCatatan = driverChecklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
     val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
     val hasCashPhoto = photoState.cashPhoto != null && photoState.cashPhotoConfirmed
-    val canDeliver = hasPhoto && (!needCash || hasCashPhoto) && !missingCatatan
+    val canDeliver = hasPhoto && (!needCash || hasCashPhoto) && !missingCatatan &&
+        !chatBlocked && checklistError == null
     ExpressiveFilledButton(
         onClick = {
             val bodies = driverChecklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
@@ -691,6 +850,9 @@ private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submit
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
         Text(when {
+            checklistError != null -> "Muat ulang checklist dulu"
+            chatBlocked && job.consumerChatAt == null -> "Tandai chat konsumen dulu"
+            chatBlocked -> "Tunggu ±$chatWaitLeftMin mnt (chat H-1)"
             !hasPhoto -> "Ambil foto dulu"
             needCash && !hasCashPhoto -> "Ambil foto uang dulu"
             missingCatatan -> "Isi catatan item 'Tidak'"

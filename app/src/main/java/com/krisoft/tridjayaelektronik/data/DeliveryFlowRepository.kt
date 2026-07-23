@@ -245,6 +245,21 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** Ambil bytes foto delivery ter-autentikasi. `url` = URL logis
+     *  `/uploads/delivery/{file}` dari field job — dipetakan ke endpoint serve
+     *  `GET /delivery/photo/{file}` (pola map frontend web). Fail-soft null
+     *  (foto tak tampil, layar tetap jalan). */
+    suspend fun fetchPhoto(url: String): ByteArray? = try {
+        val filename = url.trim().substringAfterLast('/')
+        if (filename.isBlank()) null
+        else {
+            val response = api.photo(filename)
+            if (response.isSuccessful) response.body()?.bytes() else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
     /** Preferensi WA alur SPK (setting mobile). Fail-soft: gagal → default WA ON (optout=false). */
     suspend fun getWaPref(): com.krisoft.tridjayaelektronik.data.model.WaPrefDto = try {
         api.getWaPref().body()?.data ?: com.krisoft.tridjayaelektronik.data.model.WaPrefDto()

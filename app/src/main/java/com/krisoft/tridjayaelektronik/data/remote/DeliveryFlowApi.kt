@@ -89,6 +89,12 @@ interface DeliveryFlowApi {
     @POST("api/inventory/delivery/upload-photo")
     suspend fun uploadPhoto(@Part file: MultipartBody.Part): Response<ApiResponse<DeliveryUploadResponse>>
 
+    /** Serve foto delivery ter-autentikasi (S-02) — `filename` diambil dari URL
+     *  logis `/uploads/delivery/{file}` di field job (pdiReadyPhotoUrl/
+     *  deliveryPhotoUrl/cashPhotoUrl). Response = bytes gambar mentah. */
+    @GET("api/inventory/delivery/photo/{filename}")
+    suspend fun photo(@Path("filename") filename: String): Response<okhttp3.ResponseBody>
+
     @GET("api/inventory/delivery/config/checklist")
     suspend fun checklist(
         @Query("kategori") kategori: String,

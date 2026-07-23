@@ -157,14 +157,18 @@ data class ChecklistItemDto(
 @Serializable
 data class ChecklistConfigData(val items: List<ChecklistItemDto> = emptyList())
 
-/** Driver untuk dropdown assign (`GET /api/users?role=driver`). Field 1-kata → aman snake/camel. */
+/** Driver untuk dropdown assign (`GET /api/users?role=driver`). Field 1-kata → aman snake/camel;
+ *  `cabang_name` snake_case (UserPublic auth-service TANPA rename_all camelCase). */
 @Serializable
 data class DriverDto(
     val id: String? = null,
     val userId: String? = null,
     val name: String = "",
     val nik: String? = null,
-    val role: String? = null
+    val role: String? = null,
+    /** Nama cabang penuh (mis. "Tridjaya Elektronik Manado Bahu") — dipakai filter
+     *  driver se-region di AssignAction (paritas web `driversForRegion` 2026-07-21). */
+    @SerialName("cabang_name") val cabangName: String = ""
 ) {
     val effectiveId: String get() = (id ?: userId).orEmpty()
 }
@@ -464,7 +468,12 @@ data class AkiFormDto(
      *  kasir/aki-approver) sudah mengisi; selain itu `pending`. PDI di-gate backend sampai `approved`. */
     val approvalStatus: String = "pending",
     val rejectedByNama: String? = null,
-    val rejectedReason: String? = null
+    val rejectedReason: String? = null,
+    // Per-slot approver (089) — dipakai chip status 3 slot di kartu form
+    // (siapa yang SUDAH menyetujui, siapa yang masih ditunggu).
+    val kacabApprovedNama: String? = null,
+    val adminPenjualanApprovedNama: String? = null,
+    val akiApproverApprovedNama: String? = null
 )
 
 @Serializable

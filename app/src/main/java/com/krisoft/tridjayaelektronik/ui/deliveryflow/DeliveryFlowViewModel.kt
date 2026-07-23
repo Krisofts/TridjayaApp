@@ -55,6 +55,11 @@ data class DeliveryFlowUiState(
     val serialOptions: Map<String, List<String>> = emptyMap(),
     /** Checklist serah-terima stage=driver (088) — kosong bila kategori tak ber-item / pre-088. */
     val driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList(),
+    /** Gagal memuat checklist driver — FAIL-HARD: submit serah terima diblok sampai
+     *  retry sukses (checklist null terkirim = 400 backend tanpa petunjuk). */
+    val driverChecklistError: String? = null,
+    /** Foto job ter-autentikasi utk ditampilkan di detail (key "pdi"/"delivery"/"cash"). */
+    val jobPhotos: Map<String, Bitmap> = emptyMap(),
     /** Gate form aki (tahap pending_pdi, kategori ber-flag `requiresAkiForm`). */
     val requiresAki: Boolean = false,
     val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
@@ -105,6 +110,17 @@ class DeliveryFlowViewModel @Inject constructor(
     val currentUserName: String = authRepository.currentUserName?.trim().orEmpty().ifBlank { "Pengguna" }
     val currentUserId: String = authRepository.currentUserId?.trim().orEmpty()
 
+    // ── Akses viewer (SpkAccessPolicy — mirror gate backend, backend tetap
+    // otoritatif). Dipakai gating aksi layar detail + tombol approval aki.
+    private val viewerRoles = SpkAccessPolicy.rolesOf(authRepository.cachedUser)
+    private val viewerGrants = SpkAccessPolicy.grantPrefixesOf(authRepository.cachedUser)
+    val isAdminViewer: Boolean = SpkAccessPolicy.isAdmin(viewerRoles)
+    val canApproveAki: Boolean = SpkAccessPolicy.canApproveAki(viewerRoles, viewerGrants)
+    /** Admin/manager wajib pilih slot eksplisit saat approve aki (backend 400 tanpa slot). */
+    val akiNeedsSlot: Boolean = SpkAccessPolicy.akiNeedsSlot(viewerRoles)
+    /** Akses per-tahap (dipakai menyaring aksi di layar detail job). */
+    val access: SpkHubAccess = SpkAccessPolicy.accessOf(authRepository.cachedUser)
+
     /** Foto serah-terima terkompres siap upload (dipisah dari state). */
     private var deliverPhotoBytes: ByteArray? = null
     private var pdiPhotoBytes: ByteArray? = null
@@ -145,6 +161,7 @@ class DeliveryFlowViewModel @Inject constructor(
         _state.update {
             it.copy(
                 loading = true, error = null, actionDone = false, actionError = null, driverChecklist = emptyList(),
+                driverChecklistError = null, jobPhotos = emptyMap(),
                 pdiPhoto = null, deliverPhoto = null, cashPhoto = null,
                 pdiPhotoConfirmed = false, deliverPhotoConfirmed = false, cashPhotoConfirmed = false
             )
@@ -157,11 +174,31 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Success -> {
                     _state.update { it.copy(loading = false, detail = res.data) }
                     loadAuxFor(res.data)
+                    loadJobPhotos(res.data)
                 }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
             }
         }
         refreshGps()
+    }
+
+    /** Muat foto job ter-autentikasi (bukti PDI / serah terima / uang) utk preview
+     *  di detail — fail-soft per foto (gagal = tak tampil, tanpa error). */
+    private fun loadJobPhotos(job: DeliveryJobDto) {
+        val urls = listOfNotNull(
+            job.pdiReadyPhotoUrl?.takeIf { it.isNotBlank() }?.let { "pdi" to it },
+            job.deliveryPhotoUrl?.takeIf { it.isNotBlank() }?.let { "delivery" to it },
+            job.cashPhotoUrl?.takeIf { it.isNotBlank() }?.let { "cash" to it },
+        )
+        urls.forEach { (key, url) ->
+            viewModelScope.launch {
+                val bytes = repository.fetchPhoto(url) ?: return@launch
+                val bmp = withContext(Dispatchers.Default) {
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } ?: return@launch
+                _state.update { it.copy(jobPhotos = it.jobPhotos + (key to bmp)) }
+            }
+        }
     }
 
     /** Ambil satu titik GPS lebih awal (dipakai watermark foto PDI/serah-terima/uang saat jepret). */
@@ -212,15 +249,27 @@ class DeliveryFlowViewModel @Inject constructor(
                 (repository.drivers() as? AuthResult.Success)?.let { r -> _state.update { it.copy(drivers = r.data) } }
             }
             com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.ASSIGNED,
-            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.IN_TRANSIT -> {
-                // 088 aktif? (driverTerimaUang selalu terisi pasca-088). Pre-088 JANGAN
-                // fetch stage=driver — backend lama abaikan param & balik item PDI.
-                val kategori = job.kategori?.trim().orEmpty()
-                if (job.driverTerimaUang != null && kategori.isNotEmpty()) viewModelScope.launch {
-                    (repository.checklist(kategori, stage = "driver") as? AuthResult.Success)?.let { r ->
-                        _state.update { it.copy(driverChecklist = r.data) }
-                    }
-                }
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.IN_TRANSIT ->
+                loadDriverChecklist(job)
+        }
+    }
+
+    /** Checklist serah-terima stage=driver (088) — FAIL-HARD: gagal fetch →
+     *  `driverChecklistError` terisi, tombol serah terima diblok sampai retry
+     *  sukses. Tanpa ini checklist null terkirim → 400 backend "Checklist serah
+     *  terima driver wajib diisi" tanpa petunjuk di UI (temuan audit 2026-07-23). */
+    fun loadDriverChecklist(job: DeliveryJobDto) {
+        // 088 aktif? (driverTerimaUang selalu terisi pasca-088). Pre-088 JANGAN
+        // fetch stage=driver — backend lama abaikan param & balik item PDI.
+        val kategori = job.kategori?.trim().orEmpty()
+        if (job.driverTerimaUang == null || kategori.isEmpty()) return
+        _state.update { it.copy(driverChecklistError = null) }
+        viewModelScope.launch {
+            when (val r = repository.checklist(kategori, stage = "driver")) {
+                is AuthResult.Success ->
+                    _state.update { it.copy(driverChecklist = r.data, driverChecklistError = null) }
+                is AuthResult.Failure ->
+                    _state.update { it.copy(driverChecklistError = r.message) }
             }
         }
     }
