@@ -136,7 +136,11 @@ data class DeliveryCreateResult(
 data class DeliveryContextDto(
     val kodeDealer: String? = null,
     val dealerName: String? = null,
-    val cabangName: String? = null
+    val cabangName: String? = null,
+    /** Kill-switch gate serah-terima driver 088 di server (H-1/checklist/foto uang).
+     *  null = backend lama tanpa field → perlakukan seperti OFF (gate klien jadi
+     *  warning saja): server yang gate-nya ON PASTI sudah membawa field ini. */
+    val driverGateEnabled: Boolean? = null
 )
 
 /** Response upload foto (`POST /delivery/upload-photo`). */

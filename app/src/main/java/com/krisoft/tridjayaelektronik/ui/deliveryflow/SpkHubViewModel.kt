@@ -36,7 +36,8 @@ object SpkAccessPolicy {
 
     fun isAdmin(roles: Set<String>): Boolean = "admin" in roles || "superadmin" in roles
 
-    fun isManager(roles: Set<String>): Boolean = "manager" in roles
+    /** Paritas backend `is_manager` (delivery.rs) = manager ATAU owner. */
+    fun isManager(roles: Set<String>): Boolean = "manager" in roles || "owner" in roles
 
     private fun hasGrant(grants: List<String>, prefix: String) = grants.any { it.contains(prefix) }
 

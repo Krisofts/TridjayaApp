@@ -216,8 +216,9 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, canApprove: Boolean, 
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
                 )
             }
-            // Belum disetujui → tombol SETUJUI / TOLAK HANYA utk approver
-            // (canApprove — SpkAccessPolicy); pembaca lain (PDI) cuma lihat status.
+            // Belum disetujui (dan belum ditolak) → tombol SETUJUI / TOLAK HANYA
+            // utk approver (canApprove — SpkAccessPolicy); pembaca lain (PDI)
+            // cuma lihat status.
             else if (!approved && canApprove) {
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -229,9 +230,12 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, canApprove: Boolean, 
                         Text("Tolak", color = MaterialTheme.colorScheme.error)
                     }
                 }
-            } else if (approved && !sudah && canReturn) {
-                // Sudah disetujui penuh — sisa aksi logistik: tandai aki bekas
-                // dikembalikan (backend: pdi cabang form / admin saja).
+            }
+            // Aksi logistik TERPISAH dari chain approval: tandai aki bekas
+            // dikembalikan — berlaku utk form approved MAUPUN rejected (backend
+            // mark_return tak mensyaratkan approved; aki yang terlanjur diambil
+            // pada form rejected tetap harus tercatat kembalinya — review 2026-07-23).
+            if ((approved || rejected) && !sudah && canReturn) {
                 Spacer(Modifier.height(10.dp))
                 ExpressiveFilledButton(onClick = onMarkReturned, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
                     if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)

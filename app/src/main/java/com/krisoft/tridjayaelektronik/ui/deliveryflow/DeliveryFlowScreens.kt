@@ -504,7 +504,12 @@ private fun PdiAction(
     Spacer(Modifier.height(8.dp))
     PhotoBox(photoState.pdiPhoto, "Foto unit siap (opsional)") { cam.launch(uri) }
 
-    val akiPending = requiresAki && akiForms.isEmpty()
+    // Form REJECTED dikecualikan (paritas gate backend pasca-093): semua form
+    // rejected = wajib buat form BARU — form create dirender lagi (dulu
+    // `akiForms.isEmpty()` → sekali ditolak, PDI tak bisa bikin form baru dari
+    // mobile sama sekali, dead-end; temuan review 2026-07-23).
+    val activeAkiForms = akiForms.filter { it.approvalStatus != "rejected" }
+    val akiPending = requiresAki && activeAkiForms.isEmpty()
     if (requiresAki) {
         Spacer(Modifier.height(14.dp))
         if (akiPending) {
@@ -594,20 +599,29 @@ private fun PdiAction(
                 if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                 else Text("Simpan Form Aki")
             }
-        } else if (akiForms.all { it.approvalStatus == "approved" }) {
-            Text("Form aki disetujui ✓ (${akiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
+        } else if (activeAkiForms.all { it.approvalStatus == "approved" }) {
+            Text("Form aki disetujui ✓ (${activeAkiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
         } else {
             Text(
                 "Form aki menunggu persetujuan (kepala cabang, admin penjualan, kasir) — PDI belum bisa disimpan sampai lengkap.",
                 style = MaterialTheme.typography.labelSmall, color = Color(0xFFB5670C)
             )
         }
+        // Info form yang DITOLAK (beda dari "menunggu" — teks lama menyesatkan).
+        akiForms.count { it.approvalStatus == "rejected" }.takeIf { it > 0 }?.let { n ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "$n form aki ditolak — lihat alasan di menu Pengambilan Aki.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error
+            )
+        }
     }
     Spacer(Modifier.height(14.dp))
 
-    // Backend meng-gate PDI sampai form aki DISETUJUI lengkap (3 slot), bukan cuma
-    // ADA — cek approvalStatus supaya tombol tak "sukses lalu ditolak backend".
-    val akiApproved = akiForms.isNotEmpty() && akiForms.all { it.approvalStatus == "approved" }
+    // Backend meng-gate PDI sampai >=1 form non-rejected & SEMUANYA disetujui
+    // lengkap (3 slot) — cek approvalStatus supaya tombol tak "sukses lalu
+    // ditolak backend". Form rejected diabaikan (paritas 093).
+    val akiApproved = activeAkiForms.isNotEmpty() && activeAkiForms.all { it.approvalStatus == "approved" }
     val missingCatatan = checklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
     ExpressiveFilledButton(
         onClick = {
@@ -812,10 +826,13 @@ private fun DeliverAction(
     Spacer(Modifier.height(10.dp))
     ExpressiveTextField(comment, { comment = it }, label = "Komentar (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
     // 088: gate chat H-1 — PARITAS backend `deliver_job` (wajib chat ≥1 jam
-    // sebelum serah terima; admin bypass). Hitung mundur live, tombol dikunci
-    // sampai syarat terpenuhi — bukan cuma peringatan (dulu tombol tetap aktif
-    // → 400 backend mendadak, temuan audit 2026-07-23).
+    // sebelum serah terima; admin bypass). Gate klien AKTIF hanya bila
+    // kill-switch server ON (context.driverGateEnabled — review 2026-07-23:
+    // hard-block sepihak saat prod OFF memaksa driver menunggu 60 mnt utk
+    // syarat yang server tidak menegakkan). Server OFF / backend lama tanpa
+    // field → warning pembiasaan saja, tombol tetap aktif.
     val gate088 = job.driverTerimaUang != null // penanda backend 088 aktif
+    val serverGateOn = photoState.deliveryContext?.driverGateEnabled == true
     val chatMillis = parseUtcMillis(job.consumerChatAt)
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(chatMillis) {
@@ -823,14 +840,21 @@ private fun DeliverAction(
     }
     val chatWaitLeftMin: Long? = if (!gate088 || chatMillis == null) null else {
         val elapsedMin = (nowMillis - chatMillis) / 60_000
-        if (elapsedMin >= 60) null else (60 - elapsedMin).coerceAtLeast(1)
+        // coerceIn: jam device mundur (skew) jangan menampilkan ">60 menit".
+        if (elapsedMin >= 60) null else (60 - elapsedMin).coerceIn(1, 60)
     }
-    val chatBlocked = !vm.isAdminViewer && gate088 &&
+    val chatBlocked = serverGateOn && !vm.isAdminViewer && gate088 &&
         (job.consumerChatAt == null || chatWaitLeftMin != null)
-    if (gate088 && job.consumerChatAt == null) {
+    // Teks status chat H-1 — hanya utk non-admin (admin di-bypass server, pesan
+    // bergaya blocking di atas tombol aktif = menyesatkan).
+    if (!vm.isAdminViewer && gate088 && job.consumerChatAt == null) {
         Spacer(Modifier.height(8.dp))
-        Text("Belum chat konsumen — tandai chat dulu (wajib ≥1 jam sebelum serah terima).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-    } else if (chatWaitLeftMin != null) {
+        if (serverGateOn) {
+            Text("Belum chat konsumen — tandai chat dulu (wajib ≥1 jam sebelum serah terima).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        } else {
+            Text("Belum chat konsumen — biasakan tandai chat H-1 (aturan wajib segera diberlakukan).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else if (!vm.isAdminViewer && serverGateOn && chatWaitLeftMin != null) {
         Spacer(Modifier.height(8.dp))
         Text("Chat konsumen tercatat — tunggu ±$chatWaitLeftMin menit lagi (syarat minimal 1 jam).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
     }
@@ -838,8 +862,11 @@ private fun DeliverAction(
     val missingCatatan = driverChecklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
     val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
     val hasCashPhoto = photoState.cashPhoto != null && photoState.cashPhotoConfirmed
+    // Checklist fail-hard hanya saat gate server ON (server OFF menerima
+    // checklist null — jangan kunci seluruh serah terima gara-gara fetch gagal).
+    val checklistBlocked = serverGateOn && checklistError != null
     val canDeliver = hasPhoto && (!needCash || hasCashPhoto) && !missingCatatan &&
-        !chatBlocked && checklistError == null
+        !chatBlocked && !checklistBlocked
     ExpressiveFilledButton(
         onClick = {
             val bodies = driverChecklist.map { com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody(item = it.itemLabel, hasil = hasil[it.id] ?: "ok", catatan = catatan[it.id]?.trim()?.ifBlank { null }) }
@@ -850,7 +877,7 @@ private fun DeliverAction(
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
         Text(when {
-            checklistError != null -> "Muat ulang checklist dulu"
+            checklistBlocked -> "Muat ulang checklist dulu"
             chatBlocked && job.consumerChatAt == null -> "Tandai chat konsumen dulu"
             chatBlocked -> "Tunggu ±$chatWaitLeftMin mnt (chat H-1)"
             !hasPhoto -> "Ambil foto dulu"

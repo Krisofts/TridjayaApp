@@ -2,6 +2,8 @@ package com.krisoft.tridjayaelektronik.ui.deliveryflow
 
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
@@ -111,15 +113,36 @@ class DeliveryFlowViewModel @Inject constructor(
     val currentUserId: String = authRepository.currentUserId?.trim().orEmpty()
 
     // ── Akses viewer (SpkAccessPolicy — mirror gate backend, backend tetap
-    // otoritatif). Dipakai gating aksi layar detail + tombol approval aki.
-    private val viewerRoles = SpkAccessPolicy.rolesOf(authRepository.cachedUser)
-    private val viewerGrants = SpkAccessPolicy.grantPrefixesOf(authRepository.cachedUser)
-    val isAdminViewer: Boolean = SpkAccessPolicy.isAdmin(viewerRoles)
-    val canApproveAki: Boolean = SpkAccessPolicy.canApproveAki(viewerRoles, viewerGrants)
+    // otoritatif). REAKTIF (temuan review): dihitung dari cache saat konstruksi,
+    // lalu di-refresh SEKALI dari server — approver page-grant/extra-role yang
+    // di-grant SETELAH cache profil terbentuk tak kehilangan tombol.
+    var isAdminViewer by androidx.compose.runtime.mutableStateOf(false)
+        private set
+    var canApproveAki by androidx.compose.runtime.mutableStateOf(false)
+        private set
     /** Admin/manager wajib pilih slot eksplisit saat approve aki (backend 400 tanpa slot). */
-    val akiNeedsSlot: Boolean = SpkAccessPolicy.akiNeedsSlot(viewerRoles)
+    var akiNeedsSlot by androidx.compose.runtime.mutableStateOf(false)
+        private set
     /** Akses per-tahap (dipakai menyaring aksi di layar detail job). */
-    val access: SpkHubAccess = SpkAccessPolicy.accessOf(authRepository.cachedUser)
+    var access by androidx.compose.runtime.mutableStateOf(SpkAccessPolicy.accessOf(null))
+        private set
+
+    private fun recomputeAccess(user: com.krisoft.tridjayaelektronik.data.model.UserDto?) {
+        val roles = SpkAccessPolicy.rolesOf(user)
+        val grants = SpkAccessPolicy.grantPrefixesOf(user)
+        isAdminViewer = SpkAccessPolicy.isAdmin(roles)
+        canApproveAki = SpkAccessPolicy.canApproveAki(roles, grants)
+        akiNeedsSlot = SpkAccessPolicy.akiNeedsSlot(roles)
+        access = SpkAccessPolicy.accessOf(user)
+    }
+
+    init {
+        recomputeAccess(authRepository.cachedUser)
+        viewModelScope.launch {
+            // profile() meng-update TokenStore + fallback ke cache saat offline.
+            (authRepository.profile() as? AuthResult.Success)?.let { recomputeAccess(it.data) }
+        }
+    }
 
     /** Foto serah-terima terkompres siap upload (dipisah dari state). */
     private var deliverPhotoBytes: ByteArray? = null
@@ -179,6 +202,9 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
             }
         }
+        // Konteks juga dibutuhkan layar detail (flag driverGateEnabled — gate
+        // serah-terima klien mengikuti kill-switch server). Cached, fail-soft.
+        loadDeliveryContextForCreate()
         refreshGps()
     }
 
