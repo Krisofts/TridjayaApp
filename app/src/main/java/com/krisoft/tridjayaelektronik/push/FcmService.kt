@@ -27,9 +27,9 @@ import javax.inject.Inject
  * otomatis (payload `notification`) memakai `channel_id` dari payload; saat foreground,
  * [onMessageReceived] dipanggil dan kita tampilkan manual pada channel yang sesuai.
  *
- * Dua channel: "approval" (persetujuan absen/izin) dan "crm" (notifikasi CRM: lead di-assign,
- * pindah stage, won/lost, follow-up terlambat, lead baru). Keduanya dibuat lebih awal via
- * [ensureChannels] supaya notifikasi background (Android 8+) selalu punya channel yang cocok.
+ * Tiga channel: "approval" (persetujuan absen/izin), "crm" (notifikasi CRM: lead di-assign,
+ * pindah stage, won/lost, follow-up terlambat, lead baru), dan "delivery" (alur SPK/pengiriman).
+ * Ketiganya dibuat lebih awal via [ensureChannels] supaya notifikasi background (Android 8+) selalu punya channel yang cocok.
  */
 @AndroidEntryPoint
 class FcmService : FirebaseMessagingService() {
@@ -87,18 +87,21 @@ class FcmService : FirebaseMessagingService() {
     }
 
     /** Channel tak dikenal dari server → pakai "approval" supaya notif tetap tampil. */
-    private fun normalizeChannel(channelId: String): String =
-        if (channelId == CHANNEL_CRM) CHANNEL_CRM else CHANNEL_APPROVAL
+    private fun normalizeChannel(channelId: String): String = when (channelId) {
+        CHANNEL_CRM, CHANNEL_DELIVERY -> channelId
+        else -> CHANNEL_APPROVAL
+    }
 
     companion object {
         const val CHANNEL_APPROVAL = "approval"
         const val CHANNEL_CRM = "crm"
+        const val CHANNEL_DELIVERY = "delivery"
 
         /**
-         * Buat kedua channel notifikasi bila belum ada. Dipanggil di startup app
+         * Buat tiga channel notifikasi bila belum ada. Dipanggil di startup app
          * ([TridjayaApplication.onCreate]) — penting supaya notifikasi FCM saat app di
          * **background** (ditampilkan sistem, kode kita tak jalan) sudah punya channel
-         * "crm"/"approval" yang cocok di Android 8+; kalau belum ada, notif bisa tak tampil.
+         * "approval"/"crm"/"delivery" yang cocok di Android 8+; kalau belum ada, notif bisa tak tampil.
          */
         fun ensureChannels(context: android.content.Context) {
             if (Build.VERSION.SDK_INT < 26) return
@@ -114,6 +117,13 @@ class FcmService : FirebaseMessagingService() {
                 manager.createNotificationChannel(
                     NotificationChannel(CHANNEL_CRM, "CRM / Prospek", NotificationManager.IMPORTANCE_HIGH).apply {
                         description = "Notifikasi lead ditugaskan, perubahan stage, won/lost, dan follow-up terlambat"
+                    }
+                )
+            }
+            if (manager.getNotificationChannel(CHANNEL_DELIVERY) == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(CHANNEL_DELIVERY, "SPK & Pengiriman", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "Notifikasi alur SPK: diskon, PDI, input GS, surat jalan, tugas antar, terkirim"
                     }
                 )
             }
