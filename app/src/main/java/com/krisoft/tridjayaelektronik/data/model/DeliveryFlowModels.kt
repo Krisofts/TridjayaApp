@@ -490,6 +490,12 @@ data class CreateAkiFormBody(
 @Serializable
 data class ReturnAkiBody(val jumlah: Int? = null, val keterangan: String? = null)
 
+/** Body setujui form aki (`POST /aki-forms/{id}/approve`). `slot` opsional: role
+ *  approver (kepala-cabang/admin-penjualan/kasir) di-derive backend; admin/manager
+ *  WAJIB kirim slot ('kacab'|'admin_penjualan'|'aki_approver'). */
+@Serializable
+data class ApproveAkiBody(val slot: String? = null)
+
 /** Preferensi WA alur SPK (`GET/PUT /inventory/discount-requests/wa-pref`). `spkWaOptout=true`
  *  → user matikan WA (dapat notif app push saja, anti-double). Default false = WA tetap ON. */
 @Serializable

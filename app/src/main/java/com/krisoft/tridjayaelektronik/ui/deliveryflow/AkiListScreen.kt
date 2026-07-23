@@ -78,7 +78,11 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
             ) {
                 state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
                 items(state.akiList, key = { it.id }) { form ->
-                    AkiCard(form, state.submitting, onMarkReturned = { confirmId = form.id })
+                    AkiCard(
+                        form, state.submitting,
+                        onApprove = { viewModel.approveAki(form.id) },
+                        onMarkReturned = { confirmId = form.id }
+                    )
                 }
             }
         }
@@ -96,8 +100,9 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
 }
 
 @Composable
-private fun AkiCard(form: AkiFormDto, submitting: Boolean, onMarkReturned: () -> Unit) {
+private fun AkiCard(form: AkiFormDto, submitting: Boolean, onApprove: () -> Unit, onMarkReturned: () -> Unit) {
     val sudah = form.akiBekasStatus == "sudah"
+    val approved = form.approvalStatus == "approved"
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -106,7 +111,7 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, onMarkReturned: () ->
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                AkiStatusBadge(sudah)
+                ApprovalBadge(approved)
             }
             Spacer(Modifier.height(6.dp))
             Text(
@@ -118,7 +123,17 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, onMarkReturned: () ->
                 "${form.merkTipe} · ${form.jumlahPcs} pcs",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            if (!sudah) {
+            // Belum disetujui → tombol SETUJUI (aksi approver; slot di-derive backend
+            // dari role kepala-cabang/admin-penjualan/kasir). Bukan approver → backend
+            // tolak (pesan ditampilkan via actionError).
+            if (!approved) {
+                Spacer(Modifier.height(10.dp))
+                ExpressiveFilledButton(onClick = onApprove, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
+                    if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    else Text("Setujui")
+                }
+            } else if (!sudah) {
+                // Sudah disetujui penuh — sisa aksi logistik: tandai aki bekas dikembalikan.
                 Spacer(Modifier.height(10.dp))
                 ExpressiveFilledButton(onClick = onMarkReturned, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
                     if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
@@ -130,13 +145,14 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, onMarkReturned: () ->
 }
 
 @Composable
-private fun AkiStatusBadge(sudah: Boolean) {
-    val color = if (sudah) Color(0xFF12B76A) else Color(0xFFF04438)
+private fun ApprovalBadge(approved: Boolean) {
+    val color = if (approved) Color(0xFF12B76A) else Color(0xFFB5670C)
     Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
         Text(
-            if (sudah) "Sudah kembali" else "Belum kembali",
+            if (approved) "Disetujui" else "Menunggu approval",
             color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
         )
     }
 }
+

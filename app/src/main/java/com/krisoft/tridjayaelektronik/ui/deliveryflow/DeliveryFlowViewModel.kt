@@ -438,6 +438,22 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Setujui form aki (slot di-derive backend dari role approver; admin/manager
+     *  kirim `slot` eksplisit). Muat ulang daftar setelah sukses. */
+    fun approveAki(id: String, slot: String? = null) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.approveAkiForm(id, slot)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    loadAkiForms()
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
     fun confirmSpk(id: String, onDone: () -> Unit) = action { repository.confirmSpk(id).mapOk { onDone() } }
 
     fun issueDeliveryNote(id: String, sourceBranch: String, onDone: () -> Unit) = action {
