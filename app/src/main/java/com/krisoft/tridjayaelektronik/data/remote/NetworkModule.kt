@@ -45,8 +45,24 @@ object NetworkModule {
     private fun buildAuthenticatedRetrofit(tokenStore: TokenStore): Retrofit {
         // A dedicated Retrofit/OkHttp instance without the auth interceptor/authenticator,
         // used only for calling /api/auth/refresh so it can never recurse into itself.
-        val plainClient = baseClientBuilder().build()
-        val plainAuthApi = buildRetrofit(plainClient).create(AuthApi::class.java)
+        //
+        // Timeout SENGAJA lebih pendek dari baseClientBuilder() + retry OkHttp DIMATIKAN:
+        // TokenRefresher.refresh() blocking-synchronized SEMUA request lain yang lewat client
+        // authenticatedRetrofit (bukan cuma request pemicu refresh) selama call ini berjalan.
+        // Dengan timeout 15s+20s bawaan + retryOnConnectionFailure(true), satu refresh yang
+        // stall di jaringan lapangan bisa nge-block SEMUA layar (riwayat SPK, approval diskon,
+        // notifikasi, dst — apa pun yang lagi fetch bareng) sampai ~70 detik — persis gejala
+        // "banyak menu delivery flow timeout" yang dilaporkan user (2026-07-24). Refresh gagal
+        // cepat (6s connect, 8s read, sekali coba) jauh lebih baik daripada menyandera semua
+        // request lain — token lama tetap dipakai (AuthHeaderInterceptor fallback ke token
+        // lama saat refresh gagal), request individual retry lewat 401 Authenticator sendiri.
+        val refreshClient = baseClientBuilder()
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .writeTimeout(8, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build()
+        val plainAuthApi = buildRetrofit(refreshClient).create(AuthApi::class.java)
 
         // Single refresher shared by the proactive interceptor and the 401 authenticator so only one
         // /auth/refresh ever fires per rotation (the refresh token is single-use).
