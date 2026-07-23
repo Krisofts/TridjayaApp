@@ -131,7 +131,7 @@ private fun ProductRow(row: StokCabangRow, onClick: () -> Unit) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(text = row.nama.ifBlank { row.kode }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(
-                text = "${row.kode} · Stok: ${row.stok?.toInt() ?: 0}",
+                text = "${row.kode} · Stok: ${row.stok ?: 0}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp)
@@ -150,7 +150,7 @@ private fun SerialInputFormScreen(
     // State-swap di dalam route ini (bukan nav destination sendiri) — pola PayrollScreen/IndentDetailScreen.
     BackHandler(onBack = onBack)
     val product = state.selected ?: return
-    val stok = product.stok?.toInt() ?: 0
+    val stok = product.stok ?: 0
     val remaining = (stok - state.existingCount).coerceAtLeast(0)
     val lines = state.text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
     val countMismatch = lines.isNotEmpty() && lines.size != remaining
@@ -223,8 +223,8 @@ private fun SerialInputFormScreen(
                     )
                     if (result.skipped.isNotEmpty()) {
                         Text(
-                            text = "${result.skipped.size} dilewati (sudah ada): " +
-                                result.skipped.joinToString(", ") { it.serialNumber },
+                            text = "${result.skipped.size} dilewati: " +
+                                result.skipped.joinToString(", ") { "${it.serialNumber} (${it.reason.ifBlank { "dilewati" }})" },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary
                         )
