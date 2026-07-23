@@ -91,6 +91,10 @@ class TokenStore(private val context: Context) {
             email = s.email,
             name = s.userName,
             role = s.role,
+            roles = s.rolesCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+            pageGrants = s.grantsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                .map { com.krisoft.tridjayaelektronik.data.model.PageGrantDto(prefix = it) },
+            divisi = s.divisi,
             cabangName = s.cabangName,
             whatsapp = s.whatsapp,
             mustChangePassword = s.mustChangePassword
@@ -121,7 +125,10 @@ class TokenStore(private val context: Context) {
             role = session.user.role,
             nik = session.user.nik,
             email = session.user.email,
-            mustChangePassword = session.user.mustChangePassword
+            mustChangePassword = session.user.mustChangePassword,
+            rolesCsv = session.user.roles.joinToString(","),
+            divisi = session.user.divisi,
+            grantsCsv = session.user.pageGrants.joinToString(",") { it.prefix }
         )
     }
 
@@ -144,7 +151,10 @@ class TokenStore(private val context: Context) {
             role = user.role,
             nik = user.nik,
             email = user.email,
-            mustChangePassword = user.mustChangePassword
+            mustChangePassword = user.mustChangePassword,
+            rolesCsv = user.roles.joinToString(","),
+            divisi = user.divisi,
+            grantsCsv = user.pageGrants.joinToString(",") { it.prefix }
         )
     }
 
