@@ -127,12 +127,16 @@ data class DeliveryCreateResult(
     val discountPending: Boolean = false
 )
 
-/** Konteks cabang/dealer aktor untuk form input SPK (`GET /delivery/context`). */
+/**
+ * Konteks cabang/dealer aktor untuk form input SPK (`GET /delivery/context`).
+ * Backend (`delivery_context` di `delivery.rs`) balas key `kodeDealer`/`dealerName`/`cabangName`/`name`
+ * — TIDAK ADA `kodeCabang` (nama field lama sebelumnya salah tebak, selalu null tak terpakai).
+ */
 @Serializable
 data class DeliveryContextDto(
     val kodeDealer: String? = null,
     val dealerName: String? = null,
-    val kodeCabang: String? = null
+    val cabangName: String? = null
 )
 
 /** Response upload foto (`POST /delivery/upload-photo`). */
