@@ -36,7 +36,7 @@ class ResetPasswordViewModel @Inject constructor(
     fun submit() {
         val s = _uiState.value
         val error = when {
-            s.token.isBlank() -> "Kode reset dari email wajib diisi"
+            s.token.isBlank() -> "Kode reset dari WhatsApp wajib diisi"
             s.newPassword.length < MIN_LENGTH -> "Password baru minimal $MIN_LENGTH karakter"
             s.newPassword != s.confirmPassword -> "Konfirmasi password tidak cocok"
             else -> null

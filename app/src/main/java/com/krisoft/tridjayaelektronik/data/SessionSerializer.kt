@@ -23,7 +23,14 @@ data class PersistedSession(
     val role: String = "",
     val nik: String = "",
     val email: String = "",
-    val mustChangePassword: Boolean = false
+    val mustChangePassword: Boolean = false,
+    /** Role efektif (folded) CSV — dipakai gating menu (mis. hub SPK). Kosong di
+     *  blob lama pra-update sampai profil ter-refresh. */
+    val rolesCsv: String = "",
+    /** Divisi CSV (multi-nilai) — folding operasional (pdi/kasir/driver/dst). */
+    val divisi: String = "",
+    /** Prefix page-grant CSV — deteksi approver (diskon/aki) untuk gating menu. */
+    val grantsCsv: String = ""
 )
 
 /**

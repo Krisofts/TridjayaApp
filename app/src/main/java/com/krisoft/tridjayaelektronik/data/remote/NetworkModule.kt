@@ -84,6 +84,18 @@ object NetworkModule {
     fun createDeliveryFlowApi(tokenStore: TokenStore): DeliveryFlowApi =
         authenticatedRetrofit(tokenStore).create(DeliveryFlowApi::class.java)
 
+    fun createNotificationsApi(tokenStore: TokenStore): NotificationsApi =
+        authenticatedRetrofit(tokenStore).create(NotificationsApi::class.java)
+
+    fun createPayrollApi(tokenStore: TokenStore): PayrollApi =
+        authenticatedRetrofit(tokenStore).create(PayrollApi::class.java)
+
+    fun createErpPriceChangesApi(tokenStore: TokenStore): ErpPriceChangesApi =
+        authenticatedRetrofit(tokenStore).create(ErpPriceChangesApi::class.java)
+
+    fun createDeadstockApi(tokenStore: TokenStore): DeadstockApi =
+        authenticatedRetrofit(tokenStore).create(DeadstockApi::class.java)
+
     private fun baseClientBuilder(): OkHttpClient.Builder {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {

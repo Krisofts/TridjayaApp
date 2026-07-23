@@ -99,10 +99,10 @@ class AuthRepository @Inject constructor(
         }
     }
 
-    /** Public: request a password-reset email. Server always returns 200 (no account enumeration). */
-    suspend fun forgotPassword(email: String): AuthResult<Unit> {
+    /** Public: request a password reset via WhatsApp. Server always returns 200 (no account enumeration). */
+    suspend fun forgotPassword(identifier: String): AuthResult<Unit> {
         return try {
-            val response = api.forgotPassword(ForgotPasswordRequest(email))
+            val response = api.forgotPassword(ForgotPasswordRequest(identifier))
             if (response.isSuccessful) AuthResult.Success(Unit) else parseError(response)
         } catch (e: Exception) {
             AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")

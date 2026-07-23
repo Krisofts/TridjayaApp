@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Geocoder
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -12,8 +13,11 @@ import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Looper
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
+import java.util.Locale
 
 /**
  * Ambil satu titik GPS pakai [LocationManager] framework (tanpa play-services — hemat dependency;
@@ -75,5 +79,29 @@ object LocationProvider {
             ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
     } catch (_: SecurityException) {
         null
+    }
+
+    /**
+     * Reverse-geocode satu titik jadi alamat terbaca (jalan/kelurahan/kota-kabupaten/provinsi) —
+     * `Geocoder` bawaan Android, tanpa dependency baru (play-services-location dsb). `null` bila
+     * backend geocoder tak ada di device itu atau gagal (offline dsb.) — caller fallback ke koordinat
+     * mentah, sama filosofi best-effort seperti [current].
+     */
+    @Suppress("DEPRECATION")
+    suspend fun addressFor(context: Context, lat: Double, lng: Double): String? = withContext(Dispatchers.IO) {
+        if (!Geocoder.isPresent()) return@withContext null
+        runCatching {
+            Geocoder(context, Locale("in", "ID")).getFromLocation(lat, lng, 1)?.firstOrNull()?.let { addr ->
+                // Disusun manual field-per-field (bukan getAddressLine) supaya kalau satu bagian null
+                // (umum di area yang kurang ter-mapping) sisanya tetap tampil, bukan alamat kosong.
+                listOfNotNull(
+                    addr.thoroughfare ?: addr.featureName,
+                    addr.subLocality,
+                    (addr.locality ?: addr.subAdminArea)?.takeIf { it.isNotBlank() },
+                    addr.subAdminArea?.takeIf { it.isNotBlank() && it != addr.locality },
+                    addr.adminArea
+                ).distinct().joinToString(", ").ifBlank { null }
+            }
+        }.getOrNull()
     }
 }

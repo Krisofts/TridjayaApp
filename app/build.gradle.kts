@@ -27,8 +27,8 @@ android {
         applicationId = "com.krisoft.tridjayaelektronik"
         minSdk = 24
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 16
+        versionName = "2.5"
 
         // Gateway Rust tridjaya, deployed at tridjaya.com (HTTPS, no emulator/LAN
         // workaround needed since it's a public domain). Migrated 2026-07-13 from
@@ -142,6 +142,11 @@ dependencies {
     implementation("com.google.firebase:firebase-config-ktx")
     // Cloud Messaging (push approval izin/absen). Inert tanpa google-services.json.
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Scan barcode serial number (PDI + Input SPK) — Google code scanner:
+    // TANPA izin kamera (UI scanner disediakan Play Services, model di-download
+    // on-demand), jauh lebih ringan daripada bundling CameraX+ML Kit.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     // Installs the bundled baseline profile on first run (removes cold-start/first-scroll JIT jank).
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
