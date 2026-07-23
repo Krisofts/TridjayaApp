@@ -262,6 +262,16 @@ private fun LazyListScope.homeSection(
             item { SectionHeader(title = "Akses Cepat", icon = Icons.Rounded.Bolt) }
             item {
                 val role = state.user?.role
+                // Role efektif (folded) utk gating tile per-divisi — bukan cuma role utama:
+                // karyawan ber-divisi "pdi" tetap dapat tile Antrian PDI. Sales tanpa divisi
+                // pdi TIDAK (kecuali superadmin beri divisi tambahan). Butuh cache roles/divisi
+                // (v2.1) — blob lama terisi setelah profil ter-refresh.
+                val effRoles = buildSet {
+                    state.user?.role?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { add(it) }
+                    state.user?.roles?.forEach { it.trim().lowercase().takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }
+                    state.user?.divisi?.split(",")?.forEach { it.trim().lowercase().takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }
+                }
+                val isPdi = "pdi" in effRoles || "admin" in effRoles || "superadmin" in effRoles
                 QuickAccessRow(
                     onInventory = onQuickAccessInventory,
                     onLeads = onQuickAccessLeads,
@@ -280,7 +290,8 @@ private fun LazyListScope.homeSection(
                     showHargaGs = canAccessHargaGs(role),
                     showSerialInput = canAccessSerialInput(role),
                     showDeadstock = canAccessDeadstock(role),
-                    showMutasiHistori = canAccessMutasiHistori(role)
+                    showMutasiHistori = canAccessMutasiHistori(role),
+                    showPdiQueue = isPdi
                 )
             }
         }
@@ -458,7 +469,8 @@ private fun QuickAccessRow(
     showHargaGs: Boolean = true,
     showSerialInput: Boolean = false,
     showDeadstock: Boolean = false,
-    showMutasiHistori: Boolean = false
+    showMutasiHistori: Boolean = false,
+    showPdiQueue: Boolean = false
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -487,6 +499,13 @@ private fun QuickAccessRow(
         // Alur pengiriman SPK — satu pintu (hub); RBAC per tahap di backend.
         item {
             QuickAccessTile(Icons.Rounded.LocalShipping, "SPK", Color(0xFF1E63E9), { onSpkMenu("hub") }, Modifier.width(86.dp))
+        }
+        // Akses cepat LANGSUNG ke antrian PDI (skip hub → riwayat) — HANYA divisi pdi
+        // (folded) / admin. PDI dikerjakan di halaman ini, bukan riwayat SPK.
+        if (showPdiQueue) {
+            item {
+                QuickAccessTile(Icons.Rounded.FactCheck, "Antrian PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
+            }
         }
         item {
             QuickAccessTile(
