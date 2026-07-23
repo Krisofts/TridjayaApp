@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.deliveryflow
 
+import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.LocalShipping
+import androidx.compose.material.icons.rounded.LocationOff
+import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
@@ -51,6 +54,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,15 +65,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
@@ -345,12 +354,16 @@ private fun PdiAction(
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/pdi_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
-    var hasPhoto by remember { mutableStateOf(false) }
-    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onPdiPhotoCaptured(file); hasPhoto = true } }
+    val photoState by vm.state.collectAsState()
+    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onPdiPhotoCaptured(file) }
 
     // Hasil checklist per item.id: hasil (ok/tidak/na) default "ok" + catatan.
     val hasil = remember(checklist) { mutableStateMapOf<String, String>().apply { checklist.forEach { put(it.id, "ok") } } }
     val catatan = remember(checklist) { mutableStateMapOf<String, String>() }
+
+    photoState.pdiPhoto?.takeIf { !photoState.pdiPhotoConfirmed }?.let { bmp ->
+        PhotoReviewDialog(bmp, onRetake = { vm.retakePdiPhoto() }, onConfirm = { vm.confirmPdiPhoto() })
+    }
 
     Text("PDI / Inspeksi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
@@ -386,7 +399,9 @@ private fun PdiAction(
     }
 
     Spacer(Modifier.height(10.dp))
-    PhotoBox(if (hasPhoto) file else null, "Foto unit siap (opsional)") { cam.launch(uri) }
+    GpsStatusRow(photoState) { vm.refreshGps() }
+    Spacer(Modifier.height(8.dp))
+    PhotoBox(photoState.pdiPhoto, "Foto unit siap (opsional)") { cam.launch(uri) }
 
     val akiPending = requiresAki && akiForms.isEmpty()
     if (requiresAki) {
@@ -512,24 +527,32 @@ private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submit
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/deliver_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
-    var hasPhoto by remember { mutableStateOf(false) }
-    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onDeliverPhotoCaptured(file); hasPhoto = true } }
+    val photoState by vm.state.collectAsState()
+    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onDeliverPhotoCaptured(file) }
     // 088: foto bukti terima uang (wajib bila job.driverTerimaUang == true)
     val needCash = job.driverTerimaUang == true
     val cashFile = remember { File(context.cacheDir, "delivery/cash_$id.jpg").apply { parentFile?.mkdirs() } }
     val cashUri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cashFile) }
-    var hasCashPhoto by remember { mutableStateOf(false) }
-    val cashCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) { vm.onCashPhotoCaptured(cashFile); hasCashPhoto = true } }
+    val cashCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onCashPhotoCaptured(cashFile) }
     // 088: checklist serah-terima stage=driver (fail-open bila kosong)
     val hasil = remember(driverChecklist) { mutableStateMapOf<String, String>().apply { driverChecklist.forEach { put(it.id, "ok") } } }
     val catatan = remember(driverChecklist) { mutableStateMapOf<String, String>() }
 
+    photoState.deliverPhoto?.takeIf { !photoState.deliverPhotoConfirmed }?.let { bmp ->
+        PhotoReviewDialog(bmp, onRetake = { vm.retakeDeliverPhoto() }, onConfirm = { vm.confirmDeliverPhoto() })
+    }
+    photoState.cashPhoto?.takeIf { !photoState.cashPhotoConfirmed }?.let { bmp ->
+        PhotoReviewDialog(bmp, onRetake = { vm.retakeCashPhoto() }, onConfirm = { vm.confirmCashPhoto() })
+    }
+
     Text("Serah Terima", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
-    PhotoBox(if (hasPhoto) file else null, "Foto serah terima (wajib)") { cam.launch(uri) }
+    GpsStatusRow(photoState) { vm.refreshGps() }
+    Spacer(Modifier.height(8.dp))
+    PhotoBox(photoState.deliverPhoto, "Foto serah terima (wajib)") { cam.launch(uri) }
     if (needCash) {
         Spacer(Modifier.height(10.dp))
-        PhotoBox(if (hasCashPhoto) cashFile else null, "Foto serah terima uang (wajib${job.driverTerimaNominal?.let { " · ${rupiah(it)}" } ?: ""})") { cashCam.launch(cashUri) }
+        PhotoBox(photoState.cashPhoto, "Foto serah terima uang (wajib${job.driverTerimaNominal?.let { " · ${rupiah(it)}" } ?: ""})") { cashCam.launch(cashUri) }
     }
     if (driverChecklist.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
@@ -574,6 +597,8 @@ private fun DeliverAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submit
     }
     Spacer(Modifier.height(14.dp))
     val missingCatatan = driverChecklist.any { hasil[it.id] == "tidak" && catatan[it.id].orEmpty().isBlank() }
+    val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
+    val hasCashPhoto = photoState.cashPhoto != null && photoState.cashPhotoConfirmed
     val canDeliver = hasPhoto && (!needCash || hasCashPhoto) && !missingCatatan
     ExpressiveFilledButton(
         onClick = {
@@ -625,17 +650,142 @@ private fun ChatConsumerCard(job: DeliveryJobDto, vm: DeliveryFlowViewModel, sub
     }
 }
 
+/** Status GPS detail (pola sama kartu status di AttendanceScreen) — dipakai di atas [PhotoBox] pada
+ *  PDI/serah-terima supaya user tahu lokasi sudah terkunci (+akurasi) SEBELUM jepret, bukan baru
+ *  ketauan gagal setelah lihat watermark. */
 @Composable
-private fun PhotoBox(file: File?, label: String, onCapture: () -> Unit) {
+private fun GpsStatusRow(state: DeliveryFlowUiState, onRetry: () -> Unit) {
+    val context = LocalContext.current
+
+    // Setelah user diarahkan ke Pengaturan izin & kembali (ON_RESUME), coba lagi otomatis — tanpa
+    // ini "Buka Pengaturan" jadi jalan buntu: user balik ke app tapi kartu masih nampilkan status
+    // ditolak yang lama sampai keluar-masuk layar.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && state.gpsDenied) onRetry()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val label: String
+    val detail: String
+    val fg: Color
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    when {
+        state.gpsDenied -> {
+            label = "Izin lokasi ditolak"
+            detail = "Aktifkan izin lokasi untuk HP ini di Pengaturan, lalu tekan Perbarui."
+            fg = Color(0xFFF04438); icon = Icons.Rounded.LocationOff
+        }
+        state.gpsLocating -> {
+            label = "Mendeteksi lokasi…"
+            detail = "Mohon tunggu, GPS sedang mencari sinyal."
+            fg = MaterialTheme.colorScheme.onSurfaceVariant; icon = Icons.Rounded.MyLocation
+        }
+        state.gpsError != null -> {
+            label = "Gagal ambil lokasi"
+            detail = state.gpsError
+            fg = Color(0xFFB5670C); icon = Icons.Rounded.LocationOff
+        }
+        state.gpsLat != null && state.gpsLng != null -> {
+            label = "Lokasi terkunci" + (state.gpsAccuracyM?.let { " · akurasi ±${it.toInt()}m" } ?: "")
+            // Alamat terbaca (kota/kabupaten/tempat) diutamakan — angka lat/lng cuma fallback
+            // selagi geocode masih jalan atau gagal (offline dsb.), bukan tampilan utama.
+            detail = when {
+                state.gpsAddress != null -> state.gpsAddress
+                state.gpsAddressLoading -> "Mencari nama lokasi…"
+                else -> "Lat %.6f, Lng %.6f".format(state.gpsLat, state.gpsLng)
+            }
+            fg = Color(0xFF12B76A); icon = Icons.Rounded.MyLocation
+        }
+        else -> {
+            label = "Lokasi belum diambil"
+            detail = "Foto akan diberi watermark tanpa koordinat."
+            fg = MaterialTheme.colorScheme.onSurfaceVariant; icon = Icons.Rounded.LocationOff
+        }
+    }
+    Surface(shape = RoundedCornerShape(12.dp), color = fg.copy(alpha = 0.1f), modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (state.gpsLocating) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
+            else Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = fg)
+                Text(detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (!state.gpsLocating) {
+                if (state.gpsDenied) {
+                    // Sekali user pilih "jangan tanya lagi", sistem tak pernah munculkan dialog izin
+                    // lagi — satu-satunya jalan keluar adalah halaman Pengaturan izin app ini.
+                    TextButton(onClick = {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                .setData(android.net.Uri.fromParts("package", context.packageName, null))
+                        )
+                    }) { Text("Buka Pengaturan") }
+                } else {
+                    TextButton(onClick = onRetry) { Text("Perbarui") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhotoBox(bitmap: Bitmap?, label: String, onCapture: () -> Unit) {
     Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(6.dp))
     Surface(onClick = onCapture, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth().height(170.dp)) {
-        if (file != null && file.exists()) {
-            AsyncImage(model = file, contentDescription = "Foto", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        if (bitmap != null) {
+            // Pola sama AttendanceScreen: render Bitmap hasil watermark LANGSUNG dari state, bukan
+            // baca-ulang file lewat Coil — tak ada cache untuk stale, tak ada race timing capture.
+            // alignment=BottomCenter (bukan default Center): watermark digambar di bar PALING BAWAH
+            // gambar asli (lihat PhotoWatermark.drawWatermark) — foto portrait di-crop ke kotak
+            // pendek-lebar ini akan kehilangan tepi atas+bawah kalau alignment default Center dipakai,
+            // memotong habis bar watermark. BottomCenter memotong dari ATAS saja, bar selalu utuh.
+            Image(
+                bitmap = bitmap.asImageBitmap(), contentDescription = "Foto",
+                contentScale = ContentScale.Crop, alignment = Alignment.BottomCenter,
+                modifier = Modifier.fillMaxSize()
+            )
         } else {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(Icons.Rounded.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.height(8.dp)); Text("Ketuk untuk ambil foto", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/**
+ * Review pasca-jepret full-screen: kamera sistem (bukan kamera dalam-app) tidak bisa ditempeli
+ * overlay saat live — jadi konfirmasi "gambarnya sudah benar" (watermark kebaca dsb.) dilakukan DI
+ * SINI, langsung setelah jepret, sebelum foto dianggap final. `ContentScale.Fit` (bukan Crop seperti
+ * [PhotoBox]) sengaja dipakai supaya seluruh gambar + bar watermark kelihatan utuh tanpa terpotong.
+ */
+@Composable
+private fun PhotoReviewDialog(bitmap: Bitmap, onRetake: () -> Unit, onConfirm: () -> Unit) {
+    Dialog(onDismissRequest = onRetake, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                Text(
+                    "Cek hasil foto — pastikan watermark jam & lokasi terbaca",
+                    color = Color.White, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                )
+                Image(
+                    bitmap = bitmap.asImageBitmap(), contentDescription = "Pratinjau foto",
+                    contentScale = ContentScale.Fit, modifier = Modifier.weight(1f).fillMaxWidth()
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ExpressiveOutlinedButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Ambil Ulang") }
+                    ExpressiveFilledButton(onClick = onConfirm, modifier = Modifier.weight(1f)) { Text("Pakai Foto Ini") }
+                }
             }
         }
     }

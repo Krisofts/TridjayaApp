@@ -34,6 +34,8 @@ object PhotoWatermark {
         lng: Double?,
         title: String,
         subtitle: String,
+        accuracyM: Float? = null,
+        address: String? = null,
     ): Pair<ByteArray, Bitmap>? {
         val raw = runCatching { file.readBytes() }.getOrNull() ?: return null
         if (raw.isEmpty()) return null
@@ -72,7 +74,7 @@ object PhotoWatermark {
             bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
         }
 
-        bitmap = drawWatermark(bitmap, title, subtitle, lat, lng)
+        bitmap = drawWatermark(bitmap, title, subtitle, lat, lng, accuracyM, address)
 
         var quality = 85
         var out = ByteArrayOutputStream().apply { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, this) }.toByteArray()
@@ -88,7 +90,10 @@ object PhotoWatermark {
      * [subtitle] (konteks: nama·cabang utk absensi, nama·kode SPK utk delivery). Ukuran teks
      * proporsional terhadap lebar gambar.
      */
-    private fun drawWatermark(src: Bitmap, title: String, subtitle: String, lat: Double?, lng: Double?): Bitmap {
+    private fun drawWatermark(
+        src: Bitmap, title: String, subtitle: String,
+        lat: Double?, lng: Double?, accuracyM: Float?, address: String?,
+    ): Bitmap {
         val bmp = if (src.isMutable) src else src.copy(Bitmap.Config.ARGB_8888, true)
         val w = bmp.width.toFloat()
         val h = bmp.height.toFloat()
@@ -106,9 +111,18 @@ object PhotoWatermark {
         canvas.drawRect(0f, h - barH, pad * 0.35f, h, Paint().apply { color = Color.rgb(30, 99, 233) })
 
         val timeStr = SimpleDateFormat("EEE, dd MMM yyyy · HH:mm:ss", Locale("in", "ID")).format(Date())
-        val geoStr = if (lat != null && lng != null)
-            "Lat %.6f, Lng %.6f".format(lat, lng)
-        else "Lokasi GPS belum terkunci"
+        // Alamat terbaca diutamakan (kota/kabupaten/tempat) — `canvas.drawText` tak wrap/clip
+        // otomatis, jadi teks yang kepanjangan dipotong manual ber-ellipsis biar tak lari ke luar
+        // tepi gambar. Fallback koordinat mentah bila geocoder gagal (offline dsb.).
+        val geoStr = if (!address.isNullOrBlank()) {
+            val avgCharPx = smallSize * 0.55f
+            val maxWidthPx = w - pad * 2.35f
+            val maxChars = (maxWidthPx / avgCharPx).toInt().coerceAtLeast(20)
+            if (address.length > maxChars) address.take(maxChars - 1) + "…" else address
+        } else if (lat != null && lng != null) {
+            val acc = accuracyM?.let { " (±%.0fm)".format(it) }.orEmpty()
+            "Lat %.6f, Lng %.6f%s".format(lat, lng, acc)
+        } else "Lokasi GPS belum terkunci"
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
         val x = pad + pad * 0.35f

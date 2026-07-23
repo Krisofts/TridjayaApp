@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.deliveryflow
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
@@ -58,7 +59,32 @@ data class DeliveryFlowUiState(
     val requiresAki: Boolean = false,
     val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
     /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
-    val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList()
+    val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
+    /** Preview foto (sudah ber-watermark geotag+jam) — pola sama [AttendanceUiState.selfie]:
+     *  bitmap dipegang di state, BUKAN dibaca ulang dari file (hindari cache-basi/race preview). */
+    val pdiPhoto: Bitmap? = null,
+    val deliverPhoto: Bitmap? = null,
+    val cashPhoto: Bitmap? = null,
+    /** true setelah user tekan "Pakai Foto Ini" di dialog review pasca-jepret. Foto baru (belum
+     *  di-retake) selalu mulai false → memaksa dialog review muncul sebelum foto dianggap final. */
+    val pdiPhotoConfirmed: Boolean = false,
+    val deliverPhotoConfirmed: Boolean = false,
+    val cashPhotoConfirmed: Boolean = false,
+    /** GPS untuk watermark foto — pola sama [com.krisoft.tridjayaelektronik.ui.attendance.AttendanceUiState]:
+     *  diambil LEBIH AWAL (saat detail job dimuat), bukan baru dicoba saat jepret — kalau baru
+     *  dicoba pas jepret, GPS cold-start belum sempat lock (ketemu nyata: PDI selalu "belum terkunci"). */
+    val gpsLat: Double? = null,
+    val gpsLng: Double? = null,
+    val gpsAccuracyM: Float? = null,
+    val gpsLocating: Boolean = false,
+    val gpsError: String? = null,
+    val gpsDenied: Boolean = false,
+    /** Alamat terbaca hasil reverse-geocode (kota/kabupaten/jalan) — `null` selama proses / gagal
+     *  (offline dsb.); UI+watermark fallback ke koordinat mentah saat itu. */
+    val gpsAddress: String? = null,
+    /** true selagi [refreshGps] menunggu hasil geocode — terpisah dari [gpsLocating] karena fix GPS
+     *  biasanya selesai duluan, lookup alamat masih jalan beberapa saat lagi di background. */
+    val gpsAddressLoading: Boolean = false
 )
 
 /**
@@ -116,7 +142,13 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     fun loadDetail(id: String) {
-        _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null, driverChecklist = emptyList()) }
+        _state.update {
+            it.copy(
+                loading = true, error = null, actionDone = false, actionError = null, driverChecklist = emptyList(),
+                pdiPhoto = null, deliverPhoto = null, cashPhoto = null,
+                pdiPhotoConfirmed = false, deliverPhotoConfirmed = false, cashPhotoConfirmed = false
+            )
+        }
         deliverPhotoBytes = null
         pdiPhotoBytes = null
         cashPhotoBytes = null
@@ -127,6 +159,36 @@ class DeliveryFlowViewModel @Inject constructor(
                     loadAuxFor(res.data)
                 }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
+            }
+        }
+        refreshGps()
+    }
+
+    /** Ambil satu titik GPS lebih awal (dipakai watermark foto PDI/serah-terima/uang saat jepret). */
+    fun refreshGps() {
+        if (_state.value.gpsLocating) return
+        _state.update { it.copy(gpsLocating = true, gpsError = null, gpsDenied = false, gpsAddress = null, gpsAddressLoading = false) }
+        viewModelScope.launch {
+            if (!LocationProvider.hasPermission(appContext)) {
+                _state.update { it.copy(gpsLocating = false, gpsDenied = true) }
+                return@launch
+            }
+            val loc = LocationProvider.current(appContext)
+            if (loc == null) {
+                _state.update { it.copy(gpsLocating = false, gpsError = "Tidak bisa mendapatkan lokasi. Pastikan GPS aktif.") }
+            } else {
+                _state.update {
+                    it.copy(
+                        gpsLocating = false, gpsError = null,
+                        gpsLat = loc.latitude, gpsLng = loc.longitude,
+                        gpsAccuracyM = if (loc.hasAccuracy()) loc.accuracy else null,
+                        gpsAddressLoading = true
+                    )
+                }
+                // Alamat terbaca (kota/kabupaten/tempat) dicari terpisah, tak menahan fix GPS —
+                // gagal/lambat (offline dsb.) tetap fail-soft, UI+watermark fallback ke koordinat.
+                val address = LocationProvider.addressFor(appContext, loc.latitude, loc.longitude)
+                _state.update { it.copy(gpsAddress = address, gpsAddressLoading = false) }
             }
         }
     }
@@ -193,38 +255,70 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    // ── Foto (PDI ready / serah terima / terima uang) — watermark geotag+jam sama pola absensi ──
+    // ── Foto (PDI ready / serah terima / terima uang) — watermark geotag+jam, pola SAMA
+    // [com.krisoft.tridjayaelektronik.ui.attendance.AttendanceViewModel.onSelfieCaptured]: preview
+    // dipegang sebagai Bitmap DI STATE (bukan dibaca ulang dari file lewat Coil/AsyncImage) —
+    // menghindari 2 footgun yang sempat ketemu di sini: (a) race kalau UI flip "foto siap" sebelum
+    // watermark async selesai, (b) Coil meng-cache bitmap mentah berbasis path file yang isinya
+    // berubah-ubah (file capture ditulis ulang tiap retake, key cache Coil tidak tahu itu).
     fun onPdiPhotoCaptured(file: File) = viewModelScope.launch {
-        pdiPhotoBytes = watermarked(file, "TRIDJAYA · PDI")
-        _state.update { it.copy() } // trigger recomposition of "photo taken" flag if diperlukan
+        val prepared = watermarked(file, "TRIDJAYA · PDI")
+        pdiPhotoBytes = prepared?.first
+        _state.update { it.copy(pdiPhoto = prepared?.second, pdiPhotoConfirmed = false) }
     }
 
     fun hasPdiPhoto(): Boolean = pdiPhotoBytes != null
 
+    /** User menekan "Pakai Foto Ini" di dialog review pasca-jepret. */
+    fun confirmPdiPhoto() = _state.update { it.copy(pdiPhotoConfirmed = true) }
+
+    /** User menekan "Ambil Ulang" — buang hasil jepretan, biar tombol kamera bisa dipakai lagi. */
+    fun retakePdiPhoto() {
+        pdiPhotoBytes = null
+        _state.update { it.copy(pdiPhoto = null, pdiPhotoConfirmed = false) }
+    }
+
     fun onDeliverPhotoCaptured(file: File) = viewModelScope.launch {
-        deliverPhotoBytes = watermarked(file, "TRIDJAYA · SERAH TERIMA")
-        _state.update { it.copy() }
+        val prepared = watermarked(file, "TRIDJAYA · SERAH TERIMA")
+        deliverPhotoBytes = prepared?.first
+        _state.update { it.copy(deliverPhoto = prepared?.second, deliverPhotoConfirmed = false) }
     }
 
     fun hasDeliverPhoto(): Boolean = deliverPhotoBytes != null
 
+    fun confirmDeliverPhoto() = _state.update { it.copy(deliverPhotoConfirmed = true) }
+
+    fun retakeDeliverPhoto() {
+        deliverPhotoBytes = null
+        _state.update { it.copy(deliverPhoto = null, deliverPhotoConfirmed = false) }
+    }
+
     fun onCashPhotoCaptured(file: File) = viewModelScope.launch {
-        cashPhotoBytes = watermarked(file, "TRIDJAYA · TERIMA UANG")
-        _state.update { it.copy() }
+        val prepared = watermarked(file, "TRIDJAYA · TERIMA UANG")
+        cashPhotoBytes = prepared?.first
+        _state.update { it.copy(cashPhoto = prepared?.second, cashPhotoConfirmed = false) }
     }
 
     fun hasCashPhoto(): Boolean = cashPhotoBytes != null
 
+    fun confirmCashPhoto() = _state.update { it.copy(cashPhotoConfirmed = true) }
+
+    fun retakeCashPhoto() {
+        cashPhotoBytes = null
+        _state.update { it.copy(cashPhoto = null, cashPhotoConfirmed = false) }
+    }
+
     /**
-     * GPS best-effort (pola sama [DeliveryFlowViewModel.deliver]): gagal/izin ditolak → watermark
-     * timestamp saja, JANGAN blokir foto. Subtitle = nama · kode SPK job aktif (kalau sudah termuat).
+     * GPS best-effort: pakai titik yang SUDAH di-prime oleh [refreshGps] (dipanggil saat detail job
+     * dimuat) — bukan menarik lokasi baru di sini. Gagal/izin ditolak → watermark timestamp saja,
+     * JANGAN blokir foto. Subtitle = nama · kode SPK job aktif (kalau sudah termuat).
      */
-    private suspend fun watermarked(file: File, title: String): ByteArray? {
-        val loc = runCatching { LocationProvider.current(appContext) }.getOrNull()
-        val kode = _state.value.detail?.kodePengiriman.orEmpty()
+    private suspend fun watermarked(file: File, title: String): Pair<ByteArray, Bitmap>? {
+        val s = _state.value
+        val kode = s.detail?.kodePengiriman.orEmpty()
         val subtitle = listOf(currentUserName, kode).filter { it.isNotBlank() }.joinToString(" · ")
         return withContext(Dispatchers.Default) {
-            PhotoWatermark.prepareWatermarkedJpeg(file, loc?.latitude, loc?.longitude, title, subtitle)?.first
+            PhotoWatermark.prepareWatermarkedJpeg(file, s.gpsLat, s.gpsLng, title, subtitle, s.gpsAccuracyM, s.gpsAddress)
         }
     }
 
