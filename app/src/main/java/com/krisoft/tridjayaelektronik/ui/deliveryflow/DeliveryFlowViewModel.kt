@@ -120,9 +120,6 @@ class DeliveryFlowViewModel @Inject constructor(
         private set
     var canApproveAki by androidx.compose.runtime.mutableStateOf(false)
         private set
-    /** Admin/manager wajib pilih slot eksplisit saat approve aki (backend 400 tanpa slot). */
-    var akiNeedsSlot by androidx.compose.runtime.mutableStateOf(false)
-        private set
     /** Akses per-tahap (dipakai menyaring aksi di layar detail job). */
     var access by androidx.compose.runtime.mutableStateOf(SpkAccessPolicy.accessOf(null))
         private set
@@ -132,7 +129,6 @@ class DeliveryFlowViewModel @Inject constructor(
         val grants = SpkAccessPolicy.grantPrefixesOf(user)
         isAdminViewer = SpkAccessPolicy.isAdmin(roles)
         canApproveAki = SpkAccessPolicy.canApproveAki(roles, grants)
-        akiNeedsSlot = SpkAccessPolicy.akiNeedsSlot(roles)
         access = SpkAccessPolicy.accessOf(user)
     }
 
@@ -513,13 +509,13 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    /** Setujui form aki (slot di-derive backend dari role approver; admin/manager
-     *  kirim `slot` eksplisit). Muat ulang daftar setelah sukses. */
-    fun approveAki(id: String, slot: String? = null) {
+    /** Setujui form aki — approval TUNGGAL (redesain 2026-07-24), tanpa slot.
+     *  Muat ulang daftar setelah sukses. */
+    fun approveAki(id: String) {
         if (_state.value.submitting) return
         _state.update { it.copy(submitting = true, actionError = null) }
         viewModelScope.launch {
-            when (val res = repository.approveAkiForm(id, slot)) {
+            when (val res = repository.approveAkiForm(id)) {
                 is AuthResult.Success -> {
                     _state.update { it.copy(submitting = false) }
                     loadAkiForms()

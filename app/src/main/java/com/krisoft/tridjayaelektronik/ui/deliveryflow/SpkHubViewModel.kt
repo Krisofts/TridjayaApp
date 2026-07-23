@@ -41,18 +41,15 @@ object SpkAccessPolicy {
 
     private fun hasGrant(grants: List<String>, prefix: String) = grants.any { it.contains(prefix) }
 
-    /** Boleh menyetujui/menolak form aki (aki.rs `approve_form`/`reject_form`):
-     *  kepala-cabang / admin-penjualan / kasir (cabang sendiri, dipaksa backend),
-     *  page-grant aki-approval (lintas cabang), admin/manager (slot eksplisit). */
+    /** Boleh menyetujui/menolak form aki (aki.rs `approve_form`/`reject_form`) —
+     *  approval TUNGGAL, redesain 2026-07-24 (dulu 3-pihak/089): HANYA approver
+     *  PUSAT (page-grant `/dashboard/aki-approval`, implied role `aki-approver`)
+     *  atau admin/manager. kepala-cabang/admin-penjualan/kasir DICABUT — dulu
+     *  ikut approve cabang sendiri, kini 403 di backend. */
     fun canApproveAki(roles: Set<String>, grants: List<String>): Boolean =
         isAdmin(roles) || isManager(roles) ||
-            roles.any { it in setOf("kepala-cabang", "admin-penjualan", "kasir", "aki-approver") } ||
+            roles.contains("aki-approver") ||
             hasGrant(grants, "/dashboard/aki-approval")
-
-    /** Admin/manager WAJIB kirim `slot` eksplisit saat approve aki (aki.rs
-     *  `approve_form` — tanpa slot → 400). Role approver lain slot-nya
-     *  di-derive backend, JANGAN kirim slot. */
-    fun akiNeedsSlot(roles: Set<String>): Boolean = isAdmin(roles) || isManager(roles)
 
     fun accessOf(user: UserDto?): SpkHubAccess {
         val roles = rolesOf(user)
@@ -65,8 +62,11 @@ object SpkAccessPolicy {
             history = true,
             diskon = admin || hasGrant(grants, "/dashboard/discount-approval"),
             pdi = admin || hasRole("pdi"),
-            aki = admin || isManager(roles) ||
-                hasRole("pdi", "kasir", "admin-penjualan", "kepala-cabang") ||
+            // Menu Pengambilan Aki: PDI (pembuat form, lihat status form sendiri)
+            // + approver pusat/manager/admin. Redesain 2026-07-24 (dulu juga
+            // kasir/admin-penjualan/kepala-cabang — 3-pihak/089) — role itu
+            // dicabut, backend sudah 403-kan mereka di endpoint ini.
+            aki = admin || isManager(roles) || hasRole("pdi", "aki-approver") ||
                 hasGrant(grants, "/dashboard/aki-approval"),
             kasir = admin || hasRole("kasir"),
             note = admin || hasRole("delivery-control"),

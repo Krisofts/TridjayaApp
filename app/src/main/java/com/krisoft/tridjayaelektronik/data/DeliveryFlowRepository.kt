@@ -178,8 +178,9 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
-    suspend fun approveAkiForm(id: String, slot: String?): AuthResult<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = try {
-        val response = api.approveAkiForm(id, com.krisoft.tridjayaelektronik.data.model.ApproveAkiBody(slot = slot))
+    /** Setujui form aki — approval TUNGGAL (redesain 2026-07-24), tanpa body. */
+    suspend fun approveAkiForm(id: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = try {
+        val response = api.approveAkiForm(id)
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.form)
         else parseError(response, "Gagal menyetujui form aki")

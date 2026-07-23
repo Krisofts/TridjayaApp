@@ -28,7 +28,6 @@ import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderResult
-import com.krisoft.tridjayaelektronik.data.model.ApproveAkiBody
 import com.krisoft.tridjayaelektronik.data.model.RejectAkiBody
 import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
@@ -174,9 +173,10 @@ interface DeliveryFlowApi {
     @POST("api/inventory/delivery/aki-forms/{id}/return")
     suspend fun returnAkiForm(@Path("id") id: String, @Body body: ReturnAkiBody): Response<ApiResponse<AkiFormCreateData>>
 
-    /** Setujui form aki (slot di-derive dari role; admin/manager kirim slot). */
+    /** Setujui form aki — approval TUNGGAL (redesain 2026-07-24, dulu 3-pihak/089),
+     *  tanpa body: approver pusat (page-grant) atau admin/manager. */
     @POST("api/inventory/delivery/aki-forms/{id}/approve")
-    suspend fun approveAkiForm(@Path("id") id: String, @Body body: ApproveAkiBody): Response<ApiResponse<AkiFormCreateData>>
+    suspend fun approveAkiForm(@Path("id") id: String): Response<ApiResponse<AkiFormCreateData>>
 
     /** Tolak form aki (alasan wajib). */
     @POST("api/inventory/delivery/aki-forms/{id}/reject")

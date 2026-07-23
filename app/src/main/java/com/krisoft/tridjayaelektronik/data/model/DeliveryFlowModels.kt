@@ -468,16 +468,16 @@ data class AkiFormDto(
     val merkTipe: String = "",
     val jumlahPcs: Int = 0,
     val akiBekasStatus: String = "belum",
-    /** `rejected` bila ditolak, `approved` bila 3 slot (kepala-cabang + admin-penjualan +
-     *  kasir/aki-approver) sudah mengisi; selain itu `pending`. PDI di-gate backend sampai `approved`. */
+    /** `rejected` bila ditolak, `approved` bila approver PUSAT (`aki_approver`)
+     *  sudah menyetujui (redesain 2026-07-24, dulu 3 slot kepala-cabang+admin-
+     *  penjualan+kasir/aki-approver); selain itu `pending`. PDI di-gate backend
+     *  sampai `approved`. */
     val approvalStatus: String = "pending",
     val rejectedByNama: String? = null,
     val rejectedReason: String? = null,
-    // Per-slot approver (089) — dipakai chip status 3 slot di kartu form
-    // (siapa yang SUDAH menyetujui, siapa yang masih ditunggu).
-    val kacabApprovedNama: String? = null,
-    val adminPenjualanApprovedNama: String? = null,
-    val akiApproverApprovedNama: String? = null
+    /** Satu-satunya slot yang masih ditulis backend (approver pusat). */
+    val akiApproverApprovedNama: String? = null,
+    val akiApproverApprovedAt: String? = null
 )
 
 @Serializable
@@ -504,12 +504,6 @@ data class CreateAkiFormBody(
 /** Body tandai aki bekas dikembalikan (`POST /aki-forms/{id}/return`); kosong = default backend. */
 @Serializable
 data class ReturnAkiBody(val jumlah: Int? = null, val keterangan: String? = null)
-
-/** Body setujui form aki (`POST /aki-forms/{id}/approve`). `slot` opsional: role
- *  approver (kepala-cabang/admin-penjualan/kasir) di-derive backend; admin/manager
- *  WAJIB kirim slot ('kacab'|'admin_penjualan'|'aki_approver'). */
-@Serializable
-data class ApproveAkiBody(val slot: String? = null)
 
 /** Body tolak form aki (`POST /aki-forms/{id}/reject`). `reason` wajib (backend 400 kalau kosong). */
 @Serializable

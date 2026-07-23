@@ -58,8 +58,6 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
     var confirmId by remember { mutableStateOf<String?>(null) }
     var rejectId by remember { mutableStateOf<String?>(null) }
     var rejectReason by remember { mutableStateOf("") }
-    /** Admin/manager wajib pilih slot eksplisit saat approve (backend 400 tanpa slot). */
-    var slotPickId by remember { mutableStateOf<String?>(null) }
 
     TridjayaCollapsibleHeader(title = "Pengambilan Aki", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -86,16 +84,14 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
                 items(state.akiList, key = { it.id }) { form ->
                     AkiCard(
                         form, state.submitting,
-                        // Tombol approve/reject HANYA utk approver (kepala-cabang/
-                        // admin-penjualan/kasir/grant aki-approval/admin/manager) —
-                        // pembaca lain (PDI) jangan lihat tombol yang pasti 403.
+                        // Tombol approve/reject HANYA utk approver pusat (page-grant
+                        // aki-approval) / admin/manager — redesain 2026-07-24 (dulu
+                        // juga kepala-cabang/admin-penjualan/kasir, 3-pihak/089).
+                        // Pembaca lain (PDI) jangan lihat tombol yang pasti 403.
                         canApprove = viewModel.canApproveAki,
                         // Tandai-dikembalikan: backend pdi (cabang form) / admin saja.
                         canReturn = viewModel.access.pdi,
-                        onApprove = {
-                            if (viewModel.akiNeedsSlot) slotPickId = form.id
-                            else viewModel.approveAki(form.id)
-                        },
+                        onApprove = { viewModel.approveAki(form.id) },
                         onReject = { rejectId = form.id; rejectReason = "" },
                         onMarkReturned = { confirmId = form.id }
                     )
@@ -111,38 +107,6 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
             text = { Text("Aki bekas untuk form ini akan ditandai sudah dikembalikan.") },
             confirmButton = { TextButton(onClick = { viewModel.markAkiReturned(id); confirmId = null }) { Text("Tandai") } },
             dismissButton = { TextButton(onClick = { confirmId = null }) { Text("Batal") } }
-        )
-    }
-
-    // Dialog pilih slot approval (admin/manager) — paritas web AkiApprovalPage.
-    slotPickId?.let { id ->
-        AlertDialog(
-            onDismissRequest = { slotPickId = null },
-            title = { Text("Setujui sebagai slot?", fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("Admin/manager wajib memilih slot approval eksplisit.", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
-                    listOf(
-                        "kacab" to "Kepala Cabang",
-                        "admin_penjualan" to "Admin Penjualan",
-                        "aki_approver" to "Approver Aki (Kasir)",
-                    ).forEach { (slot, label) ->
-                        Surface(
-                            onClick = { viewModel.approveAki(id, slot); slotPickId = null },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(label, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
-                        }
-                        Spacer(Modifier.height(6.dp))
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { slotPickId = null }) { Text("Batal") } }
         )
     }
 
@@ -198,14 +162,10 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, canApprove: Boolean, 
                 "${form.merkTipe} · ${form.jumlahPcs} pcs",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // Status 3 slot approval — siapa sudah setuju, siapa masih ditunggu.
+            // Status approver pusat (redesain 2026-07-24, dulu 3 slot).
             if (!rejected) {
                 Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SlotChip("Kacab", form.kacabApprovedNama, Modifier.weight(1f))
-                    SlotChip("Adm. Penjualan", form.adminPenjualanApprovedNama, Modifier.weight(1f))
-                    SlotChip("Kasir/Approver", form.akiApproverApprovedNama, Modifier.weight(1f))
-                }
+                SlotChip("Approver", form.akiApproverApprovedNama, Modifier.fillMaxWidth())
             }
             // Ditolak → tampilkan alasan, tanpa aksi.
             if (rejected) {
@@ -246,7 +206,7 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, canApprove: Boolean, 
     }
 }
 
-/** Chip status satu slot approval: nama approver bila sudah, "menunggu" bila belum. */
+/** Chip status approval (approver pusat tunggal): nama approver bila sudah, "menunggu" bila belum. */
 @Composable
 private fun SlotChip(label: String, approvedBy: String?, modifier: Modifier = Modifier) {
     val done = !approvedBy.isNullOrBlank()
