@@ -607,7 +607,7 @@ private fun PdiAction(
             Text("Form aki disetujui ✓ (${activeAkiForms.size})", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF12B76A))
         } else {
             Text(
-                "Form aki menunggu persetujuan (kepala cabang, admin penjualan, kasir) — PDI belum bisa disimpan sampai lengkap.",
+                "Form aki menunggu persetujuan approver pusat — PDI belum bisa disimpan sampai lengkap.",
                 style = MaterialTheme.typography.labelSmall, color = Color(0xFFB5670C)
             )
         }
