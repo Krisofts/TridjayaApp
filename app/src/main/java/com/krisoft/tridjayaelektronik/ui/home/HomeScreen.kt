@@ -205,6 +205,7 @@ fun HomeScreen(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomClearance),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        item { NotificationPermissionBanner() }
                         item { GreetingCard(userName = state.user?.name.orEmpty()) }
                         // Every section renders as a full-width titled card (same style as the rankings),
                         // in the user's chosen order from the Tune sheet.
