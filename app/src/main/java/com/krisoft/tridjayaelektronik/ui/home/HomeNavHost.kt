@@ -16,7 +16,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.krisoft.tridjayaelektronik.ui.attendance.AttendanceScreen
-import com.krisoft.tridjayaelektronik.ui.delivery.DeliveryListScreen
 import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
 import com.krisoft.tridjayaelektronik.ui.opname.OpnameListScreen
 import com.krisoft.tridjayaelektronik.ui.sales.SalesScreen
@@ -34,7 +33,6 @@ private const val ROUTE_TRANSACTIONS = "home_ranking_transactions/{kind}/{code}?
 private const val ROUTE_INDENT = "home_indent"
 private const val ROUTE_SALES = "home_sales"
 private const val ROUTE_OPNAME = "home_opname"
-private const val ROUTE_DELIVERY = "home_delivery"
 private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_DLV_CREATE = "home_dlv_create"
 private const val ROUTE_DLV_DISKON = "home_dlv_diskon"
@@ -103,7 +101,6 @@ fun HomeNavHost(
                 onQuickAccessIndent = { navController.navigate(ROUTE_INDENT) { launchSingleTop = true } },
                 onQuickAccessSales = { navController.navigate(ROUTE_SALES) { launchSingleTop = true } },
                 onQuickAccessOpname = { navController.navigate(ROUTE_OPNAME) { launchSingleTop = true } },
-                onQuickAccessDelivery = { navController.navigate(ROUTE_DELIVERY) { launchSingleTop = true } },
                 onQuickAccessAbsen = { navController.navigate(ROUTE_ABSEN) { launchSingleTop = true } },
                 onSpkMenu = { key ->
                     val route = when (key) {
@@ -152,9 +149,6 @@ fun HomeNavHost(
         }
         composable(ROUTE_OPNAME) {
             OpnameListScreen(onBack = { navController.popBackStack() })
-        }
-        composable(ROUTE_DELIVERY) {
-            DeliveryListScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_ABSEN) {
             AttendanceScreen(onBack = { navController.popBackStack() })

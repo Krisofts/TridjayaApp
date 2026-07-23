@@ -125,9 +125,8 @@ fun HomeScreen(
     onQuickAccessIndent: () -> Unit = {},
     onQuickAccessSales: () -> Unit = {},
     onQuickAccessOpname: () -> Unit = {},
-    onQuickAccessDelivery: () -> Unit = {},
     onQuickAccessAbsen: () -> Unit = {},
-    /** Buka satu menu alur SPK (dummy) berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
+    /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -182,7 +181,7 @@ fun HomeScreen(
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessDelivery, onQuickAccessAbsen, onSpkMenu
+                                onQuickAccessOpname, onQuickAccessAbsen, onSpkMenu
                             )
                         }
                     }
@@ -216,7 +215,6 @@ private fun LazyListScope.homeSection(
     onQuickAccessIndent: () -> Unit,
     onQuickAccessSales: () -> Unit,
     onQuickAccessOpname: () -> Unit,
-    onQuickAccessDelivery: () -> Unit,
     onQuickAccessAbsen: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
