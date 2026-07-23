@@ -478,7 +478,9 @@ data class CreateAkiFormBody(
     val tujuanLainnya: String? = null,
     val kapasitas: String? = null,
     val jumlahKeterangan: String? = null,
-    val keterangan: String? = null
+    val keterangan: String? = null,
+    val ambilCharger: Boolean = false,
+    val ambilKacaSpion: Boolean = false
 )
 
 /** Body tandai aki bekas dikembalikan (`POST /aki-forms/{id}/return`); kosong = default backend. */

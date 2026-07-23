@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -140,6 +141,18 @@ private val AKI_TUJUAN_OPTIONS = listOf(
 )
 internal fun akiTujuanLabel(slug: String?): String =
     AKI_TUJUAN_OPTIONS.firstOrNull { it.first == slug }?.second ?: (slug ?: "-")
+
+// Merk aki dari data BATERAI GS (erp_mirror_stok, kategori BATERAI) — merk nyata yang dipakai.
+// "Lainnya…" = ketik manual (item aki merk baru yang belum ada di daftar).
+private const val AKI_MERK_LAINNYA = "__lainnya__"
+private val AKI_MERK_OPTIONS = listOf(
+    "GODA", "EXOTIC", "SAIGE", "AVIATOR", "CHILWEE", "SELIS",
+    "U-WINFLY", "DUBBS", "PACIFIC", "AIMA", "SOLOS", "QUEEN",
+)
+// Kapasitas umum dari nama barang BATERAI GS (tegangan×kapasitas).
+private val AKI_KAPASITAS_OPTIONS = listOf("36V12AH", "48V12AH", "48V20AH")
+// 1 set baterai sepeda listrik = 4 pcs fisik (48V pack = 4× baterai 12V).
+private const val AKI_PCS_PER_SET = 4
 
 @Composable
 private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
@@ -409,8 +422,20 @@ private fun PdiAction(
         if (akiPending) {
             var tujuan by remember { mutableStateOf("") }
             var tujuanLainnya by remember { mutableStateOf("") }
-            var merkTipe by remember { mutableStateOf("") }
-            var jumlah by remember { mutableStateOf("") }
+            // Merk: dropdown merk GS + "Lainnya…" (ketik manual). merkPilih = slug dropdown,
+            // merkManual = teks bila pilih Lainnya. merkFinal = yang dikirim.
+            var merkPilih by remember { mutableStateOf("") }
+            var merkManual by remember { mutableStateOf("") }
+            var kapasitas by remember { mutableStateOf("") }
+            // Jumlah SET baterai (bukan pcs) — default 1 set, tiap set = 4 pcs (auto keterangan).
+            var jumlahSet by remember { mutableStateOf("1") }
+            var ambilCharger by remember { mutableStateOf(false) }
+            var ambilSpion by remember { mutableStateOf(false) }
+            var keteranganAki by remember { mutableStateOf("") }
+            val merkFinal = if (merkPilih == AKI_MERK_LAINNYA) merkManual.trim() else merkPilih
+            val setN = jumlahSet.toIntOrNull() ?: 0
+            val jumlahKet = if (setN > 0) "$setN set = ${setN * AKI_PCS_PER_SET} pcs" else ""
+
             Text("Form Pengambilan Aki (wajib)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             AkiTujuanDropdown(tujuan, { tujuan = it })
@@ -419,22 +444,63 @@ private fun PdiAction(
                 ExpressiveTextField(tujuanLainnya, { tujuanLainnya = it }, label = "Tujuan lainnya *", modifier = Modifier.fillMaxWidth())
             }
             Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(merkTipe, { merkTipe = it }, label = "Merk / Tipe", modifier = Modifier.fillMaxWidth())
+            AkiOptionDropdown(
+                label = "Merk / Tipe *",
+                options = AKI_MERK_OPTIONS,
+                selected = merkPilih,
+                allowLainnya = true,
+                lainnyaSlug = AKI_MERK_LAINNYA,
+                onSelect = { merkPilih = it },
+            )
+            if (merkPilih == AKI_MERK_LAINNYA) {
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(merkManual, { merkManual = it }, label = "Merk lainnya *", modifier = Modifier.fillMaxWidth())
+            }
             Spacer(Modifier.height(10.dp))
-            ExpressiveTextField(jumlah, { jumlah = it.filter { c -> c.isDigit() } }, label = "Jumlah (pcs)", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+            AkiOptionDropdown(
+                label = "Kapasitas (opsional)",
+                options = AKI_KAPASITAS_OPTIONS,
+                selected = kapasitas,
+                allowLainnya = false,
+                onSelect = { kapasitas = it },
+            )
+            Spacer(Modifier.height(10.dp))
+            ExpressiveTextField(
+                jumlahSet, { jumlahSet = it.filter { c -> c.isDigit() } },
+                label = "Jumlah (set baterai)", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth()
+            )
+            if (jumlahKet.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(jumlahKet, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = ambilCharger, onCheckedChange = { ambilCharger = it })
+                Text("Ambil charger", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.width(16.dp))
+                Checkbox(checked = ambilSpion, onCheckedChange = { ambilSpion = it })
+                Text("Ambil kaca spion", style = MaterialTheme.typography.bodyMedium)
+            }
+            Spacer(Modifier.height(10.dp))
+            ExpressiveTextField(keteranganAki, { keteranganAki = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             ExpressiveOutlinedButton(
                 onClick = {
                     vm.createAkiForm(
                         id,
                         com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody(
-                            tujuan = tujuan, merkTipe = merkTipe.trim(), jumlahPcs = jumlah.toIntOrNull() ?: 0,
-                            tujuanLainnya = if (tujuan == "lainnya") tujuanLainnya.trim().ifBlank { null } else null
+                            tujuan = tujuan, merkTipe = merkFinal, jumlahPcs = setN,
+                            tujuanLainnya = if (tujuan == "lainnya") tujuanLainnya.trim().ifBlank { null } else null,
+                            kapasitas = kapasitas.trim().ifBlank { null },
+                            jumlahKeterangan = jumlahKet.ifBlank { null },
+                            keterangan = keteranganAki.trim().ifBlank { null },
+                            ambilCharger = ambilCharger,
+                            ambilKacaSpion = ambilSpion,
                         )
                     ) {}
                 },
                 enabled = !submitting && tujuan.isNotBlank() && (tujuan != "lainnya" || tujuanLainnya.trim().isNotEmpty()) &&
-                    merkTipe.trim().isNotEmpty() && (jumlah.toIntOrNull() ?: 0) > 0,
+                    merkFinal.isNotEmpty() && setN > 0,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
@@ -1078,6 +1144,55 @@ private fun AkiTujuanDropdown(selected: String, onSelect: (String) -> Unit) {
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 AKI_TUJUAN_OPTIONS.forEach { (slug, label) ->
                     DropdownMenuItem(text = { Text(label) }, onClick = { onSelect(slug); expanded = false })
+                }
+            }
+        }
+    }
+}
+
+/** Dropdown opsi form aki (merk/kapasitas) — daftar tetap + opsional "Lainnya…" (ketik manual,
+ *  di-render terpisah oleh pemanggil). Pola visual sama [AkiTujuanDropdown]. */
+@Composable
+private fun AkiOptionDropdown(
+    label: String,
+    options: List<String>,
+    selected: String,
+    allowLainnya: Boolean,
+    onSelect: (String) -> Unit,
+    lainnyaSlug: String = "",
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val display = when {
+        selected.isBlank() -> "Pilih…"
+        allowLainnya && selected == lainnyaSlug -> "Lainnya…"
+        else -> selected
+    }
+    Column {
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = display,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (selected.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { opt ->
+                    DropdownMenuItem(text = { Text(opt) }, onClick = { onSelect(opt); expanded = false })
+                }
+                if (allowLainnya) {
+                    DropdownMenuItem(text = { Text("Lainnya…") }, onClick = { onSelect(lainnyaSlug); expanded = false })
                 }
             }
         }

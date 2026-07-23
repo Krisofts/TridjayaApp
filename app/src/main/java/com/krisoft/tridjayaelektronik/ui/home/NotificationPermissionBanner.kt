@@ -1,6 +1,8 @@
 package com.krisoft.tridjayaelektronik.ui.home
 
 import android.Manifest
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -33,13 +35,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+
+/** Telusuri rantai ContextWrapper untuk menemukan Activity (LifecycleOwner) pembungkus — dipakai
+ *  agar banner meng-observe lifecycle Activity, bukan NavBackStackEntry (lihat komentar di observer). */
+private tailrec fun Context.findLifecycle(): Lifecycle? = when (this) {
+    is LifecycleOwner -> this.lifecycle
+    is ContextWrapper -> this.baseContext.findLifecycle()
+    else -> null
+}
 
 /**
  * Banner peringatan bila izin notifikasi (POST_NOTIFICATIONS, Android 13+) belum diberi — tanpa
@@ -70,15 +80,22 @@ fun NotificationPermissionBanner() {
         requestedOnce = true
     }
 
-    // Kembali dari Pengaturan (atau app resume) → sinkronkan status izin, banner auto-hilang bila
-    // sudah diberi.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    // Sinkronkan status izin saat app kembali terlihat. WAJIB pakai lifecycle ACTIVITY (di-unwrap
+    // dari context), BUKAN LocalLifecycleOwner: di dalam NavHost + tab kept-alive, LocalLifecycleOwner
+    // = NavBackStackEntry yang bisa berhenti di STARTED (tak pernah kirim ON_RESUME lagi) → banner
+    // tak update walau izin sudah diberi lewat dialog launch/Pengaturan (bug nyata: "izin sudah
+    // diberi tapi permintaan akses masih muncul"). Activity selalu ON_PAUSE→ON_RESUME saat dialog
+    // izin / Pengaturan muncul-tutup. Observe ON_START juga (jaring pengaman transisi lain).
+    val activityLifecycle = remember(context) { context.findLifecycle() }
+    DisposableEffect(activityLifecycle) {
+        if (activityLifecycle == null) return@DisposableEffect onDispose {}
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) isGranted = granted()
+            if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
+                isGranted = granted()
+            }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        activityLifecycle.addObserver(observer)
+        onDispose { activityLifecycle.removeObserver(observer) }
     }
 
     if (isGranted) return
