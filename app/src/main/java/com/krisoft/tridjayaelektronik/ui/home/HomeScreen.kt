@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
@@ -124,9 +125,8 @@ fun HomeScreen(
     onQuickAccessIndent: () -> Unit = {},
     onQuickAccessSales: () -> Unit = {},
     onQuickAccessOpname: () -> Unit = {},
-    onQuickAccessDelivery: () -> Unit = {},
     onQuickAccessAbsen: () -> Unit = {},
-    /** Buka satu menu alur SPK (dummy) berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
+    /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -181,7 +181,7 @@ fun HomeScreen(
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessDelivery, onQuickAccessAbsen, onSpkMenu
+                                onQuickAccessOpname, onQuickAccessAbsen, onSpkMenu
                             )
                         }
                     }
@@ -215,7 +215,6 @@ private fun LazyListScope.homeSection(
     onQuickAccessIndent: () -> Unit,
     onQuickAccessSales: () -> Unit,
     onQuickAccessOpname: () -> Unit,
-    onQuickAccessDelivery: () -> Unit,
     onQuickAccessAbsen: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
@@ -230,14 +229,10 @@ private fun LazyListScope.homeSection(
                     onIndent = onQuickAccessIndent,
                     onSales = onQuickAccessSales,
                     onOpname = onQuickAccessOpname,
-                    onDelivery = onQuickAccessDelivery,
                     onAbsen = onQuickAccessAbsen,
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
-                    showOpname = canAccessOpname(role),
-                    // Fitur dummy untuk review desain — belum digating role (aktifkan
-                    // canAccessDelivery(role) begitu di-wire ke API delivery-schedules).
-                    showDelivery = true
+                    showOpname = canAccessOpname(role)
                 )
             }
         }
@@ -359,17 +354,12 @@ private fun EmptyRankRow(message: String) {
  */
 private val INDENT_MENU_ROLES = setOf("admin", "owner", "indent-approver", "manager", "kepala-cabang")
 private val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "manager", "owner")
-// Selaras DELIVERY_ROLES di backend kinerja-service (admin/sales/admin-sales) + owner/manager.
-private val DELIVERY_MENU_ROLES = setOf("admin", "sales", "admin-sales", "admin_sales", "owner", "manager", "kepala-cabang")
 
 internal fun canAccessIndent(role: String?): Boolean =
     role?.trim()?.lowercase() in INDENT_MENU_ROLES
 
 internal fun canAccessOpname(role: String?): Boolean =
     role?.trim()?.lowercase() in OPNAME_MENU_ROLES
-
-internal fun canAccessDelivery(role: String?): Boolean =
-    role?.trim()?.lowercase() in DELIVERY_MENU_ROLES
 
 /**
  * Shortcut row to the app's most-used destinations. Five tiles no longer fit a fixed-width
@@ -382,12 +372,10 @@ private fun QuickAccessRow(
     onIndent: () -> Unit,
     onSales: () -> Unit,
     onOpname: () -> Unit,
-    onDelivery: () -> Unit,
     onAbsen: () -> Unit,
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
-    showOpname: Boolean = true,
-    showDelivery: Boolean = true
+    showOpname: Boolean = true
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -404,27 +392,9 @@ private fun QuickAccessRow(
                 modifier = Modifier.width(86.dp)
             )
         }
-        // Alur pengiriman SPK per-tahap (nyata → inventory-service). RBAC di backend; tampil semua.
+        // Alur pengiriman SPK — satu pintu (hub); RBAC per tahap di backend.
         item {
-            QuickAccessTile(Icons.Rounded.Description, "Input SPK", Color(0xFF1E63E9), { onSpkMenu("input") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.Discount, "Diskon", Color(0xFFB5670C), { onSpkMenu("diskon") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.FactCheck, "PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.PointOfSale, "Kasir SPK", Color(0xFF0086C9), { onSpkMenu("kasir") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.Receipt, "Surat Jalan", Color(0xFF0E9384), { onSpkMenu("note") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.CalendarToday, "Jadwal", Color(0xFF1565C0), { onSpkMenu("jadwal") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.LocalShipping, "Driver", Color(0xFF6941C6), { onSpkMenu("driver") }, Modifier.width(86.dp))
+            QuickAccessTile(Icons.Rounded.LocalShipping, "SPK", Color(0xFF1E63E9), { onSpkMenu("hub") }, Modifier.width(86.dp))
         }
         item {
             QuickAccessTile(
@@ -471,17 +441,6 @@ private fun QuickAccessRow(
                     label = "Opname",
                     tint = Color(0xFF0086C9),
                     onClick = onOpname,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showDelivery) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.LocalShipping,
-                    label = "Kirim",
-                    tint = Color(0xFF6941C6),
-                    onClick = onDelivery,
                     modifier = Modifier.width(86.dp)
                 )
             }

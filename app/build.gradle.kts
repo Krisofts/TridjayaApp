@@ -143,6 +143,11 @@ dependencies {
     // Cloud Messaging (push approval izin/absen). Inert tanpa google-services.json.
     implementation("com.google.firebase:firebase-messaging-ktx")
 
+    // Scan barcode serial number (PDI + Input SPK) — Google code scanner:
+    // TANPA izin kamera (UI scanner disediakan Play Services, model di-download
+    // on-demand), jauh lebih ringan daripada bundling CameraX+ML Kit.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+
     // Installs the bundled baseline profile on first run (removes cold-start/first-scroll JIT jank).
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     // Consumes the profile produced by the :baselineprofile module and bundles it into the APK.
