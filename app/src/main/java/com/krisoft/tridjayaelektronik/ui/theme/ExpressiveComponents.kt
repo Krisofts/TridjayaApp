@@ -221,7 +221,14 @@ fun ExpressiveTextField(
         },
         singleLine = singleLine,
         shape = ExpressiveShapes.Medium,
-        colors = OutlinedTextFieldDefaults.colors(),
+        // Border eksplisit: theme `outline` nyaris senada background kartu
+        // (light E4E7EC di atas kartu terang; dark = persis surfaceVariant) →
+        // field terlihat menyatu tanpa batas. onSurfaceVariant kontras di kedua tema.
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            disabledBorderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+        ),
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         visualTransformation = visualTransformation,
         trailingIcon = trailingIcon
