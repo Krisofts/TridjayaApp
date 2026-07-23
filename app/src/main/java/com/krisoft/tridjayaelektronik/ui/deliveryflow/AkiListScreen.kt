@@ -23,6 +23,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +56,8 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.loadAkiForms() }
     var confirmId by remember { mutableStateOf<String?>(null) }
+    var rejectId by remember { mutableStateOf<String?>(null) }
+    var rejectReason by remember { mutableStateOf("") }
 
     TridjayaCollapsibleHeader(title = "Pengambilan Aki", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -81,6 +85,7 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
                     AkiCard(
                         form, state.submitting,
                         onApprove = { viewModel.approveAki(form.id) },
+                        onReject = { rejectId = form.id; rejectReason = "" },
                         onMarkReturned = { confirmId = form.id }
                     )
                 }
@@ -97,12 +102,39 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
             dismissButton = { TextButton(onClick = { confirmId = null }) { Text("Batal") } }
         )
     }
+
+    rejectId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { rejectId = null },
+            title = { Text("Tolak form aki?", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Alasan penolakan wajib diisi.", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = rejectReason,
+                        onValueChange = { rejectReason = it },
+                        placeholder = { Text("Alasan…") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = rejectReason.isNotBlank(),
+                    onClick = { viewModel.rejectAki(id, rejectReason.trim()); rejectId = null }
+                ) { Text("Tolak") }
+            },
+            dismissButton = { TextButton(onClick = { rejectId = null }) { Text("Batal") } }
+        )
+    }
 }
 
 @Composable
-private fun AkiCard(form: AkiFormDto, submitting: Boolean, onApprove: () -> Unit, onMarkReturned: () -> Unit) {
+private fun AkiCard(form: AkiFormDto, submitting: Boolean, onApprove: () -> Unit, onReject: () -> Unit, onMarkReturned: () -> Unit) {
     val sudah = form.akiBekasStatus == "sudah"
     val approved = form.approvalStatus == "approved"
+    val rejected = form.approvalStatus == "rejected"
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -111,7 +143,7 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, onApprove: () -> Unit
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                ApprovalBadge(approved)
+                ApprovalBadge(approved, rejected)
             }
             Spacer(Modifier.height(6.dp))
             Text(
@@ -123,14 +155,28 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, onApprove: () -> Unit
                 "${form.merkTipe} · ${form.jumlahPcs} pcs",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // Belum disetujui → tombol SETUJUI (aksi approver; slot di-derive backend
+            // Ditolak → tampilkan alasan, tanpa aksi.
+            if (rejected) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Ditolak" + (form.rejectedByNama?.takeIf { it.isNotBlank() }?.let { " oleh $it" } ?: "") +
+                        (form.rejectedReason?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
+                )
+            }
+            // Belum disetujui → tombol SETUJUI / TOLAK (aksi approver; slot di-derive backend
             // dari role kepala-cabang/admin-penjualan/kasir). Bukan approver → backend
             // tolak (pesan ditampilkan via actionError).
-            if (!approved) {
+            else if (!approved) {
                 Spacer(Modifier.height(10.dp))
-                ExpressiveFilledButton(onClick = onApprove, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
-                    if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    else Text("Setujui")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ExpressiveFilledButton(onClick = onApprove, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        else Text("Setujui")
+                    }
+                    OutlinedButton(onClick = onReject, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                        Text("Tolak", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             } else if (!sudah) {
                 // Sudah disetujui penuh — sisa aksi logistik: tandai aki bekas dikembalikan.
@@ -145,11 +191,20 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, onApprove: () -> Unit
 }
 
 @Composable
-private fun ApprovalBadge(approved: Boolean) {
-    val color = if (approved) Color(0xFF12B76A) else Color(0xFFB5670C)
+private fun ApprovalBadge(approved: Boolean, rejected: Boolean = false) {
+    val color = when {
+        rejected -> Color(0xFFD92D20)
+        approved -> Color(0xFF12B76A)
+        else -> Color(0xFFB5670C)
+    }
+    val label = when {
+        rejected -> "Ditolak"
+        approved -> "Disetujui"
+        else -> "Menunggu approval"
+    }
     Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
         Text(
-            if (approved) "Disetujui" else "Menunggu approval",
+            label,
             color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
         )

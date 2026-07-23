@@ -454,6 +454,21 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Tolak form aki (alasan wajib). Muat ulang daftar setelah sukses. */
+    fun rejectAki(id: String, reason: String) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.rejectAkiForm(id, reason)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    loadAkiForms()
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
     fun confirmSpk(id: String, onDone: () -> Unit) = action { repository.confirmSpk(id).mapOk { onDone() } }
 
     fun issueDeliveryNote(id: String, sourceBranch: String, onDone: () -> Unit) = action {

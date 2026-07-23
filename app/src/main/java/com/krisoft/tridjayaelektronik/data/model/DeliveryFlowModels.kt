@@ -460,9 +460,11 @@ data class AkiFormDto(
     val merkTipe: String = "",
     val jumlahPcs: Int = 0,
     val akiBekasStatus: String = "belum",
-    /** `approved` bila 3 slot (kepala-cabang + admin-penjualan + kasir/aki-approver)
-     *  sudah mengisi; selain itu `pending`. PDI di-gate backend sampai `approved`. */
-    val approvalStatus: String = "pending"
+    /** `rejected` bila ditolak, `approved` bila 3 slot (kepala-cabang + admin-penjualan +
+     *  kasir/aki-approver) sudah mengisi; selain itu `pending`. PDI di-gate backend sampai `approved`. */
+    val approvalStatus: String = "pending",
+    val rejectedByNama: String? = null,
+    val rejectedReason: String? = null
 )
 
 @Serializable
@@ -495,6 +497,10 @@ data class ReturnAkiBody(val jumlah: Int? = null, val keterangan: String? = null
  *  WAJIB kirim slot ('kacab'|'admin_penjualan'|'aki_approver'). */
 @Serializable
 data class ApproveAkiBody(val slot: String? = null)
+
+/** Body tolak form aki (`POST /aki-forms/{id}/reject`). `reason` wajib (backend 400 kalau kosong). */
+@Serializable
+data class RejectAkiBody(val reason: String)
 
 /** Preferensi WA alur SPK (`GET/PUT /inventory/discount-requests/wa-pref`). `spkWaOptout=true`
  *  → user matikan WA (dapat notif app push saja, anti-double). Default false = WA tetap ON. */
