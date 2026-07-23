@@ -69,6 +69,7 @@ class FcmService : FirebaseMessagingService() {
         }
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_NOTIF_CHANNEL, channelId)
         }
         val pending = PendingIntent.getActivity(
             this, 0, launch ?: Intent(),
@@ -96,6 +97,10 @@ class FcmService : FirebaseMessagingService() {
         const val CHANNEL_APPROVAL = "approval"
         const val CHANNEL_CRM = "crm"
         const val CHANNEL_DELIVERY = "delivery"
+
+        /** Extra pada intent peluncur tap-notifikasi — dibaca [com.krisoft.tridjayaelektronik.MainActivity]
+         *  untuk deep-link ke layar yang relevan (channel `delivery` → hub SPK, `crm` → tab CRM). */
+        const val EXTRA_NOTIF_CHANNEL = "notif_channel"
 
         /**
          * Buat tiga channel notifikasi bila belum ada. Dipanggil di startup app
