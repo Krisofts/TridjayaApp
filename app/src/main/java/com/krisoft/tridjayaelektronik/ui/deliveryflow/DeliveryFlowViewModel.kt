@@ -16,6 +16,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody
+import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -371,10 +372,12 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Failure -> return@action up
             }
         }
+        // GPS best-effort (pola sama absensi): null bila izin ditolak/gagal fix — JANGAN blokir serah terima.
+        val loc = LocationProvider.current(appContext)
         repository.deliver(
             id,
             DeliverBody(
-                photoUrl = photoUrl, reviewRating = rating,
+                photoUrl = photoUrl, lat = loc?.latitude, lng = loc?.longitude, reviewRating = rating,
                 reviewComment = comment.trim().ifBlank { null },
                 checklist = checklist.ifEmpty { null }, cashPhotoUrl = cashUrl
             )
