@@ -1,10 +1,16 @@
 package com.krisoft.tridjayaelektronik
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOutQuart
 import androidx.compose.animation.core.animateFloatAsState
@@ -31,6 +37,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.krisoft.tridjayaelektronik.push.FcmService
+import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
 import com.krisoft.tridjayaelektronik.ui.home.ROUTE_SPK_HUB
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -333,12 +340,36 @@ private fun DestinationContent(
     }
 }
 
+/**
+ * Minta izin lokasi + notifikasi begitu masuk area utama app (bukan menunggu user buka layar
+ * Absensi/PDI dulu) — dua-duanya dipakai operasional (watermark GPS foto PDI/serah-terima/absensi,
+ * push channel `delivery`/`crm`). Sekali per proses; sudah granted → no-op langsung.
+ */
+@Composable
+private fun RequestOperationalPermissions() {
+    val context = LocalContext.current
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (!LocationProvider.hasPermission(context)) {
+            locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScreen(
     pendingNotifChannel: String? = null,
     onConsumeNotifChannel: () -> Unit = {}
 ) {
+    RequestOperationalPermissions()
+
     val destinations = AppDestination.bottomNavItems
     var selected by remember { mutableStateOf(destinations.first()) }
     // Bumped by Home's "Akses Cepat" Inventory tile — see the LaunchedEffect inside
