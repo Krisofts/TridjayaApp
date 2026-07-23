@@ -56,6 +56,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Numbers
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
 import androidx.compose.material.icons.rounded.PriceChange
@@ -135,6 +136,7 @@ fun HomeScreen(
     onQuickAccessAbsen: () -> Unit = {},
     onQuickAccessGaji: () -> Unit = {},
     onQuickAccessHargaGs: () -> Unit = {},
+    onQuickAccessSerialInput: () -> Unit = {},
     /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
@@ -208,7 +210,7 @@ fun HomeScreen(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
                                 onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessHargaGs,
-                                onSpkMenu
+                                onQuickAccessSerialInput, onSpkMenu
                             )
                         }
                     }
@@ -245,6 +247,7 @@ private fun LazyListScope.homeSection(
     onQuickAccessAbsen: () -> Unit,
     onQuickAccessGaji: () -> Unit,
     onQuickAccessHargaGs: () -> Unit,
+    onQuickAccessSerialInput: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
     when (section) {
@@ -261,10 +264,12 @@ private fun LazyListScope.homeSection(
                     onAbsen = onQuickAccessAbsen,
                     onGaji = onQuickAccessGaji,
                     onHargaGs = onQuickAccessHargaGs,
+                    onSerialInput = onQuickAccessSerialInput,
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
                     showOpname = canAccessOpname(role),
-                    showHargaGs = canAccessHargaGs(role)
+                    showHargaGs = canAccessHargaGs(role),
+                    showSerialInput = canAccessSerialInput(role)
                 )
             }
         }
@@ -390,6 +395,9 @@ private val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "m
 /** `require_price_changes_reader` gateway guard (baca tanpa `force`) — lihat gateway/src/lib.rs. */
 private val HARGA_GS_MENU_ROLES = setOf("admin", "manager", "owner", "kepala-cabang", "karyawan")
 
+/** `is_admin_stok_role` di `serials.rs` — POST /inventory/serial-numbers hanya role ini. */
+private val SERIAL_INPUT_MENU_ROLES = setOf("admin-stok")
+
 internal fun canAccessIndent(role: String?): Boolean =
     role?.trim()?.lowercase() in INDENT_MENU_ROLES
 
@@ -398,6 +406,9 @@ internal fun canAccessOpname(role: String?): Boolean =
 
 internal fun canAccessHargaGs(role: String?): Boolean =
     role?.trim()?.lowercase() in HARGA_GS_MENU_ROLES
+
+internal fun canAccessSerialInput(role: String?): Boolean =
+    role?.trim()?.lowercase() in SERIAL_INPUT_MENU_ROLES
 
 /**
  * Shortcut row to the app's most-used destinations. Five tiles no longer fit a fixed-width
@@ -413,10 +424,12 @@ private fun QuickAccessRow(
     onAbsen: () -> Unit,
     onGaji: () -> Unit,
     onHargaGs: () -> Unit,
+    onSerialInput: () -> Unit,
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
     showOpname: Boolean = true,
-    showHargaGs: Boolean = true
+    showHargaGs: Boolean = true,
+    showSerialInput: Boolean = false
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -502,6 +515,17 @@ private fun QuickAccessRow(
                     label = "Harga GS",
                     tint = Color(0xFFB5670C),
                     onClick = onHargaGs,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
+        }
+        if (showSerialInput) {
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.Numbers,
+                    label = "Input SN",
+                    tint = Color(0xFF7A5AF8),
+                    onClick = onSerialInput,
                     modifier = Modifier.width(86.dp)
                 )
             }

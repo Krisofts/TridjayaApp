@@ -7,6 +7,7 @@ import com.krisoft.tridjayaelektronik.data.model.AssignBody
 import com.krisoft.tridjayaelektronik.data.model.BrokerListData
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
 import com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody
+import com.krisoft.tridjayaelektronik.data.model.CreateSerialNumbersBody
 import com.krisoft.tridjayaelektronik.data.model.DecisionBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryCategoriesData
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
@@ -20,10 +21,12 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryListData
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryUploadResponse
+import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderResult
 import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
+import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangData
 import okhttp3.MultipartBody
@@ -107,7 +110,9 @@ interface DeliveryFlowApi {
     @GET("api/inventory/delivery/brokers")
     suspend fun brokers(@Query("q") q: String): Response<ApiResponse<BrokerListData>>
 
-    /** Registry serial per cabang+barang (picker No. Rangka Input SPK). */
+    /** Registry serial per cabang+barang (picker No. Rangka Input SPK; juga dipakai layar
+     *  Input Serial Number admin-stok utk hitung SN yang sudah tercatat — panggil dengan
+     *  onlySerial=false, excludeAssigned=false supaya dapat SEMUA baris registry). */
     @GET("api/inventory/serial-numbers")
     suspend fun serialNumbers(
         @Query("kodeDealer") kodeDealer: String,
@@ -115,6 +120,16 @@ interface DeliveryFlowApi {
         @Query("onlySerial") onlySerial: Boolean = true,
         @Query("excludeAssigned") excludeAssigned: Boolean = true
     ): Response<ApiResponse<SerialListData>>
+
+    /** Konteks mutasi (dealer sendiri) — reuse utk resolve `sourceDealerCode` akun
+     *  admin-stok sebelum input SN manual (grup gateway `mutasi`, login-only). */
+    @GET("api/inventory/mutasi/context")
+    suspend fun mutasiContext(): Response<ApiResponse<MutasiContextDto>>
+
+    /** Input manual SN massal — role admin-stok saja, dipaksa dealer sendiri di backend
+     *  (mismatch → 403 Forbidden eksplisit, beda dari GET yang auto-floor). */
+    @POST("api/inventory/serial-numbers")
+    suspend fun createSerialNumbers(@Body body: CreateSerialNumbersBody): Response<ApiResponse<SerialCreateResultDto>>
 
     @GET("api/inventory/delivery/config/categories")
     suspend fun categories(): Response<ApiResponse<DeliveryCategoriesData>>

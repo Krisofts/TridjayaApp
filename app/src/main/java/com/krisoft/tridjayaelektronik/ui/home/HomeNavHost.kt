@@ -29,6 +29,7 @@ import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkHubScreen
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
 import com.krisoft.tridjayaelektronik.ui.priceerp.ErpPriceChangesScreen
+import com.krisoft.tridjayaelektronik.ui.serials.SerialInputScreen
 
 const val HOME_ROUTE_DASHBOARD = "home_dashboard"
 private const val ROUTE_NOTIFICATIONS = "home_notifications"
@@ -40,6 +41,7 @@ private const val ROUTE_OPNAME = "home_opname"
 private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_GAJI = "home_gaji"
 private const val ROUTE_HARGA_GS = "home_harga_gs"
+private const val ROUTE_SERIAL_INPUT = "home_serial_input"
 private const val ROUTE_DLV_CREATE = "home_dlv_create"
 private const val ROUTE_DLV_DISKON = "home_dlv_diskon"
 private const val ROUTE_DLV_PDI = "home_dlv_pdi"
@@ -111,6 +113,7 @@ fun HomeNavHost(
                 onQuickAccessAbsen = { navController.navigate(ROUTE_ABSEN) { launchSingleTop = true } },
                 onQuickAccessGaji = { navController.navigate(ROUTE_GAJI) { launchSingleTop = true } },
                 onQuickAccessHargaGs = { navController.navigate(ROUTE_HARGA_GS) { launchSingleTop = true } },
+                onQuickAccessSerialInput = { navController.navigate(ROUTE_SERIAL_INPUT) { launchSingleTop = true } },
                 onSpkMenu = { key ->
                     val route = when (key) {
                         "hub" -> ROUTE_SPK_HUB
@@ -170,6 +173,9 @@ fun HomeNavHost(
         }
         composable(ROUTE_HARGA_GS) {
             ErpPriceChangesScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_SERIAL_INPUT) {
+            SerialInputScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_SPK_HUB) {
             SpkHubScreen(onBack = { navController.popBackStack() }, onNavigate = { key ->

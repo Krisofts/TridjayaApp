@@ -206,6 +206,33 @@ data class SerialRegistryRow(val serialNumber: String = "")
 @Serializable
 data class SerialListData(val items: List<SerialRegistryRow> = emptyList())
 
+/**
+ * Konteks mutasi (`GET /inventory/mutasi/context`) — dipakai layar Input Serial Number
+ * admin-stok utk resolve dealer sendiri sebelum POST manual. Respons penuh juga bawa
+ * `canRequest`/`isManager`/`dealers` (form mutasi create/receive) — diabaikan di sini,
+ * hanya field dealer sendiri yang relevan utk layar SN.
+ */
+@Serializable
+data class MutasiContextDto(
+    val sourceDealerCode: String? = null,
+    val sourceDealerName: String? = null
+)
+
+/** Body `POST /inventory/serial-numbers` — input manual admin-stok (dipaksa dealer sendiri di backend). */
+@Serializable
+data class CreateSerialNumbersBody(
+    val kodeDealer: String,
+    val kodeBarang: String,
+    val namaBarang: String? = null,
+    val serialNumbers: List<String>
+)
+
+@Serializable
+data class SkippedSerialDto(val serialNumber: String = "", val reason: String = "")
+
+@Serializable
+data class SerialCreateResultDto(val inserted: Int = 0, val skipped: List<SkippedSerialDto> = emptyList())
+
 // ── Approval diskon per-baris (SPK) ──────────────────────────────────────────
 
 @Serializable
