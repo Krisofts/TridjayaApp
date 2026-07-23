@@ -39,6 +39,15 @@ import androidx.compose.runtime.setValue
 import com.krisoft.tridjayaelektronik.push.FcmService
 import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
 import com.krisoft.tridjayaelektronik.ui.home.ROUTE_SPK_HUB
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_DISKON
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_PDI
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_AKI
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_KASIR
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_NOTE
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_SCHEDULE
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_DRIVER
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_HISTORY
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_CREATE
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -104,6 +113,8 @@ class MainActivity : ComponentActivity() {
     // survives whichever screen (splash/login/main) happens to be composed when it arrives, and
     // `onNewIntent` (app already running) can update it from outside any composition.
     private var pendingNotifChannel by mutableStateOf<String?>(null)
+    // Deep-link HALUS (key hub SPK) dari tap notif — buka langsung halaman tahap terkait.
+    private var pendingNotifRoute by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,6 +123,8 @@ class MainActivity : ComponentActivity() {
         // sbg extras dgn key "channel", bukan EXTRA_NOTIF_CHANNEL punya kita.
         pendingNotifChannel = intent?.getStringExtra(FcmService.EXTRA_NOTIF_CHANNEL)
             ?: intent?.getStringExtra(FcmService.DATA_KEY_CHANNEL)
+        pendingNotifRoute = intent?.getStringExtra(FcmService.EXTRA_NOTIF_ROUTE)
+            ?: intent?.getStringExtra(FcmService.DATA_KEY_ROUTE)
 
         setContent {
             val themeState by themePreferences.state.collectAsState()
@@ -123,7 +136,8 @@ class MainActivity : ComponentActivity() {
                     SecurityGate {
                         TridjayaNavHost(
                             pendingNotifChannel = pendingNotifChannel,
-                            onConsumeNotifChannel = { pendingNotifChannel = null }
+                            pendingNotifRoute = pendingNotifRoute,
+                            onConsumeNotifChannel = { pendingNotifChannel = null; pendingNotifRoute = null }
                         )
                     }
                 }
@@ -137,6 +151,8 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         pendingNotifChannel = intent.getStringExtra(FcmService.EXTRA_NOTIF_CHANNEL)
             ?: intent.getStringExtra(FcmService.DATA_KEY_CHANNEL)
+        pendingNotifRoute = intent.getStringExtra(FcmService.EXTRA_NOTIF_ROUTE)
+            ?: intent.getStringExtra(FcmService.DATA_KEY_ROUTE)
     }
 }
 
@@ -177,6 +193,7 @@ private fun SecurityGate(content: @Composable () -> Unit) {
 @Composable
 private fun TridjayaNavHost(
     pendingNotifChannel: String? = null,
+    pendingNotifRoute: String? = null,
     onConsumeNotifChannel: () -> Unit = {},
     sessionViewModel: SessionViewModel = hiltViewModel(),
     updateViewModel: UpdateViewModel = hiltViewModel()
@@ -283,6 +300,7 @@ private fun TridjayaNavHost(
         composable(ROUTE_MAIN) {
             MainScreen(
                 pendingNotifChannel = pendingNotifChannel,
+                pendingNotifRoute = pendingNotifRoute,
                 onConsumeNotifChannel = onConsumeNotifChannel
             )
         }
@@ -366,6 +384,7 @@ private fun RequestOperationalPermissions() {
 @Composable
 private fun MainScreen(
     pendingNotifChannel: String? = null,
+    pendingNotifRoute: String? = null,
     onConsumeNotifChannel: () -> Unit = {}
 ) {
     RequestOperationalPermissions()
@@ -384,11 +403,26 @@ private fun MainScreen(
     // Deep-link tap-notifikasi → layar relevan. One-shot: dijalankan sekali per nilai channel baru
     // lalu langsung dikonsumsi (di-null-kan) supaya tak ternavigasi ulang saat MainScreen
     // recompose karena alasan lain (mis. ganti tab manual sesudahnya).
-    LaunchedEffect(pendingNotifChannel) {
+    LaunchedEffect(pendingNotifChannel, pendingNotifRoute) {
         when (pendingNotifChannel) {
             "delivery" -> {
                 selected = AppDestination.HOME
                 homeNav.navigate(ROUTE_SPK_HUB) { launchSingleTop = true }
+                // Deep-link halus: buka LANGSUNG halaman tahap terkait (di atas hub, jadi
+                // back → hub). Route dari payload FCM (delivery_notif route_for_kind).
+                val sub = when (pendingNotifRoute) {
+                    "diskon" -> ROUTE_DLV_DISKON
+                    "pdi" -> ROUTE_DLV_PDI
+                    "aki" -> ROUTE_DLV_AKI
+                    "kasir" -> ROUTE_DLV_KASIR
+                    "note" -> ROUTE_DLV_NOTE
+                    "jadwal" -> ROUTE_DLV_SCHEDULE
+                    "driver" -> ROUTE_DLV_DRIVER
+                    "history" -> ROUTE_DLV_HISTORY
+                    "input" -> ROUTE_DLV_CREATE
+                    else -> null
+                }
+                if (sub != null) homeNav.navigate(sub) { launchSingleTop = true }
             }
             "crm" -> selected = AppDestination.LEADS
             null -> return@LaunchedEffect

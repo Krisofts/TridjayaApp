@@ -51,7 +51,9 @@ class FcmService : FirebaseMessagingService() {
         val channelId = notification?.channelId
             ?: message.data["channel"]
             ?: CHANNEL_APPROVAL
-        showNotification(title, body, normalizeChannel(channelId))
+        // Deep-link halus opsional (mis. "diskon"/"pdi"/"kasir") — buka halaman terkait saat di-tap.
+        val route = message.data["route"]
+        showNotification(title, body, normalizeChannel(channelId), route)
     }
 
     override fun onDestroy() {
@@ -59,7 +61,7 @@ class FcmService : FirebaseMessagingService() {
         super.onDestroy()
     }
 
-    private fun showNotification(title: String, body: String, channelId: String) {
+    private fun showNotification(title: String, body: String, channelId: String, route: String? = null) {
         ensureChannels(this)
         // API 33+: tanpa izin POST_NOTIFICATIONS notifikasi tak tampil — jangan crash.
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -72,7 +74,7 @@ class FcmService : FirebaseMessagingService() {
         // masih tampil di tray (dulu requestCode 0 dipakai semua notif → tap notif lama bisa nyasar
         // ke channel notif terbaru).
         val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
-        val pending = channelLaunchPendingIntent(channelId, notifId)
+        val pending = channelLaunchPendingIntent(channelId, notifId, route)
         // Query DULU (sebelum posting yang baru) supaya hitungan ringkasan tidak bergantung pada
         // urutan/timing binder call — hitungan grup existing + 1 (yang baru) selalu benar.
         val priorCountInGroup = NotificationManagerCompat.from(this).activeNotifications
@@ -121,10 +123,11 @@ class FcmService : FirebaseMessagingService() {
     /** Intent peluncur + PendingIntent dgn `requestCode` unik (dipakai [showNotification] &
      *  [showGroupSummary]) — requestCode sama antar keduanya akan saling timpa extras via
      *  FLAG_UPDATE_CURRENT, jadi tiap pemanggil WAJIB kirim id yang sudah unik miliknya sendiri. */
-    private fun channelLaunchPendingIntent(channelId: String, requestCode: Int): PendingIntent {
+    private fun channelLaunchPendingIntent(channelId: String, requestCode: Int, route: String? = null): PendingIntent {
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_NOTIF_CHANNEL, channelId)
+            if (!route.isNullOrBlank()) putExtra(EXTRA_NOTIF_ROUTE, route)
         }
         return PendingIntent.getActivity(
             this, requestCode, launch ?: Intent(),
@@ -152,6 +155,12 @@ class FcmService : FirebaseMessagingService() {
         /** Extra pada intent peluncur tap-notifikasi — dibaca [com.krisoft.tridjayaelektronik.MainActivity]
          *  untuk deep-link ke layar yang relevan (channel `delivery` → hub SPK, `crm` → tab CRM). */
         const val EXTRA_NOTIF_CHANNEL = "notif_channel"
+
+        /** Extra deep-link HALUS (key hub SPK: diskon/pdi/kasir/note/jadwal/driver/history) —
+         *  dibaca MainActivity utk buka LANGSUNG halaman terkait (akses cepat). Foreground-notif
+         *  pakai key ini; background (notif dirender OS) pakai [DATA_KEY_ROUTE] dari `data` FCM. */
+        const val EXTRA_NOTIF_ROUTE = "notif_route"
+        const val DATA_KEY_ROUTE = "route"
 
         /** Key `data` pada payload FCM (backend kinerja-service `push.rs`). Dipakai HANYA saat
          *  notifikasi dirender OS sendiri (app di background, payload `notification`+`data` →
