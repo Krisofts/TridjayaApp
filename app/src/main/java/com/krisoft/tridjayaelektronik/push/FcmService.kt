@@ -75,6 +75,11 @@ class FcmService : FirebaseMessagingService() {
             this, 0, launch ?: Intent(),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        // Query DULU (sebelum posting yang baru) supaya hitungan ringkasan tidak bergantung pada
+        // urutan/timing binder call — hitungan grup existing + 1 (yang baru) selalu benar.
+        val priorCountInGroup = NotificationManagerCompat.from(this).activeNotifications
+            .count { it.notification.group == channelId && it.id != groupSummaryId(channelId) }
+
         val notif = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
@@ -83,8 +88,40 @@ class FcmService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pending)
+            .setGroup(channelId)
             .build()
         NotificationManagerCompat.from(this).notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notif)
+
+        // Ringkasan grup — Android 7+ (API 24) HANYA men-collapse notif ber-`setGroup` sama kalau
+        // ada satu notif ringkasan (`setGroupSummary(true)`) menaunginya; tanpa ini tiap notif
+        // channel yang sama tetap tampil terpisah di tray walau field `group`-nya sudah sama.
+        // Android <7 mengabaikan `setGroup`/`setGroupSummary` — no-op aman, jadi tak perlu dicabang.
+        showGroupSummary(channelId, title, priorCountInGroup + 1)
+    }
+
+    private fun showGroupSummary(channelId: String, latestTitle: String, totalCount: Int) {
+        val label = channelLabel(channelId)
+        val summaryText = if (totalCount > 1) "$totalCount notifikasi baru" else latestTitle
+        val summary = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(label)
+            .setContentText(summaryText)
+            .setStyle(NotificationCompat.InboxStyle().setSummaryText(label))
+            .setGroup(channelId)
+            .setGroupSummary(true)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(this).notify(groupSummaryId(channelId), summary)
+    }
+
+    /** ID stabil per channel (bukan timestamp) — ringkasan grup harus selalu menimpa dirinya sendiri,
+     *  bukan menumpuk notif ringkasan baru tiap kali. */
+    private fun groupSummaryId(channelId: String): Int = channelId.hashCode()
+
+    private fun channelLabel(channelId: String): String = when (channelId) {
+        CHANNEL_CRM -> "CRM / Prospek"
+        CHANNEL_DELIVERY -> "SPK & Pengiriman"
+        else -> "Persetujuan Absensi/Izin"
     }
 
     /** Channel tak dikenal dari server → pakai "approval" supaya notif tetap tampil. */
