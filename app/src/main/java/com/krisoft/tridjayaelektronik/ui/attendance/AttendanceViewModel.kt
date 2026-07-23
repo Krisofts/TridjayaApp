@@ -2,13 +2,6 @@ package com.krisoft.tridjayaelektronik.ui.attendance
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Typeface
-import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AbsensiRepository
@@ -18,6 +11,7 @@ import com.krisoft.tridjayaelektronik.data.OffRepository
 import com.krisoft.tridjayaelektronik.data.model.AbsensiGeofenceDto
 import com.krisoft.tridjayaelektronik.data.model.AbsensiRecordDto
 import com.krisoft.tridjayaelektronik.data.model.OffRequestDto
+import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -29,17 +23,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import javax.inject.Inject
-import kotlin.math.max
-
-private const val MAX_SELFIE_BYTES = 2 * 1024 * 1024
-private const val MAX_SELFIE_DIMENSION = 1600
 
 data class AttendanceUiState(
     val loading: Boolean = true,
@@ -193,7 +178,9 @@ class AttendanceViewModel @Inject constructor(
         val lat = _uiState.value.lat
         val lng = _uiState.value.lng
         viewModelScope.launch {
-            val prepared = withContext(Dispatchers.Default) { compress(file, lat, lng) }
+            val prepared = withContext(Dispatchers.Default) {
+                PhotoWatermark.prepareWatermarkedJpeg(file, lat, lng, "TRIDJAYA · ABSEN", "$userName · $cabang")
+            }
             if (prepared == null) {
                 _uiState.update { it.copy(actionError = "Gagal memproses foto selfie") }
             } else {
@@ -280,107 +267,4 @@ class AttendanceViewModel @Inject constructor(
         }
     }
 
-    /** Downscale ke [MAX_SELFIE_DIMENSION], perbaiki rotasi EXIF, cap watermark, JPEG < [MAX_SELFIE_BYTES]. */
-    private fun compress(file: File, lat: Double?, lng: Double?): Pair<ByteArray, Bitmap>? {
-        val raw = runCatching { file.readBytes() }.getOrNull() ?: return null
-        if (raw.isEmpty()) return null
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-        var sampleSize = 1
-        while (max(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= MAX_SELFIE_DIMENSION) sampleSize *= 2
-        var bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sampleSize })
-            ?: return null
-
-        val maxSide = max(bitmap.width, bitmap.height)
-        if (maxSide > MAX_SELFIE_DIMENSION) {
-            val scale = MAX_SELFIE_DIMENSION.toFloat() / maxSide
-            bitmap = Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * scale).toInt().coerceAtLeast(1),
-                (bitmap.height * scale).toInt().coerceAtLeast(1),
-                true
-            )
-        }
-
-        val orientation = runCatching {
-            ExifInterface(ByteArrayInputStream(raw))
-                .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-        val degrees = when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
-            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
-            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
-            else -> 0f
-        }
-        if (degrees != 0f) {
-            val matrix = Matrix().apply { postRotate(degrees) }
-            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        }
-
-        // Cap watermark geotag + jam (bukti absen anti-manipulasi) sebelum encode.
-        bitmap = drawWatermark(bitmap, lat, lng)
-
-        var quality = 85
-        var out = ByteArrayOutputStream().apply { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, this) }.toByteArray()
-        while (out.size > MAX_SELFIE_BYTES && quality > 40) {
-            quality -= 15
-            out = ByteArrayOutputStream().apply { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, this) }.toByteArray()
-        }
-        return out to bitmap
-    }
-
-    /**
-     * Gambar bar watermark di bagian bawah foto: label, tanggal+jam, koordinat GPS (geotag), dan
-     * nama·cabang. Ditanam langsung ke piksel gambar (bukan metadata) agar ikut terkirim & sulit
-     * dimanipulasi. Ukuran teks proporsional terhadap lebar gambar.
-     */
-    private fun drawWatermark(src: Bitmap, lat: Double?, lng: Double?): Bitmap {
-        val bmp = if (src.isMutable) src else src.copy(Bitmap.Config.ARGB_8888, true)
-        val w = bmp.width.toFloat()
-        val h = bmp.height.toFloat()
-        val canvas = Canvas(bmp)
-
-        val pad = w * 0.03f
-        val titleSize = w / 38f
-        val bodySize = w / 30f
-        val smallSize = w / 34f
-        val gap = bodySize * 0.42f
-        val barH = pad * 2 + titleSize + bodySize + smallSize * 2 + gap * 3
-
-        // Latar semi-transparan + strip aksen biru brand di kiri.
-        canvas.drawRect(0f, h - barH, w, h, Paint().apply { color = Color.argb(150, 0, 0, 0) })
-        canvas.drawRect(0f, h - barH, pad * 0.35f, h, Paint().apply { color = Color.rgb(30, 99, 233) })
-
-        val timeStr = SimpleDateFormat("EEE, dd MMM yyyy · HH:mm:ss", Locale("in", "ID")).format(Date())
-        val geoStr = if (lat != null && lng != null)
-            "Lat %.6f, Lng %.6f".format(lat, lng)
-        else "Lokasi GPS belum terkunci"
-        val whoStr = "$userName · $cabang"
-
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
-        val x = pad + pad * 0.35f
-        var y = h - barH + pad + titleSize
-
-        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        paint.textSize = titleSize
-        paint.color = Color.rgb(130, 185, 255)
-        canvas.drawText("TRIDJAYA · ABSEN", x, y, paint)
-
-        y += bodySize + gap
-        paint.color = Color.WHITE
-        paint.textSize = bodySize
-        canvas.drawText(timeStr, x, y, paint)
-
-        y += smallSize + gap
-        paint.typeface = Typeface.SANS_SERIF
-        paint.textSize = smallSize
-        canvas.drawText(geoStr, x, y, paint)
-
-        y += smallSize + gap
-        canvas.drawText(whoStr, x, y, paint)
-
-        return bmp
-    }
 }

@@ -1,8 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.deliveryflow
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
@@ -17,6 +15,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody
 import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
+import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -26,10 +25,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.inject.Inject
-import kotlin.math.max
 
 data class DeliveryFlowUiState(
     val loading: Boolean = false,
@@ -196,27 +193,40 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    // ── Foto (PDI ready / serah terima) ──────────────────────────────────────
+    // ── Foto (PDI ready / serah terima / terima uang) — watermark geotag+jam sama pola absensi ──
     fun onPdiPhotoCaptured(file: File) = viewModelScope.launch {
-        pdiPhotoBytes = withContext(Dispatchers.Default) { compress(file) }
+        pdiPhotoBytes = watermarked(file, "TRIDJAYA · PDI")
         _state.update { it.copy() } // trigger recomposition of "photo taken" flag if diperlukan
     }
 
     fun hasPdiPhoto(): Boolean = pdiPhotoBytes != null
 
     fun onDeliverPhotoCaptured(file: File) = viewModelScope.launch {
-        deliverPhotoBytes = withContext(Dispatchers.Default) { compress(file) }
+        deliverPhotoBytes = watermarked(file, "TRIDJAYA · SERAH TERIMA")
         _state.update { it.copy() }
     }
 
     fun hasDeliverPhoto(): Boolean = deliverPhotoBytes != null
 
     fun onCashPhotoCaptured(file: File) = viewModelScope.launch {
-        cashPhotoBytes = withContext(Dispatchers.Default) { compress(file) }
+        cashPhotoBytes = watermarked(file, "TRIDJAYA · TERIMA UANG")
         _state.update { it.copy() }
     }
 
     fun hasCashPhoto(): Boolean = cashPhotoBytes != null
+
+    /**
+     * GPS best-effort (pola sama [DeliveryFlowViewModel.deliver]): gagal/izin ditolak → watermark
+     * timestamp saja, JANGAN blokir foto. Subtitle = nama · kode SPK job aktif (kalau sudah termuat).
+     */
+    private suspend fun watermarked(file: File, title: String): ByteArray? {
+        val loc = runCatching { LocationProvider.current(appContext) }.getOrNull()
+        val kode = _state.value.detail?.kodePengiriman.orEmpty()
+        val subtitle = listOf(currentUserName, kode).filter { it.isNotBlank() }.joinToString(" · ")
+        return withContext(Dispatchers.Default) {
+            PhotoWatermark.prepareWatermarkedJpeg(file, loc?.latitude, loc?.longitude, title, subtitle)?.first
+        }
+    }
 
     // ── Aksi tahap ───────────────────────────────────────────────────────────
 
@@ -404,27 +414,4 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    /** Downscale ≤1600px + JPEG ≤2MB (tanpa watermark). */
-    private fun compress(file: File): ByteArray? {
-        val raw = runCatching { file.readBytes() }.getOrNull() ?: return null
-        if (raw.isEmpty()) return null
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
-        if (bounds.outWidth <= 0) return null
-        var sample = 1
-        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 1600) sample *= 2
-        var bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-        val maxSide = max(bmp.width, bmp.height)
-        if (maxSide > 1600) {
-            val scale = 1600f / maxSide
-            bmp = Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt().coerceAtLeast(1), (bmp.height * scale).toInt().coerceAtLeast(1), true)
-        }
-        var q = 85
-        var out = ByteArrayOutputStream().apply { bmp.compress(Bitmap.CompressFormat.JPEG, q, this) }.toByteArray()
-        while (out.size > 2 * 1024 * 1024 && q > 40) {
-            q -= 15
-            out = ByteArrayOutputStream().apply { bmp.compress(Bitmap.CompressFormat.JPEG, q, this) }.toByteArray()
-        }
-        return out
-    }
 }
