@@ -93,6 +93,9 @@ object NetworkModule {
     fun createErpPriceChangesApi(tokenStore: TokenStore): ErpPriceChangesApi =
         authenticatedRetrofit(tokenStore).create(ErpPriceChangesApi::class.java)
 
+    fun createDeadstockApi(tokenStore: TokenStore): DeadstockApi =
+        authenticatedRetrofit(tokenStore).create(DeadstockApi::class.java)
+
     private fun baseClientBuilder(): OkHttpClient.Builder {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {

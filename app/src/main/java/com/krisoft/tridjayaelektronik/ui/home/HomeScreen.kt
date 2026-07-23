@@ -137,6 +137,7 @@ fun HomeScreen(
     onQuickAccessGaji: () -> Unit = {},
     onQuickAccessHargaGs: () -> Unit = {},
     onQuickAccessSerialInput: () -> Unit = {},
+    onQuickAccessDeadstock: () -> Unit = {},
     /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
@@ -210,7 +211,7 @@ fun HomeScreen(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
                                 onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessHargaGs,
-                                onQuickAccessSerialInput, onSpkMenu
+                                onQuickAccessSerialInput, onQuickAccessDeadstock, onSpkMenu
                             )
                         }
                     }
@@ -248,6 +249,7 @@ private fun LazyListScope.homeSection(
     onQuickAccessGaji: () -> Unit,
     onQuickAccessHargaGs: () -> Unit,
     onQuickAccessSerialInput: () -> Unit,
+    onQuickAccessDeadstock: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
     when (section) {
@@ -265,11 +267,13 @@ private fun LazyListScope.homeSection(
                     onGaji = onQuickAccessGaji,
                     onHargaGs = onQuickAccessHargaGs,
                     onSerialInput = onQuickAccessSerialInput,
+                    onDeadstock = onQuickAccessDeadstock,
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
                     showOpname = canAccessOpname(role),
                     showHargaGs = canAccessHargaGs(role),
-                    showSerialInput = canAccessSerialInput(role)
+                    showSerialInput = canAccessSerialInput(role),
+                    showDeadstock = canAccessDeadstock(role)
                 )
             }
         }
@@ -398,6 +402,10 @@ private val HARGA_GS_MENU_ROLES = setOf("admin", "manager", "owner", "kepala-cab
 /** `is_admin_stok_role` di `serials.rs` — POST /inventory/serial-numbers hanya role ini. */
 private val SERIAL_INPUT_MENU_ROLES = setOf("admin-stok")
 
+/** `is_cabang_role` di `deadstock/mod.rs` (dealer dipaksa backend, anti-IDOR) — manager
+ *  punya mode terpisah (monitoring+audit, web-only) jadi tidak termasuk di sini. */
+private val DEADSTOCK_MENU_ROLES = setOf("karyawan", "kepala-cabang", "admin-stok")
+
 internal fun canAccessIndent(role: String?): Boolean =
     role?.trim()?.lowercase() in INDENT_MENU_ROLES
 
@@ -409,6 +417,9 @@ internal fun canAccessHargaGs(role: String?): Boolean =
 
 internal fun canAccessSerialInput(role: String?): Boolean =
     role?.trim()?.lowercase() in SERIAL_INPUT_MENU_ROLES
+
+internal fun canAccessDeadstock(role: String?): Boolean =
+    role?.trim()?.lowercase() in DEADSTOCK_MENU_ROLES
 
 /**
  * Shortcut row to the app's most-used destinations. Five tiles no longer fit a fixed-width
@@ -425,11 +436,13 @@ private fun QuickAccessRow(
     onGaji: () -> Unit,
     onHargaGs: () -> Unit,
     onSerialInput: () -> Unit,
+    onDeadstock: () -> Unit,
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
     showOpname: Boolean = true,
     showHargaGs: Boolean = true,
-    showSerialInput: Boolean = false
+    showSerialInput: Boolean = false,
+    showDeadstock: Boolean = false
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -526,6 +539,17 @@ private fun QuickAccessRow(
                     label = "Input SN",
                     tint = Color(0xFF7A5AF8),
                     onClick = onSerialInput,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
+        }
+        if (showDeadstock) {
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.Inventory2,
+                    label = "Deadstock",
+                    tint = Color(0xFF93370D),
+                    onClick = onDeadstock,
                     modifier = Modifier.width(86.dp)
                 )
             }
