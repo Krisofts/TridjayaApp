@@ -87,6 +87,9 @@ object NetworkModule {
     fun createNotificationsApi(tokenStore: TokenStore): NotificationsApi =
         authenticatedRetrofit(tokenStore).create(NotificationsApi::class.java)
 
+    fun createPayrollApi(tokenStore: TokenStore): PayrollApi =
+        authenticatedRetrofit(tokenStore).create(PayrollApi::class.java)
+
     private fun baseClientBuilder(): OkHttpClient.Builder {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {

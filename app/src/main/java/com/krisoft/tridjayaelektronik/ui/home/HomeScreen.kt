@@ -56,6 +56,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
 import androidx.compose.material.icons.rounded.Receipt
 import androidx.compose.material.icons.rounded.Settings
@@ -131,6 +132,7 @@ fun HomeScreen(
     onQuickAccessSales: () -> Unit = {},
     onQuickAccessOpname: () -> Unit = {},
     onQuickAccessAbsen: () -> Unit = {},
+    onQuickAccessGaji: () -> Unit = {},
     /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
@@ -203,7 +205,7 @@ fun HomeScreen(
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessAbsen, onSpkMenu
+                                onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onSpkMenu
                             )
                         }
                     }
@@ -238,6 +240,7 @@ private fun LazyListScope.homeSection(
     onQuickAccessSales: () -> Unit,
     onQuickAccessOpname: () -> Unit,
     onQuickAccessAbsen: () -> Unit,
+    onQuickAccessGaji: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
     when (section) {
@@ -252,6 +255,7 @@ private fun LazyListScope.homeSection(
                     onSales = onQuickAccessSales,
                     onOpname = onQuickAccessOpname,
                     onAbsen = onQuickAccessAbsen,
+                    onGaji = onQuickAccessGaji,
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
                     showOpname = canAccessOpname(role)
@@ -395,6 +399,7 @@ private fun QuickAccessRow(
     onSales: () -> Unit,
     onOpname: () -> Unit,
     onAbsen: () -> Unit,
+    onGaji: () -> Unit,
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
     showOpname: Boolean = true
@@ -411,6 +416,15 @@ private fun QuickAccessRow(
                 label = "Absen",
                 tint = Color(0xFF0E9384),
                 onClick = onAbsen,
+                modifier = Modifier.width(86.dp)
+            )
+        }
+        item {
+            QuickAccessTile(
+                icon = Icons.Rounded.Payments,
+                label = "Slip Gaji",
+                tint = Color(0xFF7A5AF8),
+                onClick = onGaji,
                 modifier = Modifier.width(86.dp)
             )
         }
