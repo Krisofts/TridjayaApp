@@ -30,6 +30,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.krisoft.tridjayaelektronik.push.FcmService
+import com.krisoft.tridjayaelektronik.ui.home.ROUTE_SPK_HUB
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -91,8 +93,18 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var themePreferences: ThemePreferences
 
+    // Compose state field on the Activity (not `remember`-scoped) so a tap-notification deep link
+    // survives whichever screen (splash/login/main) happens to be composed when it arrives, and
+    // `onNewIntent` (app already running) can update it from outside any composition.
+    private var pendingNotifChannel by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Fallback ke DATA_KEY_CHANNEL: notif dirender OS sendiri (app background, payload
+        // notification+data, FcmService.onMessageReceived tak dipanggil) meneruskan `data` FCM
+        // sbg extras dgn key "channel", bukan EXTRA_NOTIF_CHANNEL punya kita.
+        pendingNotifChannel = intent?.getStringExtra(FcmService.EXTRA_NOTIF_CHANNEL)
+            ?: intent?.getStringExtra(FcmService.DATA_KEY_CHANNEL)
 
         setContent {
             val themeState by themePreferences.state.collectAsState()
@@ -101,10 +113,23 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    SecurityGate { TridjayaNavHost() }
+                    SecurityGate {
+                        TridjayaNavHost(
+                            pendingNotifChannel = pendingNotifChannel,
+                            onConsumeNotifChannel = { pendingNotifChannel = null }
+                        )
+                    }
                 }
             }
         }
+    }
+
+    /** App already running (FLAG_ACTIVITY_CLEAR_TOP reuses this instance) — new tap, new channel. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingNotifChannel = intent.getStringExtra(FcmService.EXTRA_NOTIF_CHANNEL)
+            ?: intent.getStringExtra(FcmService.DATA_KEY_CHANNEL)
     }
 }
 
@@ -144,6 +169,8 @@ private fun SecurityGate(content: @Composable () -> Unit) {
 
 @Composable
 private fun TridjayaNavHost(
+    pendingNotifChannel: String? = null,
+    onConsumeNotifChannel: () -> Unit = {},
     sessionViewModel: SessionViewModel = hiltViewModel(),
     updateViewModel: UpdateViewModel = hiltViewModel()
 ) {
@@ -247,7 +274,10 @@ private fun TridjayaNavHost(
             )
         }
         composable(ROUTE_MAIN) {
-            MainScreen()
+            MainScreen(
+                pendingNotifChannel = pendingNotifChannel,
+                onConsumeNotifChannel = onConsumeNotifChannel
+            )
         }
     }
 
@@ -305,7 +335,10 @@ private fun DestinationContent(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen() {
+private fun MainScreen(
+    pendingNotifChannel: String? = null,
+    onConsumeNotifChannel: () -> Unit = {}
+) {
     val destinations = AppDestination.bottomNavItems
     var selected by remember { mutableStateOf(destinations.first()) }
     // Bumped by Home's "Akses Cepat" Inventory tile — see the LaunchedEffect inside
@@ -316,6 +349,22 @@ private fun MainScreen() {
     val homeNav = rememberNavController()
     val inventoryNav = rememberNavController()
     val leadsNav = rememberNavController()
+
+    // Deep-link tap-notifikasi → layar relevan. One-shot: dijalankan sekali per nilai channel baru
+    // lalu langsung dikonsumsi (di-null-kan) supaya tak ternavigasi ulang saat MainScreen
+    // recompose karena alasan lain (mis. ganti tab manual sesudahnya).
+    LaunchedEffect(pendingNotifChannel) {
+        when (pendingNotifChannel) {
+            "delivery" -> {
+                selected = AppDestination.HOME
+                homeNav.navigate(ROUTE_SPK_HUB) { launchSingleTop = true }
+            }
+            "crm" -> selected = AppDestination.LEADS
+            null -> return@LaunchedEffect
+        }
+        onConsumeNotifChannel()
+    }
+
     val homeEntry by homeNav.currentBackStackEntryAsState()
     val inventoryEntry by inventoryNav.currentBackStackEntryAsState()
     val leadsEntry by leadsNav.currentBackStackEntryAsState()

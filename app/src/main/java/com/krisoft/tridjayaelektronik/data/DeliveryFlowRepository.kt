@@ -9,6 +9,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryCreateResult
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -79,11 +80,100 @@ class DeliveryFlowRepository @Inject constructor(
     suspend fun cancel(id: String, reason: String): AuthResult<DeliveryJobDto> =
         call("Gagal membatalkan") { api.cancel(id, reason) }
 
-    suspend fun checklist(kategori: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>> = try {
-        val response = api.checklist(kategori)
+    suspend fun checklist(kategori: String, stage: String? = null): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>> = try {
+        val response = api.checklist(kategori, stage)
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.items.filter { it.aktif })
         else parseError(response, "Gagal memuat checklist PDI")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** 088: tandai sudah chat konsumen (H-1). */
+    suspend fun chatConsumer(id: String): AuthResult<DeliveryJobDto> =
+        call("Gagal mencatat chat konsumen") { api.chatConsumer(id) }
+
+    /** Simpan urutan muatan driver; abaikan body sukses, hanya status. */
+    suspend fun reorderLoads(ids: List<String>): AuthResult<Unit> = try {
+        val response = api.reorderLoads(ReorderBody(ids))
+        if (response.isSuccessful) AuthResult.Success(Unit)
+        else parseError(response, "Gagal menyimpan urutan muatan")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Autocomplete barang Input SPK — `search` min. 2 karakter, di-scope `kodeDealer`. */
+    suspend fun stokCabang(search: String, kodeDealer: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow>> = try {
+        val response = api.stokCabang(search = search, kodeDealer = kodeDealer)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat stok cabang")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    suspend fun categories(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DeliveryCategoryDto>> = try {
+        val response = api.categories()
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat kategori PDI")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Autocomplete broker KBK (`q` min. 2 char). Fail-soft di caller. */
+    suspend fun searchBrokers(q: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.BrokerOption>> = try {
+        val response = api.brokers(q)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat broker")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    suspend fun jobAkiForms(id: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>> = try {
+        val response = api.jobAkiForms(id)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat form pengambilan aki")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Serial tersedia utk cabang+barang → list string serialNumber. */
+    suspend fun serialNumbers(kodeDealer: String, kodeBarang: String): AuthResult<List<String>> = try {
+        val response = api.serialNumbers(kodeDealer = kodeDealer, kodeBarang = kodeBarang)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items.map { it.serialNumber }.filter { it.isNotBlank() })
+        else parseError(response, "Gagal memuat serial")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    suspend fun createAkiForm(id: String, body: com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody): AuthResult<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = try {
+        val response = api.createAkiForm(id, body)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.form)
+        else parseError(response, "Gagal simpan form pengambilan aki")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Daftar riwayat form aki (menu Pengambilan Aki). */
+    suspend fun akiForms(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>> = try {
+        val response = api.akiForms()
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat daftar form pengambilan aki")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    suspend fun returnAkiForm(id: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = try {
+        val response = api.returnAkiForm(id, com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody())
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.form)
+        else parseError(response, "Gagal menandai aki bekas dikembalikan")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }

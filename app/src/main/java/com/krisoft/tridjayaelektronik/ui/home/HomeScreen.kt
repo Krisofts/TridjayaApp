@@ -52,14 +52,18 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
 import androidx.compose.material.icons.rounded.Receipt
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,6 +109,7 @@ import com.krisoft.tridjayaelektronik.domain.sales.KlasemenEntity
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.sales.KlasemenRowCard
 import com.krisoft.tridjayaelektronik.ui.sales.KlasemenViewModel
+import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonBox
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonLine
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
@@ -119,14 +124,14 @@ fun HomeScreen(
     onBranchClick: (LeaderboardBranchItemDto) -> Unit = {},
     onSalesClick: (LeaderboardSalesItemDto) -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
     onQuickAccessIndent: () -> Unit = {},
     onQuickAccessSales: () -> Unit = {},
     onQuickAccessOpname: () -> Unit = {},
-    onQuickAccessDelivery: () -> Unit = {},
     onQuickAccessAbsen: () -> Unit = {},
-    /** Buka satu menu alur SPK (dummy) berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
+    /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -136,9 +141,26 @@ fun HomeScreen(
     // Content scrolls behind the floating nav; clear it (pill ≈ 88dp) plus the system nav-bar inset.
     val bottomClearance = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 104.dp
 
+    // Badge unread — instance terpisah dari layar Notifikasi; fetch on-entry (bukan polling), dan
+    // lagi begitu Home kembali tampil setelah pop dari layar itu (LaunchedEffect re-run tiap kali
+    // composable ini masuk komposisi baru, termasuk saat kembali dari navigasi).
+    val notifViewModel: NotificationCenterViewModel = hiltViewModel()
+    val notifState by notifViewModel.state.collectAsState()
+    LaunchedEffect(Unit) { notifViewModel.refreshUnreadCount() }
+
     TridjayaCollapsibleHeader(
         title = "Tridjaya.com",
         actions = {
+            ExpressiveFilledIconButton(onClick = onOpenNotifications) {
+                BadgedBox(badge = {
+                    if (notifState.unreadCount > 0) {
+                        Badge { Text(if (notifState.unreadCount > 99) "99+" else "${notifState.unreadCount}") }
+                    }
+                }) {
+                    Icon(Icons.Rounded.Notifications, contentDescription = "Notifikasi")
+                }
+            }
+            Spacer(modifier = Modifier.size(8.dp))
             ExpressiveFilledIconButton(
                 onClick = { showCustomizeSheet = true },
                 colors = IconButtonDefaults.filledIconButtonColors(
@@ -181,7 +203,7 @@ fun HomeScreen(
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessDelivery, onQuickAccessAbsen, onSpkMenu
+                                onQuickAccessOpname, onQuickAccessAbsen, onSpkMenu
                             )
                         }
                     }
@@ -215,7 +237,6 @@ private fun LazyListScope.homeSection(
     onQuickAccessIndent: () -> Unit,
     onQuickAccessSales: () -> Unit,
     onQuickAccessOpname: () -> Unit,
-    onQuickAccessDelivery: () -> Unit,
     onQuickAccessAbsen: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
@@ -230,14 +251,10 @@ private fun LazyListScope.homeSection(
                     onIndent = onQuickAccessIndent,
                     onSales = onQuickAccessSales,
                     onOpname = onQuickAccessOpname,
-                    onDelivery = onQuickAccessDelivery,
                     onAbsen = onQuickAccessAbsen,
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
-                    showOpname = canAccessOpname(role),
-                    // Fitur dummy untuk review desain — belum digating role (aktifkan
-                    // canAccessDelivery(role) begitu di-wire ke API delivery-schedules).
-                    showDelivery = true
+                    showOpname = canAccessOpname(role)
                 )
             }
         }
@@ -359,17 +376,12 @@ private fun EmptyRankRow(message: String) {
  */
 private val INDENT_MENU_ROLES = setOf("admin", "owner", "indent-approver", "manager", "kepala-cabang")
 private val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "manager", "owner")
-// Selaras DELIVERY_ROLES di backend kinerja-service (admin/sales/admin-sales) + owner/manager.
-private val DELIVERY_MENU_ROLES = setOf("admin", "sales", "admin-sales", "admin_sales", "owner", "manager", "kepala-cabang")
 
 internal fun canAccessIndent(role: String?): Boolean =
     role?.trim()?.lowercase() in INDENT_MENU_ROLES
 
 internal fun canAccessOpname(role: String?): Boolean =
     role?.trim()?.lowercase() in OPNAME_MENU_ROLES
-
-internal fun canAccessDelivery(role: String?): Boolean =
-    role?.trim()?.lowercase() in DELIVERY_MENU_ROLES
 
 /**
  * Shortcut row to the app's most-used destinations. Five tiles no longer fit a fixed-width
@@ -382,12 +394,10 @@ private fun QuickAccessRow(
     onIndent: () -> Unit,
     onSales: () -> Unit,
     onOpname: () -> Unit,
-    onDelivery: () -> Unit,
     onAbsen: () -> Unit,
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
-    showOpname: Boolean = true,
-    showDelivery: Boolean = true
+    showOpname: Boolean = true
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -404,27 +414,9 @@ private fun QuickAccessRow(
                 modifier = Modifier.width(86.dp)
             )
         }
-        // Alur pengiriman SPK per-tahap (nyata → inventory-service). RBAC di backend; tampil semua.
+        // Alur pengiriman SPK — satu pintu (hub); RBAC per tahap di backend.
         item {
-            QuickAccessTile(Icons.Rounded.Description, "Input SPK", Color(0xFF1E63E9), { onSpkMenu("input") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.Discount, "Diskon", Color(0xFFB5670C), { onSpkMenu("diskon") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.FactCheck, "PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.PointOfSale, "Kasir SPK", Color(0xFF0086C9), { onSpkMenu("kasir") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.Receipt, "Surat Jalan", Color(0xFF0E9384), { onSpkMenu("note") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.CalendarToday, "Jadwal", Color(0xFF1565C0), { onSpkMenu("jadwal") }, Modifier.width(86.dp))
-        }
-        item {
-            QuickAccessTile(Icons.Rounded.LocalShipping, "Driver", Color(0xFF6941C6), { onSpkMenu("driver") }, Modifier.width(86.dp))
+            QuickAccessTile(Icons.Rounded.LocalShipping, "SPK", Color(0xFF1E63E9), { onSpkMenu("hub") }, Modifier.width(86.dp))
         }
         item {
             QuickAccessTile(
@@ -471,17 +463,6 @@ private fun QuickAccessRow(
                     label = "Opname",
                     tint = Color(0xFF0086C9),
                     onClick = onOpname,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showDelivery) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.LocalShipping,
-                    label = "Kirim",
-                    tint = Color(0xFF6941C6),
-                    onClick = onDelivery,
                     modifier = Modifier.width(86.dp)
                 )
             }

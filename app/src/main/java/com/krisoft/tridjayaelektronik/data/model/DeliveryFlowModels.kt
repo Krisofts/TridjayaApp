@@ -1,5 +1,8 @@
 package com.krisoft.tridjayaelektronik.data.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -42,14 +45,34 @@ data class DeliveryJobDto(
     val customerName: String? = null,
     val customerAddress: String? = null,
     val customerPhone: String? = null,
+    /** Link Google Maps konsumen (086) — prasyarat backend sebelum assign driver. */
+    val customerMapUrl: String? = null,
     val customerNik: String? = null,
     val fincoy: String? = null,
     val paymentType: String? = null,
     val hargaOtr: Double? = null,
     val diskon: Double? = null,
     val hargaTotal: Double? = null,
+    // Pembiayaan per-unit (068)
+    val dpNet: Double? = null,
+    val pembayaran1: Double? = null,
+    val angsuran: Double? = null,
+    val tenor: Int? = null,
+    val biayaAdm: Double? = null,
+    val angsuranPertama: Double? = null,
+    // Komisi + sumber order (068/080)
+    val komisiSales: Double? = null,
+    val komisiKbk: Double? = null,
+    val noHpKbk: String? = null,
+    val orderSource: String? = null,
+    val kbkBrokerKode: String? = null,
+    val kbkBrokerNama: String? = null,
     val keterangan: String? = null,
     val salesName: String? = null,
+    // Sosmed konsumen (068, denormalisasi per baris)
+    val sosmedTiktok: String? = null,
+    val sosmedFacebook: String? = null,
+    val sosmedInstagram: String? = null,
     val status: String = DeliveryStatusKey.PENDING_PDI,
     val inputChannel: String? = null,
     val serialNumber: String? = null,
@@ -79,7 +102,13 @@ data class DeliveryJobDto(
     val reviewAt: String? = null,
     val cancelReason: String? = null,
     val createdAt: String? = null,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
+    // 088 — driver checklist/chat/terima uang. `driverTerimaUang != null` = penanda
+    // backend 088 aktif (kolom NOT NULL → selalu terisi pasca-088).
+    val consumerChatAt: String? = null,
+    val driverTerimaUang: Boolean? = null,
+    val driverTerimaNominal: Double? = null,
+    val cashPhotoUrl: String? = null
 )
 
 /** Response `GET /api/inventory/delivery` (di dalam `data`). */
@@ -98,12 +127,16 @@ data class DeliveryCreateResult(
     val discountPending: Boolean = false
 )
 
-/** Konteks cabang/dealer aktor untuk form input SPK (`GET /delivery/context`). */
+/**
+ * Konteks cabang/dealer aktor untuk form input SPK (`GET /delivery/context`).
+ * Backend (`delivery_context` di `delivery.rs`) balas key `kodeDealer`/`dealerName`/`cabangName`/`name`
+ * — TIDAK ADA `kodeCabang` (nama field lama sebelumnya salah tebak, selalu null tak terpakai).
+ */
 @Serializable
 data class DeliveryContextDto(
     val kodeDealer: String? = null,
     val dealerName: String? = null,
-    val kodeCabang: String? = null
+    val cabangName: String? = null
 )
 
 /** Response upload foto (`POST /delivery/upload-photo`). */
@@ -138,6 +171,40 @@ data class DriverDto(
 
 @Serializable
 data class UsersListData(val items: List<DriverDto> = emptyList())
+
+/**
+ * Baris stok GS (`GET /inventory/stok-cabang`) — dipakai autocomplete barang Input SPK.
+ * JSON key PascalCase (asal GS), BEDA dari konvensi camelCase DTO lain di file ini —
+ * kotlinx-serialization TIDAK case-insensitive, `@SerialName` eksplisit wajib per field.
+ */
+@Serializable
+data class StokCabangRow(
+    @SerialName("Kode") val kode: String = "",
+    @SerialName("Nama") val nama: String = "",
+    @SerialName("Kategori") val kategori: String = "",
+    @SerialName("Merk") val merk: String = "",
+    @SerialName("Tipe") val tipe: String = "",
+    @SerialName("Harga") val harga: Double? = null,
+    @SerialName("Stok") val stok: Int? = null
+)
+
+/** Response `GET /api/inventory/stok-cabang` (di dalam `data`). */
+@Serializable
+data class StokCabangData(val items: List<StokCabangRow> = emptyList())
+
+/** Broker KBK (`GET /inventory/delivery/brokers?q=`). camelCase 1:1. */
+@Serializable
+data class BrokerOption(val kode: String = "", val nama: String = "")
+
+@Serializable
+data class BrokerListData(val items: List<BrokerOption> = emptyList())
+
+/** Baris registry serial (`GET /inventory/serial-numbers`). Hanya serialNumber dipakai. */
+@Serializable
+data class SerialRegistryRow(val serialNumber: String = "")
+
+@Serializable
+data class SerialListData(val items: List<SerialRegistryRow> = emptyList())
 
 // ── Approval diskon per-baris (SPK) ──────────────────────────────────────────
 
@@ -190,6 +257,7 @@ data class DecisionBody(val decisionNote: String? = null)
 
 // ── Request bodies ───────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class CreateDeliveryItemBody(
     val kodeBarang: String,
@@ -200,12 +268,27 @@ data class CreateDeliveryItemBody(
     val qty: Int = 1,
     val warna: String? = null,
     val serialNumber: String? = null,
+    // ponytail: paksa selalu ter-serialize — Retrofit Json (encodeDefaults=false) buang field
+    // yang = default, tapi backend butuh paymentType eksplisit walau nilainya "cash".
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val paymentType: String = "cash",
     val fincoy: String? = null,
     val hargaOtr: Double,
     val diskon: Double? = null,
     val alasanDiskon: String? = null,
     val dpNet: Double? = null,
+    val pembayaran1: Double? = null,
+    val angsuran: Double? = null,
+    val tenor: Int? = null,
+    val komisiSales: Double? = null,
+    val komisiKbk: Double? = null,
+    val noHpKbk: String? = null,
+    val orderSource: String? = null,
+    val kbkBrokerKode: String? = null,
+    val kbkBrokerNama: String? = null,
+    /** 088: driver terima uang dari konsumen (gate foto uang saat deliver). */
+    val driverTerimaUang: Boolean? = null,
+    val driverTerimaNominal: Double? = null,
     val kodeDealer: String? = null,
     val kodeCabang: String? = null
 )
@@ -215,8 +298,12 @@ data class CreateDeliveryBody(
     val customerName: String,
     val customerPhone: String,
     val customerAddress: String? = null,
+    val customerMapUrl: String? = null,
     val customerNik: String? = null,
     val salesNik: String? = null,
+    val sosmedTiktok: String? = null,
+    val sosmedFacebook: String? = null,
+    val sosmedInstagram: String? = null,
     val keterangan: String? = null,
     val tanggalJual: String? = null,
     val items: List<CreateDeliveryItemBody>
@@ -250,7 +337,8 @@ data class DeliveryNoteBody(
 data class AssignBody(
     val driverId: String,
     val driverName: String? = null,
-    val scheduledDate: String
+    val scheduledDate: String,
+    val customerMapUrl: String? = null
 )
 
 @Serializable
@@ -259,5 +347,67 @@ data class DeliverBody(
     val lat: Double? = null,
     val lng: Double? = null,
     val reviewRating: Int,
-    val reviewComment: String? = null
+    val reviewComment: String? = null,
+    /** 088: checklist serah-terima driver (kategori ber-item stage=driver). */
+    val checklist: List<PdiChecklistItemBody>? = null,
+    /** 088: foto bukti terima uang (wajib bila job.driverTerimaUang). */
+    val cashPhotoUrl: String? = null
 )
+
+/** Body reorder muatan driver (`POST /delivery/driver/reorder`) — array posisi = urutan muat. */
+@Serializable
+data class ReorderBody(val orderedIds: List<String>)
+
+@Serializable
+data class ReorderResult(val count: Int = 0)
+
+// ── Form pengambilan aki (PDI gate, migrasi 082) ─────────────────────────────
+
+/** Kategori PDI (`GET /delivery/config/categories`) — `requiresAkiForm` = gate hard-block submit PDI. */
+@Serializable
+data class DeliveryCategoryDto(
+    val id: String = "",
+    val kategori: String = "",
+    val requiresAkiForm: Boolean = false,
+    val aktif: Boolean = true
+)
+
+@Serializable
+data class DeliveryCategoriesData(val items: List<DeliveryCategoryDto> = emptyList())
+
+/** Form pengambilan aki (`aki.rs` — subset field yang dipakai app). */
+@Serializable
+data class AkiFormDto(
+    val id: String = "",
+    val deliveryJobId: String = "",
+    val tanggal: String = "",
+    val pengambilNama: String = "",
+    val tujuan: String = "",
+    val tujuanLainnya: String? = null,
+    val merkTipe: String = "",
+    val jumlahPcs: Int = 0,
+    val akiBekasStatus: String = "belum"
+)
+
+@Serializable
+data class AkiFormsData(val items: List<AkiFormDto> = emptyList())
+
+/** Wrapper create (`POST /delivery/{id}/aki-form` → `data.form`, BUKAN objek langsung). */
+@Serializable
+data class AkiFormCreateData(val form: AkiFormDto = AkiFormDto())
+
+/** Body create (`aki.rs:107-133`, camelCase; tujuan+merkTipe+jumlahPcs wajib; pengambil = actor). */
+@Serializable
+data class CreateAkiFormBody(
+    val tujuan: String,
+    val merkTipe: String,
+    val jumlahPcs: Int,
+    val tujuanLainnya: String? = null,
+    val kapasitas: String? = null,
+    val jumlahKeterangan: String? = null,
+    val keterangan: String? = null
+)
+
+/** Body tandai aki bekas dikembalikan (`POST /aki-forms/{id}/return`); kosong = default backend. */
+@Serializable
+data class ReturnAkiBody(val jumlah: Int? = null, val keterangan: String? = null)

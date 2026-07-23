@@ -16,6 +16,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody
+import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +44,24 @@ data class DeliveryFlowUiState(
     /** Daftar driver (untuk tahap pending_scheduling); kosong → form fallback input manual. */
     val drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto> = emptyList(),
     /** Pengajuan diskon menunggu approval (layar approval diskon). */
-    val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList()
+    val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
+    /** Konteks cabang login sales — default selektor Cabang SPK (Input SPK). */
+    val deliveryContext: com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto? = null,
+    /** Hasil autocomplete stok GS (Input SPK). */
+    val stokResults: List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow> = emptyList(),
+    val stokLoading: Boolean = false,
+    val stokAttempted: Boolean = false,
+    /** Hasil autocomplete broker KBK (Input SPK section 3). */
+    val brokerResults: List<com.krisoft.tridjayaelektronik.data.model.BrokerOption> = emptyList(),
+    /** Serial per `"$kodeDealer|$kodeBarang"` — picker per-item SPK multi-unit. */
+    val serialOptions: Map<String, List<String>> = emptyMap(),
+    /** Checklist serah-terima stage=driver (088) — kosong bila kategori tak ber-item / pre-088. */
+    val driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList(),
+    /** Gate form aki (tahap pending_pdi, kategori ber-flag `requiresAkiForm`). */
+    val requiresAki: Boolean = false,
+    val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
+    /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
+    val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList()
 )
 
 /**
@@ -67,6 +85,9 @@ class DeliveryFlowViewModel @Inject constructor(
     /** Foto serah-terima terkompres siap upload (dipisah dari state). */
     private var deliverPhotoBytes: ByteArray? = null
     private var pdiPhotoBytes: ByteArray? = null
+    private var cashPhotoBytes: ByteArray? = null
+
+    private val serialFetched = mutableSetOf<String>()
 
     fun loadQueue(status: String?, view: String? = null) {
         _state.update { it.copy(loading = true, error = null) }
@@ -78,10 +99,30 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Geser urutan muatan driver (manifest). Optimistic; gagal → reload + error. */
+    fun moveLoad(id: String, up: Boolean) {
+        val current = _state.value.items
+        val idx = current.indexOfFirst { it.id == id }
+        val target = if (up) idx - 1 else idx + 1
+        if (idx == -1 || target < 0 || target >= current.size) return
+        val swapped = current.toMutableList().apply { val t = this[idx]; this[idx] = this[target]; this[target] = t }
+        _state.update { it.copy(items = swapped) }
+        viewModelScope.launch {
+            when (val res = repository.reorderLoads(swapped.map { it.id })) {
+                is AuthResult.Success -> {}
+                is AuthResult.Failure -> {
+                    _state.update { it.copy(actionError = res.message) }
+                    loadQueue(status = null, view = null)
+                }
+            }
+        }
+    }
+
     fun loadDetail(id: String) {
-        _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null) }
+        _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null, driverChecklist = emptyList()) }
         deliverPhotoBytes = null
         pdiPhotoBytes = null
+        cashPhotoBytes = null
         viewModelScope.launch {
             when (val res = repository.detail(id)) {
                 is AuthResult.Success -> {
@@ -101,9 +142,26 @@ class DeliveryFlowViewModel @Inject constructor(
                 if (kategori.isNotEmpty()) viewModelScope.launch {
                     (repository.checklist(kategori) as? AuthResult.Success)?.let { r -> _state.update { it.copy(checklist = r.data) } }
                 }
+                viewModelScope.launch {
+                    val cats = (repository.categories() as? AuthResult.Success)?.data.orEmpty()
+                    val need = cats.any { it.requiresAkiForm && it.kategori.equals(job.kategori?.trim(), ignoreCase = true) }
+                    val forms = if (need) (repository.jobAkiForms(job.id) as? AuthResult.Success)?.data.orEmpty() else emptyList()
+                    _state.update { it.copy(requiresAki = need, akiForms = forms) }
+                }
             }
             com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_SCHEDULING -> viewModelScope.launch {
                 (repository.drivers() as? AuthResult.Success)?.let { r -> _state.update { it.copy(drivers = r.data) } }
+            }
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.ASSIGNED,
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.IN_TRANSIT -> {
+                // 088 aktif? (driverTerimaUang selalu terisi pasca-088). Pre-088 JANGAN
+                // fetch stage=driver — backend lama abaikan param & balik item PDI.
+                val kategori = job.kategori?.trim().orEmpty()
+                if (job.driverTerimaUang != null && kategori.isNotEmpty()) viewModelScope.launch {
+                    (repository.checklist(kategori, stage = "driver") as? AuthResult.Success)?.let { r ->
+                        _state.update { it.copy(driverChecklist = r.data) }
+                    }
+                }
             }
         }
     }
@@ -153,21 +211,76 @@ class DeliveryFlowViewModel @Inject constructor(
 
     fun hasDeliverPhoto(): Boolean = deliverPhotoBytes != null
 
+    fun onCashPhotoCaptured(file: File) = viewModelScope.launch {
+        cashPhotoBytes = withContext(Dispatchers.Default) { compress(file) }
+        _state.update { it.copy() }
+    }
+
+    fun hasCashPhoto(): Boolean = cashPhotoBytes != null
+
     // ── Aksi tahap ───────────────────────────────────────────────────────────
 
-    fun createSpk(
-        customerName: String, customerPhone: String, address: String, item: CreateDeliveryItemBody,
-        keterangan: String, onDone: () -> Unit
-    ) = action {
-        repository.create(
-            CreateDeliveryBody(
-                customerName = customerName.trim(),
-                customerPhone = customerPhone.trim(),
-                customerAddress = address.trim().ifBlank { null },
-                keterangan = keterangan.trim().ifBlank { null },
-                items = listOf(item)
-            )
-        ).mapOk { onDone() }
+    // ── Input SPK: cabang + autocomplete stok ────────────────────────────────
+
+    /** Muat konteks cabang login sekali (default selektor Cabang SPK). Fail-soft. */
+    fun loadDeliveryContextForCreate() {
+        if (_state.value.deliveryContext != null) return
+        viewModelScope.launch {
+            (repository.context() as? AuthResult.Success)?.let { r ->
+                _state.update { it.copy(deliveryContext = r.data) }
+            }
+        }
+    }
+
+    /** Autocomplete barang — dipanggil UI setelah debounce. `query` < 2 char atau
+     *  `kodeDealer` kosong → kosongkan hasil tanpa panggil server. */
+    fun searchStok(query: String, kodeDealer: String) {
+        val term = query.trim()
+        if (term.length < 2 || kodeDealer.isBlank()) {
+            _state.update { it.copy(stokResults = emptyList(), stokLoading = false, stokAttempted = false) }
+            return
+        }
+        _state.update { it.copy(stokLoading = true) }
+        viewModelScope.launch {
+            when (val res = repository.stokCabang(term, kodeDealer)) {
+                is AuthResult.Success -> _state.update { it.copy(stokLoading = false, stokResults = res.data, stokAttempted = true) }
+                is AuthResult.Failure -> _state.update { it.copy(stokLoading = false, stokResults = emptyList(), stokAttempted = true) }
+            }
+        }
+    }
+
+    fun searchBrokers(q: String) {
+        val term = q.trim()
+        if (term.length < 2) { _state.update { it.copy(brokerResults = emptyList()) }; return }
+        viewModelScope.launch {
+            (repository.searchBrokers(term) as? AuthResult.Success)?.let { r ->
+                _state.update { it.copy(brokerResults = r.data) }
+            }
+        }
+    }
+
+    fun clearBrokerResults() = _state.update { it.copy(brokerResults = emptyList()) }
+
+    /** Fetch serial sekali per `cabang|kode` (cache); fail-soft. */
+    fun ensureSerials(kodeDealer: String, kodeBarang: String) {
+        if (kodeDealer.isBlank() || kodeBarang.isBlank()) return
+        val key = "$kodeDealer|$kodeBarang"
+        if (!serialFetched.add(key)) return
+        viewModelScope.launch {
+            (repository.serialNumbers(kodeDealer, kodeBarang) as? AuthResult.Success)?.let { r ->
+                _state.update { it.copy(serialOptions = it.serialOptions + (key to r.data)) }
+            }
+        }
+    }
+
+    /** Reset cache serial (ganti cabang SPK). */
+    fun clearSerialCache() {
+        serialFetched.clear()
+        _state.update { it.copy(serialOptions = emptyMap()) }
+    }
+
+    fun createSpk(body: CreateDeliveryBody, onDone: () -> Unit) = action {
+        repository.create(body).mapOk { onDone() }
     }
 
     fun submitPdi(id: String, serial: String, engine: String, checklist: List<PdiChecklistItemBody>, onDone: () -> Unit) = action {
@@ -181,27 +294,94 @@ class DeliveryFlowViewModel @Inject constructor(
             .mapOk { onDone() }
     }
 
+    /** Simpan satu form pengambilan aki (gate PDI kategori ber-flag `requiresAkiForm`). */
+    fun createAkiForm(id: String, body: com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody, onDone: () -> Unit) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.createAkiForm(id, body)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false, akiForms = it.akiForms + res.data) }
+                    onDone()
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
+    /** Riwayat form aki (menu "Pengambilan Aki"). */
+    fun loadAkiForms() {
+        _state.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            when (val res = repository.akiForms()) {
+                is AuthResult.Success -> _state.update { it.copy(loading = false, akiList = res.data, error = null) }
+                is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
+            }
+        }
+    }
+
+    fun markAkiReturned(id: String) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.returnAkiForm(id)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    loadAkiForms()
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
     fun confirmSpk(id: String, onDone: () -> Unit) = action { repository.confirmSpk(id).mapOk { onDone() } }
 
     fun issueDeliveryNote(id: String, sourceBranch: String, onDone: () -> Unit) = action {
         repository.issueDeliveryNote(id, DeliveryNoteBody(sourceBranch = sourceBranch.trim())).mapOk { onDone() }
     }
 
-    fun assign(id: String, driverId: String, driverName: String, scheduledDate: String, onDone: () -> Unit) = action {
-        repository.assign(id, AssignBody(driverId = driverId.trim(), driverName = driverName.trim().ifBlank { null }, scheduledDate = scheduledDate.trim()))
+    fun assign(id: String, driverId: String, driverName: String, scheduledDate: String, customerMapUrl: String?, onDone: () -> Unit) = action {
+        repository.assign(id, AssignBody(driverId = driverId.trim(), driverName = driverName.trim().ifBlank { null }, scheduledDate = scheduledDate.trim(), customerMapUrl = customerMapUrl))
             .mapOk { onDone() }
     }
 
     fun dispatch(id: String, onDone: () -> Unit) = action { repository.dispatch(id).mapOk { onDone() } }
 
-    fun deliver(id: String, rating: Int, comment: String, onDone: () -> Unit) = action {
+    /** 088: tandai sudah chat konsumen — refresh detail job (consumerChatAt terisi). */
+    fun chatConsumer(id: String) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.chatConsumer(id)) {
+                is AuthResult.Success -> _state.update { it.copy(submitting = false, detail = res.data) }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
+    fun deliver(id: String, rating: Int, comment: String, checklist: List<PdiChecklistItemBody>, onDone: () -> Unit) = action {
         val bytes = deliverPhotoBytes ?: return@action AuthResult.Failure("validation", "Foto serah terima wajib diambil")
         val photoUrl = when (val up = repository.uploadPhoto(bytes, "deliver_${System.currentTimeMillis()}.jpg")) {
             is AuthResult.Success -> up.data
             is AuthResult.Failure -> return@action up
         }
-        repository.deliver(id, DeliverBody(photoUrl = photoUrl, reviewRating = rating, reviewComment = comment.trim().ifBlank { null }))
-            .mapOk { onDone() }
+        // Foto uang (088) — hanya di-upload bila diambil; gate wajib ada di UI + backend.
+        val cashUrl = cashPhotoBytes?.let { cb ->
+            when (val up = repository.uploadPhoto(cb, "cash_${System.currentTimeMillis()}.jpg")) {
+                is AuthResult.Success -> up.data
+                is AuthResult.Failure -> return@action up
+            }
+        }
+        // GPS best-effort (pola sama absensi): null bila izin ditolak/gagal fix — JANGAN blokir serah terima.
+        val loc = LocationProvider.current(appContext)
+        repository.deliver(
+            id,
+            DeliverBody(
+                photoUrl = photoUrl, lat = loc?.latitude, lng = loc?.longitude, reviewRating = rating,
+                reviewComment = comment.trim().ifBlank { null },
+                checklist = checklist.ifEmpty { null }, cashPhotoUrl = cashUrl
+            )
+        ).mapOk { onDone() }
     }
 
     fun cancel(id: String, reason: String, onDone: () -> Unit) = action {
