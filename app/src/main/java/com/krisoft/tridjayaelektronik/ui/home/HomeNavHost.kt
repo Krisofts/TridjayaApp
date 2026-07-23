@@ -165,7 +165,26 @@ fun HomeNavHost(
             TransactionListScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_NOTIFICATIONS) {
-            NotificationCenterScreen(onBack = { navController.popBackStack() })
+            NotificationCenterScreen(
+                onBack = { navController.popBackStack() },
+                // Tap notif delivery → langsung halaman tahap terkait (key sama
+                // dgn onSpkMenu HomeScreen + deep-link push FcmService).
+                onOpenDelivery = { key ->
+                    val route = when (key) {
+                        "diskon" -> ROUTE_DLV_DISKON
+                        "pdi" -> ROUTE_DLV_PDI
+                        "aki" -> ROUTE_DLV_AKI
+                        "kasir" -> ROUTE_DLV_KASIR
+                        "note" -> ROUTE_DLV_NOTE
+                        "jadwal" -> ROUTE_DLV_SCHEDULE
+                        "driver" -> ROUTE_DLV_DRIVER
+                        "history" -> ROUTE_DLV_HISTORY
+                        else -> ROUTE_SPK_HUB
+                    }
+                    navController.navigate(route) { launchSingleTop = true }
+                },
+                onOpenLeads = onQuickAccessLeads
+            )
         }
         composable(ROUTE_INDENT) {
             IndentListScreen(onBack = { navController.popBackStack() })

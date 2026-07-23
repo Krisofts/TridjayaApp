@@ -349,7 +349,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                 }
                 when {
                     job.status == DeliveryStatusKey.PENDING_PDI && access.pdi ->
-                        PdiAction(job.id, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
+                        PdiAction(job, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
                     job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
                         SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
                     job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
@@ -446,12 +446,16 @@ private fun SimpleAction(label: String, submitting: Boolean, onClick: () -> Unit
 
 @Composable
 private fun PdiAction(
-    id: String, vm: DeliveryFlowViewModel, submitting: Boolean,
+    job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean,
     checklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>,
     requiresAki: Boolean, akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>
 ) {
-    var serial by remember { mutableStateOf("") }
-    var engine by remember { mutableStateOf("") }
+    val id = job.id
+    // PREFILL dari job — SN/engine yang diisi saat input SPK tampil di form
+    // (dulu mulai kosong → SN dari SPK tertimpa NULL di backend, bug live
+    // testing 2026-07-24; backend kini juga COALESCE sbg lapis kedua).
+    var serial by remember(job.id) { mutableStateOf(job.serialNumber.orEmpty()) }
+    var engine by remember(job.id) { mutableStateOf(job.engineNumber.orEmpty()) }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/pdi_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }

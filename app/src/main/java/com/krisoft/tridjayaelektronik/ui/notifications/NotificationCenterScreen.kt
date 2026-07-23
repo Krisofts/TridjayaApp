@@ -45,11 +45,32 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 
-/** Pusat Notifikasi — daftar penuh (judul, pesan, waktu relatif, dot unread), tap → tandai dibaca. */
+/** Peta `type` notifikasi → key menu hub SPK (paritas backend `route_for_kind`
+ *  di delivery_notif.rs + FcmService push). null = tak ada tujuan (tap cuma
+ *  tandai dibaca). */
+fun deliveryNotifRouteKey(type: String): String? = when (type) {
+    "delivery_spk_created" -> "pdi"
+    "delivery_discount_requested" -> "diskon"
+    "delivery_discount_decided" -> "history"
+    "delivery_pdi_done" -> "kasir"
+    "delivery_ready_note" -> "note"
+    "delivery_assigned" -> "driver"
+    "delivery_delivered" -> "history"
+    "delivery_aki_submitted" -> "aki"
+    "delivery_aki_decided" -> "pdi"
+    "delivery_note_issued" -> "jadwal"
+    else -> null
+}
+
+/** Pusat Notifikasi — daftar penuh (judul, pesan, waktu relatif, dot unread).
+ *  Tap → tandai dibaca + LOMPAT ke halaman terkait (notif delivery → menu hub
+ *  SPK yang tepat, notif CRM → tab Leads; lainnya cuma mark-read). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationCenterScreen(
     onBack: () -> Unit,
+    onOpenDelivery: (String) -> Unit = {},
+    onOpenLeads: () -> Unit = {},
     viewModel: NotificationCenterViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -109,7 +130,14 @@ fun NotificationCenterScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(state.items, key = { it.id }) { notif ->
-                            NotificationRow(notif, onClick = { viewModel.markRead(notif.id) })
+                            NotificationRow(notif, onClick = {
+                                viewModel.markRead(notif.id)
+                                val dlvKey = deliveryNotifRouteKey(notif.type)
+                                when {
+                                    dlvKey != null -> onOpenDelivery(dlvKey)
+                                    notif.type == "crm_lead_assigned" -> onOpenLeads()
+                                }
+                            })
                         }
                     }
                 }

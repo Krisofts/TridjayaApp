@@ -134,10 +134,23 @@ class DeliveryFlowViewModel @Inject constructor(
 
     init {
         recomputeAccess(authRepository.cachedUser)
-        viewModelScope.launch {
-            // profile() meng-update TokenStore + fallback ke cache saat offline.
-            (authRepository.profile() as? AuthResult.Success)?.let { recomputeAccess(it.data) }
+        // Refresh profil dari server SEKALI PER PROSES APP (bukan per layar —
+        // VM ini dibuat ulang tiap buka layar delivery; refresh tiap kali =
+        // 1 roundtrip ekstra per navigasi, terasa di jaringan lapangan).
+        // Cache TokenStore sudah ter-update oleh refresh pertama.
+        if (!accessProfileRefreshed) {
+            accessProfileRefreshed = true
+            viewModelScope.launch {
+                // profile() meng-update TokenStore + fallback ke cache saat offline.
+                (authRepository.profile() as? AuthResult.Success)?.let { recomputeAccess(it.data) }
+            }
         }
+    }
+
+    companion object {
+        /** Sekali per proses — lihat init. Login ulang me-restart proses (reset otomatis). */
+        @Volatile
+        private var accessProfileRefreshed = false
     }
 
     /** Foto serah-terima terkompres siap upload (dipisah dari state). */
