@@ -44,6 +44,11 @@ data class UserDto(
     val email: String,
     val name: String,
     val role: String,
+    /** Semua role efektif (utama + extra + divisi-folded) dari backend. Kosong di
+     *  cache lama pra-update → gating fallback ke [role] + [divisi]. */
+    val roles: List<String> = emptyList(),
+    /** Izin halaman per-user (page-grant) — dipakai deteksi approver diskon/aki. */
+    @SerialName("page_grants") val pageGrants: List<PageGrantDto> = emptyList(),
     val jabatan: String = "",
     val divisi: String = "",
     @SerialName("cabang_id") val cabangId: String = "",
@@ -57,6 +62,10 @@ data class UserDto(
     @SerialName("is_verified") val isVerified: Boolean = true,
     @SerialName("must_change_password") val mustChangePassword: Boolean = false
 )
+
+/** Satu page-grant (registry auth-service pages.rs). Hanya `prefix` yang dipakai gating. */
+@Serializable
+data class PageGrantDto(val prefix: String = "", val label: String = "")
 
 @Serializable
 data class SessionData(
