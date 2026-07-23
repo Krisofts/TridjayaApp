@@ -100,7 +100,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Fallback ke DATA_KEY_CHANNEL: notif dirender OS sendiri (app background, payload
+        // notification+data, FcmService.onMessageReceived tak dipanggil) meneruskan `data` FCM
+        // sbg extras dgn key "channel", bukan EXTRA_NOTIF_CHANNEL punya kita.
         pendingNotifChannel = intent?.getStringExtra(FcmService.EXTRA_NOTIF_CHANNEL)
+            ?: intent?.getStringExtra(FcmService.DATA_KEY_CHANNEL)
 
         setContent {
             val themeState by themePreferences.state.collectAsState()
@@ -125,6 +129,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingNotifChannel = intent.getStringExtra(FcmService.EXTRA_NOTIF_CHANNEL)
+            ?: intent.getStringExtra(FcmService.DATA_KEY_CHANNEL)
     }
 }
 

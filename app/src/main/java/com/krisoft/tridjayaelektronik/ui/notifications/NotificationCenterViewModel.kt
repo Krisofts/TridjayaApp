@@ -64,13 +64,15 @@ class NotificationCenterViewModel @Inject constructor(
                 unreadCount = (st.unreadCount - 1).coerceAtLeast(0)
             )
         }
-        viewModelScope.launch { repository.markRead(id) }
+        // Gagal → resync dari server (state optimistic di atas mungkin sudah salah).
+        viewModelScope.launch { if (repository.markRead(id) is AuthResult.Failure) load() }
     }
 
     /** Tandai semua dibaca (optimistic). */
     fun markAllRead() {
         if (_state.value.unreadCount == 0) return
         _state.update { st -> st.copy(items = st.items.map { it.copy(isRead = true) }, unreadCount = 0) }
-        viewModelScope.launch { repository.markAllRead() }
+        // Gagal → resync dari server (state optimistic di atas mungkin sudah salah).
+        viewModelScope.launch { if (repository.markAllRead() is AuthResult.Failure) load() }
     }
 }

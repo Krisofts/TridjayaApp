@@ -67,14 +67,12 @@ class FcmService : FirebaseMessagingService() {
         ) {
             return
         }
-        val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_NOTIF_CHANNEL, channelId)
-        }
-        val pending = PendingIntent.getActivity(
-            this, 0, launch ?: Intent(),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        // ID dihitung DULU (dipakai jadi requestCode PendingIntent DAN notify()) — requestCode unik
+        // per notifikasi mencegah FLAG_UPDATE_CURRENT menimpa extras (channel) milik notif lain yang
+        // masih tampil di tray (dulu requestCode 0 dipakai semua notif → tap notif lama bisa nyasar
+        // ke channel notif terbaru).
+        val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+        val pending = channelLaunchPendingIntent(channelId, notifId)
         // Query DULU (sebelum posting yang baru) supaya hitungan ringkasan tidak bergantung pada
         // urutan/timing binder call — hitungan grup existing + 1 (yang baru) selalu benar.
         val priorCountInGroup = NotificationManagerCompat.from(this).activeNotifications
@@ -90,7 +88,7 @@ class FcmService : FirebaseMessagingService() {
             .setContentIntent(pending)
             .setGroup(channelId)
             .build()
-        NotificationManagerCompat.from(this).notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notif)
+        NotificationManagerCompat.from(this).notify(notifId, notif)
 
         // Ringkasan grup — Android 7+ (API 24) HANYA men-collapse notif ber-`setGroup` sama kalau
         // ada satu notif ringkasan (`setGroupSummary(true)`) menaunginya; tanpa ini tiap notif
@@ -102,6 +100,7 @@ class FcmService : FirebaseMessagingService() {
     private fun showGroupSummary(channelId: String, latestTitle: String, totalCount: Int) {
         val label = channelLabel(channelId)
         val summaryText = if (totalCount > 1) "$totalCount notifikasi baru" else latestTitle
+        val summaryId = groupSummaryId(channelId)
         val summary = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(label)
@@ -110,13 +109,28 @@ class FcmService : FirebaseMessagingService() {
             .setGroup(channelId)
             .setGroupSummary(true)
             .setAutoCancel(true)
+            .setContentIntent(channelLaunchPendingIntent(channelId, summaryId))
             .build()
-        NotificationManagerCompat.from(this).notify(groupSummaryId(channelId), summary)
+        NotificationManagerCompat.from(this).notify(summaryId, summary)
     }
 
     /** ID stabil per channel (bukan timestamp) — ringkasan grup harus selalu menimpa dirinya sendiri,
      *  bukan menumpuk notif ringkasan baru tiap kali. */
     private fun groupSummaryId(channelId: String): Int = channelId.hashCode()
+
+    /** Intent peluncur + PendingIntent dgn `requestCode` unik (dipakai [showNotification] &
+     *  [showGroupSummary]) — requestCode sama antar keduanya akan saling timpa extras via
+     *  FLAG_UPDATE_CURRENT, jadi tiap pemanggil WAJIB kirim id yang sudah unik miliknya sendiri. */
+    private fun channelLaunchPendingIntent(channelId: String, requestCode: Int): PendingIntent {
+        val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_NOTIF_CHANNEL, channelId)
+        }
+        return PendingIntent.getActivity(
+            this, requestCode, launch ?: Intent(),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
 
     private fun channelLabel(channelId: String): String = when (channelId) {
         CHANNEL_CRM -> "CRM / Prospek"
@@ -138,6 +152,13 @@ class FcmService : FirebaseMessagingService() {
         /** Extra pada intent peluncur tap-notifikasi — dibaca [com.krisoft.tridjayaelektronik.MainActivity]
          *  untuk deep-link ke layar yang relevan (channel `delivery` → hub SPK, `crm` → tab CRM). */
         const val EXTRA_NOTIF_CHANNEL = "notif_channel"
+
+        /** Key `data` pada payload FCM (backend kinerja-service `push.rs`). Dipakai HANYA saat
+         *  notifikasi dirender OS sendiri (app di background, payload `notification`+`data` →
+         *  [onMessageReceived] tak dipanggil) — tap notif meneruskan `data` sbg intent extras dgn
+         *  key ini, BUKAN [EXTRA_NOTIF_CHANNEL] (itu cuma dipakai intent yang kita buat sendiri di
+         *  [showNotification]/[showGroupSummary]). MainActivity harus cek dua-duanya. */
+        const val DATA_KEY_CHANNEL = "channel"
 
         /**
          * Buat tiga channel notifikasi bila belum ada. Dipanggil di startup app
