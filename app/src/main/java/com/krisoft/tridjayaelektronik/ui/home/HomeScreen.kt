@@ -63,6 +63,7 @@ import androidx.compose.material.icons.rounded.PriceChange
 import androidx.compose.material.icons.rounded.Receipt
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Badge
@@ -138,6 +139,7 @@ fun HomeScreen(
     onQuickAccessHargaGs: () -> Unit = {},
     onQuickAccessSerialInput: () -> Unit = {},
     onQuickAccessDeadstock: () -> Unit = {},
+    onQuickAccessMutasiHistori: () -> Unit = {},
     /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
@@ -211,7 +213,8 @@ fun HomeScreen(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
                                 onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessHargaGs,
-                                onQuickAccessSerialInput, onQuickAccessDeadstock, onSpkMenu
+                                onQuickAccessSerialInput, onQuickAccessDeadstock, onQuickAccessMutasiHistori,
+                                onSpkMenu
                             )
                         }
                     }
@@ -250,6 +253,7 @@ private fun LazyListScope.homeSection(
     onQuickAccessHargaGs: () -> Unit,
     onQuickAccessSerialInput: () -> Unit,
     onQuickAccessDeadstock: () -> Unit,
+    onQuickAccessMutasiHistori: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
     when (section) {
@@ -268,12 +272,14 @@ private fun LazyListScope.homeSection(
                     onHargaGs = onQuickAccessHargaGs,
                     onSerialInput = onQuickAccessSerialInput,
                     onDeadstock = onQuickAccessDeadstock,
+                    onMutasiHistori = onQuickAccessMutasiHistori,
                     onSpkMenu = onSpkMenu,
                     showIndent = canAccessIndent(role),
                     showOpname = canAccessOpname(role),
                     showHargaGs = canAccessHargaGs(role),
                     showSerialInput = canAccessSerialInput(role),
-                    showDeadstock = canAccessDeadstock(role)
+                    showDeadstock = canAccessDeadstock(role),
+                    showMutasiHistori = canAccessMutasiHistori(role)
                 )
             }
         }
@@ -406,6 +412,10 @@ private val SERIAL_INPUT_MENU_ROLES = setOf("admin-stok")
  *  punya mode terpisah (monitoring+audit, web-only) jadi tidak termasuk di sini. */
 private val DEADSTOCK_MENU_ROLES = setOf("karyawan", "kepala-cabang", "admin-stok")
 
+/** Endpoint mutasi-histori TIDAK di-gate role server-side — RoleGuard halaman web
+ *  (`InventoryMutasiPage.tsx`, roles=["admin","admin-stok"]) direplikasi di sini. */
+private val MUTASI_HISTORI_MENU_ROLES = setOf("admin", "admin-stok")
+
 internal fun canAccessIndent(role: String?): Boolean =
     role?.trim()?.lowercase() in INDENT_MENU_ROLES
 
@@ -420,6 +430,9 @@ internal fun canAccessSerialInput(role: String?): Boolean =
 
 internal fun canAccessDeadstock(role: String?): Boolean =
     role?.trim()?.lowercase() in DEADSTOCK_MENU_ROLES
+
+internal fun canAccessMutasiHistori(role: String?): Boolean =
+    role?.trim()?.lowercase() in MUTASI_HISTORI_MENU_ROLES
 
 /**
  * Shortcut row to the app's most-used destinations. Five tiles no longer fit a fixed-width
@@ -437,12 +450,14 @@ private fun QuickAccessRow(
     onHargaGs: () -> Unit,
     onSerialInput: () -> Unit,
     onDeadstock: () -> Unit,
+    onMutasiHistori: () -> Unit,
     onSpkMenu: (String) -> Unit,
     showIndent: Boolean = true,
     showOpname: Boolean = true,
     showHargaGs: Boolean = true,
     showSerialInput: Boolean = false,
-    showDeadstock: Boolean = false
+    showDeadstock: Boolean = false,
+    showMutasiHistori: Boolean = false
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -550,6 +565,17 @@ private fun QuickAccessRow(
                     label = "Deadstock",
                     tint = Color(0xFF93370D),
                     onClick = onDeadstock,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
+        }
+        if (showMutasiHistori) {
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.SwapHoriz,
+                    label = "Riwayat Mutasi",
+                    tint = Color(0xFF1E63E9),
+                    onClick = onMutasiHistori,
                     modifier = Modifier.width(86.dp)
                 )
             }

@@ -22,6 +22,8 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryListData
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryUploadResponse
 import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
+import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
+import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderResult
@@ -130,6 +132,21 @@ interface DeliveryFlowApi {
      *  (mismatch → 403 Forbidden eksplisit, beda dari GET yang auto-floor). */
     @POST("api/inventory/serial-numbers")
     suspend fun createSerialNumbers(@Body body: CreateSerialNumbersBody): Response<ApiResponse<SerialCreateResultDto>>
+
+    /** Arsip mutasi ERP (histori-only, baca saja) — tanpa gate role server-side; RBAC
+     *  halaman (admin/admin-stok) direplikasi di client (`InventoryMutasiPage.tsx`). */
+    @GET("api/inventory/mutasi-histori")
+    suspend fun mutasiHistori(
+        @Query("dealer") dealer: String? = null,
+        @Query("arah") arah: String? = null
+    ): Response<ApiResponse<MutasiHistoriListDto>>
+
+    /** Detail barang 1 transaksi mutasi (kodeBarang/nama/jumlah/sn). */
+    @GET("api/inventory/mutasi-histori/detail")
+    suspend fun mutasiHistoriDetail(
+        @Query("noTransaksi") noTransaksi: String,
+        @Query("arah") arah: String
+    ): Response<ApiResponse<MutasiHistoriDetailListDto>>
 
     @GET("api/inventory/delivery/config/categories")
     suspend fun categories(): Response<ApiResponse<DeliveryCategoriesData>>

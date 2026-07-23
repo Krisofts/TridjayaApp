@@ -27,6 +27,7 @@ import com.krisoft.tridjayaelektronik.ui.deliveryflow.DiscountApprovalScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryQueueScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkHubScreen
+import com.krisoft.tridjayaelektronik.ui.mutasi.MutasiHistoriScreen
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
 import com.krisoft.tridjayaelektronik.ui.priceerp.ErpPriceChangesScreen
@@ -44,6 +45,7 @@ private const val ROUTE_GAJI = "home_gaji"
 private const val ROUTE_HARGA_GS = "home_harga_gs"
 private const val ROUTE_SERIAL_INPUT = "home_serial_input"
 private const val ROUTE_DEADSTOCK = "home_deadstock"
+private const val ROUTE_MUTASI_HISTORI = "home_mutasi_histori"
 private const val ROUTE_DLV_CREATE = "home_dlv_create"
 private const val ROUTE_DLV_DISKON = "home_dlv_diskon"
 private const val ROUTE_DLV_PDI = "home_dlv_pdi"
@@ -117,6 +119,7 @@ fun HomeNavHost(
                 onQuickAccessHargaGs = { navController.navigate(ROUTE_HARGA_GS) { launchSingleTop = true } },
                 onQuickAccessSerialInput = { navController.navigate(ROUTE_SERIAL_INPUT) { launchSingleTop = true } },
                 onQuickAccessDeadstock = { navController.navigate(ROUTE_DEADSTOCK) { launchSingleTop = true } },
+                onQuickAccessMutasiHistori = { navController.navigate(ROUTE_MUTASI_HISTORI) { launchSingleTop = true } },
                 onSpkMenu = { key ->
                     val route = when (key) {
                         "hub" -> ROUTE_SPK_HUB
@@ -182,6 +185,9 @@ fun HomeNavHost(
         }
         composable(ROUTE_DEADSTOCK) {
             DeadstockScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_MUTASI_HISTORI) {
+            MutasiHistoriScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_SPK_HUB) {
             SpkHubScreen(onBack = { navController.popBackStack() }, onNavigate = { key ->

@@ -227,6 +227,52 @@ data class CreateSerialNumbersBody(
     val serialNumbers: List<String>
 )
 
+/**
+ * Satu baris arsip mutasi (`GET /inventory/mutasi-histori`) — inventory-service
+ * (`repository.rs::get_mutasi_histori`, MSSQL raw `tHeaderMutasiPart{IN,OUT}` digabung,
+ * map generik bukan struct tetap — field di bawah adalah kolom yang benar-benar
+ * di-`SELECT`/di-`insert` server, lihat source). Endpoint HISTORI-ONLY (arsip baca-saja,
+ * bukan alur create/receive yang masih di balik flag `HISTORI_ONLY` di web) — tanpa gate
+ * role server-side, RBAC halaman direplikasi di client (lihat `canAccessMutasiHistori`).
+ */
+@Serializable
+data class MutasiHistoriRowDto(
+    /** "IN" (barang masuk) | "OUT" (barang keluar). */
+    val arah: String = "",
+    val noTransaksi: String = "",
+    /** Format ERP mentah `"YYYY-MM-DD HH:MM:SS"` — BUKAN ISO dgn `T`, parse manual. */
+    val tanggal: String = "",
+    val cabang: String = "",
+    val cabangNama: String = "",
+    val lawan: String = "",
+    val lawanNama: String = "",
+    val usernya: String = "",
+    val totalQty: Int? = null,
+    val jumlahItem: Int? = null
+)
+
+@Serializable
+data class MutasiHistoriListDto(
+    val count: Int = 0,
+    val items: List<MutasiHistoriRowDto> = emptyList()
+)
+
+/** Satu baris detail barang 1 transaksi mutasi (`GET /inventory/mutasi-histori/detail`). */
+@Serializable
+data class MutasiHistoriDetailRowDto(
+    val kodeBarang: String = "",
+    val nama: String = "",
+    val jumlah: Int? = null,
+    /** Serial number — bisa string kosong (tak semua barang mutasi ber-SN tercatat ERP). */
+    val sn: String = ""
+)
+
+@Serializable
+data class MutasiHistoriDetailListDto(
+    val count: Int = 0,
+    val items: List<MutasiHistoriDetailRowDto> = emptyList()
+)
+
 @Serializable
 data class SkippedSerialDto(val serialNumber: String = "", val reason: String = "")
 
