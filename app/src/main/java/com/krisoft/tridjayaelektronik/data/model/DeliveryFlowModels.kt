@@ -48,6 +48,10 @@ data class DeliveryJobDto(
     /** Link Google Maps konsumen (086) — prasyarat backend sebelum assign driver. */
     val customerMapUrl: String? = null,
     val customerNik: String? = null,
+    /** Pre Order ID (2026-07-24, opsional) — satu per SPK. */
+    val preOrderId: String? = null,
+    /** URL foto PO (2026-07-24, opsional). */
+    val poPhotoUrl: String? = null,
     val fincoy: String? = null,
     val paymentType: String? = null,
     val hargaOtr: Double? = null,
@@ -384,6 +388,10 @@ data class CreateDeliveryBody(
     val customerAddress: String? = null,
     val customerMapUrl: String? = null,
     val customerNik: String? = null,
+    /** Pre Order ID (2026-07-24, opsional) — satu per SPK. */
+    val preOrderId: String? = null,
+    /** URL foto PO hasil upload (2026-07-24, opsional). */
+    val poPhotoUrl: String? = null,
     val salesNik: String? = null,
     val sosmedTiktok: String? = null,
     val sosmedFacebook: String? = null,
