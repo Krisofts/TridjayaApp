@@ -63,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +95,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import java.io.File
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // ── Meta status ──────────────────────────────────────────────────────────────
 
@@ -529,6 +531,22 @@ private fun PdiAction(
             var ambilCharger by remember { mutableStateOf(false) }
             var ambilSpion by remember { mutableStateOf(false) }
             var keteranganAki by remember { mutableStateOf("") }
+            // Foto bukti aki (2026-07-24, wajib) — capture→watermark→upload
+            // langsung, pola sama foto PO per-barang.
+            var akiPhotoUrl by remember { mutableStateOf("") }
+            var akiPhotoUploading by remember { mutableStateOf(false) }
+            val akiScope = rememberCoroutineScope()
+            val akiPhotoFile = remember { File(context.cacheDir, "delivery/aki_$id.jpg").apply { parentFile?.mkdirs() } }
+            val akiPhotoUri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", akiPhotoFile) }
+            val akiCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+                if (!ok) return@rememberLauncherForActivityResult
+                akiPhotoUploading = true
+                akiScope.launch {
+                    val url = vm.uploadAkiPhoto(akiPhotoFile)
+                    akiPhotoUploading = false
+                    if (url != null) akiPhotoUrl = url
+                }
+            }
             val merkFinal = if (merkPilih == AKI_MERK_LAINNYA) merkManual.trim() else merkPilih
             val setN = jumlahSet.toIntOrNull() ?: 0
             val jumlahKet = if (setN > 0) "$setN set = ${setN * AKI_PCS_PER_SET} pcs" else ""
@@ -581,6 +599,40 @@ private fun PdiAction(
             Spacer(Modifier.height(10.dp))
             ExpressiveTextField(keteranganAki, { keteranganAki = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
+            Text("Foto Bukti Aki *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            if (akiPhotoUrl.isNotBlank()) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Foto terunggah", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    IconButton(onClick = { akiPhotoUrl = "" }) { Icon(Icons.Rounded.Close, contentDescription = "Hapus foto") }
+                }
+            } else {
+                Surface(
+                    onClick = { if (!akiPhotoUploading) akiCam.launch(akiPhotoUri) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (akiPhotoUploading) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Mengunggah…", style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Icon(Icons.Rounded.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Ambil / unggah foto", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
             ExpressiveOutlinedButton(
                 onClick = {
                     vm.createAkiForm(
@@ -593,11 +645,12 @@ private fun PdiAction(
                             keterangan = keteranganAki.trim().ifBlank { null },
                             ambilCharger = ambilCharger,
                             ambilKacaSpion = ambilSpion,
+                            photoUrl = akiPhotoUrl,
                         )
                     ) {}
                 },
                 enabled = !submitting && tujuan.isNotBlank() && (tujuan != "lainnya" || tujuanLainnya.trim().isNotEmpty()) &&
-                    merkFinal.isNotEmpty() && setN > 0,
+                    merkFinal.isNotEmpty() && setN > 0 && akiPhotoUrl.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)

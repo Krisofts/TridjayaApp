@@ -67,6 +67,8 @@ data class DeliveryFlowUiState(
     val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
     /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
     val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
+    /** Foto bukti aki ter-autentikasi per form id (2026-07-24) — key = form.id. */
+    val akiPhotos: Map<String, Bitmap> = emptyMap(),
     /** Preview foto (sudah ber-watermark geotag+jam) — pola sama [AttendanceUiState.selfie]:
      *  bitmap dipegang di state, BUKAN dibaca ulang dari file (hindari cache-basi/race preview). */
     val pdiPhoto: Bitmap? = null,
@@ -408,6 +410,16 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Foto bukti aki (2026-07-24, wajib) — capture→watermark→upload langsung,
+     *  pola sama [uploadPoPhoto]. Return `null` kalau gagal. */
+    suspend fun uploadAkiPhoto(file: File): String? {
+        val prepared = watermarked(file, "TRIDJAYA · BUKTI AKI") ?: return null
+        return when (val up = repository.uploadPhoto(prepared.first, "aki_${System.currentTimeMillis()}.jpg")) {
+            is AuthResult.Success -> up.data
+            is AuthResult.Failure -> null
+        }
+    }
+
     /**
      * GPS best-effort: pakai titik yang SUDAH di-prime oleh [refreshGps] (dipanggil saat detail job
      * dimuat) — bukan menarik lokasi baru di sini. Gagal/izin ditolak → watermark timestamp saja,
@@ -518,11 +530,29 @@ class DeliveryFlowViewModel @Inject constructor(
 
     /** Riwayat form aki (menu "Pengambilan Aki"). */
     fun loadAkiForms() {
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, error = null, akiPhotos = emptyMap()) }
         viewModelScope.launch {
             when (val res = repository.akiForms()) {
-                is AuthResult.Success -> _state.update { it.copy(loading = false, akiList = res.data, error = null) }
+                is AuthResult.Success -> {
+                    _state.update { it.copy(loading = false, akiList = res.data, error = null) }
+                    loadAkiPhotos(res.data)
+                }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
+            }
+        }
+    }
+
+    /** Muat foto bukti aki ter-autentikasi per form — fail-soft per foto (pola
+     *  sama [loadJobPhotos]). */
+    private fun loadAkiPhotos(forms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>) {
+        forms.forEach { form ->
+            val url = form.photoUrl?.takeIf { it.isNotBlank() } ?: return@forEach
+            viewModelScope.launch {
+                val bytes = repository.fetchPhoto(url) ?: return@launch
+                val bmp = withContext(Dispatchers.Default) {
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } ?: return@launch
+                _state.update { it.copy(akiPhotos = it.akiPhotos + (form.id to bmp)) }
             }
         }
     }
