@@ -72,14 +72,11 @@ data class DeliveryFlowUiState(
     val pdiPhoto: Bitmap? = null,
     val deliverPhoto: Bitmap? = null,
     val cashPhoto: Bitmap? = null,
-    /** Foto PO (2026-07-24, opsional) — diambil saat input SPK, pola sama foto lain. */
-    val poPhoto: Bitmap? = null,
     /** true setelah user tekan "Pakai Foto Ini" di dialog review pasca-jepret. Foto baru (belum
      *  di-retake) selalu mulai false → memaksa dialog review muncul sebelum foto dianggap final. */
     val pdiPhotoConfirmed: Boolean = false,
     val deliverPhotoConfirmed: Boolean = false,
     val cashPhotoConfirmed: Boolean = false,
-    val poPhotoConfirmed: Boolean = false,
     /** GPS untuk watermark foto — pola sama [com.krisoft.tridjayaelektronik.ui.attendance.AttendanceUiState]:
      *  diambil LEBIH AWAL (saat detail job dimuat), bukan baru dicoba saat jepret — kalau baru
      *  dicoba pas jepret, GPS cold-start belum sempat lock (ketemu nyata: PDI selalu "belum terkunci"). */
@@ -160,7 +157,6 @@ class DeliveryFlowViewModel @Inject constructor(
     private var deliverPhotoBytes: ByteArray? = null
     private var pdiPhotoBytes: ByteArray? = null
     private var cashPhotoBytes: ByteArray? = null
-    private var poPhotoBytes: ByteArray? = null
 
     private val serialFetched = mutableSetOf<String>()
 
@@ -396,21 +392,20 @@ class DeliveryFlowViewModel @Inject constructor(
         _state.update { it.copy(cashPhoto = null, cashPhotoConfirmed = false) }
     }
 
-    /** Foto PO (2026-07-24) — diambil saat input SPK, sebelum job/kode SPK ada;
-     *  subtitle watermark ikut fallback [watermarked] (nama user saja, kode kosong). */
-    fun onPoPhotoCaptured(file: File) = viewModelScope.launch {
-        val prepared = watermarked(file, "TRIDJAYA · PRE ORDER")
-        poPhotoBytes = prepared?.first
-        _state.update { it.copy(poPhoto = prepared?.second, poPhotoConfirmed = false) }
-    }
-
-    fun hasPoPhoto(): Boolean = poPhotoBytes != null
-
-    fun confirmPoPhoto() = _state.update { it.copy(poPhotoConfirmed = true) }
-
-    fun retakePoPhoto() {
-        poPhotoBytes = null
-        _state.update { it.copy(poPhoto = null, poPhotoConfirmed = false) }
+    /** Foto PO per-barang (2026-07-24, koreksi dari slot global — Pre Order
+     *  melekat ke produk, SPK bisa multi-barang tiap satu foto sendiri).
+     *  Watermark+upload langsung (bukan slot review terpisah spt PDI/deliver
+     *  — tak ada GPS-timing kritis di sini, cukup capture→upload sekali jalan,
+     *  pola sama web `uploadDeliveryPhoto` on-file-select). Return `null` kalau
+     *  watermark/upload gagal — caller (kartu barang) tampilkan toast error.
+     *  Subtitle watermark ikut fallback [watermarked] (nama user saja, kode
+     *  SPK belum ada saat ini). */
+    suspend fun uploadPoPhoto(file: File): String? {
+        val prepared = watermarked(file, "TRIDJAYA · PRE ORDER") ?: return null
+        return when (val up = repository.uploadPhoto(prepared.first, "po_${System.currentTimeMillis()}.jpg")) {
+            is AuthResult.Success -> up.data
+            is AuthResult.Failure -> null
+        }
     }
 
     /**
@@ -488,16 +483,11 @@ class DeliveryFlowViewModel @Inject constructor(
         _state.update { it.copy(serialOptions = emptyMap()) }
     }
 
+    // Foto PO (2026-07-24, per-barang): sudah ter-upload & ter-set ke
+    // `item.poPhotoUrl` masing-masing SEBELUM submit (lihat [uploadPoPhoto],
+    // dipanggil kartu barang saat capture) — body di sini sudah lengkap.
     fun createSpk(body: CreateDeliveryBody, onDone: () -> Unit) = action {
-        // Foto PO (2026-07-24): upload dulu (kalau diisi) sebelum submit SPK,
-        // pola sama submitPdi — URL disuntik ke body di sini, bukan di Composable.
-        val poPhotoUrl = poPhotoBytes?.let { bytes ->
-            when (val up = repository.uploadPhoto(bytes, "po_${System.currentTimeMillis()}.jpg")) {
-                is AuthResult.Success -> up.data
-                is AuthResult.Failure -> return@action up
-            }
-        }
-        repository.create(if (poPhotoUrl != null) body.copy(poPhotoUrl = poPhotoUrl) else body).mapOk { onDone() }
+        repository.create(body).mapOk { onDone() }
     }
 
     fun submitPdi(id: String, serial: String, engine: String, checklist: List<PdiChecklistItemBody>, onDone: () -> Unit) = action {
