@@ -356,6 +356,10 @@ data class CreateDeliveryItemBody(
     val qty: Int = 1,
     val warna: String? = null,
     val serialNumber: String? = null,
+    /** Pre Order ID (2026-07-24, per-barang — melekat ke produk). */
+    val preOrderId: String? = null,
+    /** URL foto PO hasil upload (per-barang). */
+    val poPhotoUrl: String? = null,
     // ponytail: paksa selalu ter-serialize — Retrofit Json (encodeDefaults=false) buang field
     // yang = default, tapi backend butuh paymentType eksplisit walau nilainya "cash".
     @EncodeDefault(EncodeDefault.Mode.ALWAYS)
@@ -388,10 +392,6 @@ data class CreateDeliveryBody(
     val customerAddress: String? = null,
     val customerMapUrl: String? = null,
     val customerNik: String? = null,
-    /** Pre Order ID (2026-07-24, opsional) — satu per SPK. */
-    val preOrderId: String? = null,
-    /** URL foto PO hasil upload (2026-07-24, opsional). */
-    val poPhotoUrl: String? = null,
     val salesNik: String? = null,
     val sosmedTiktok: String? = null,
     val sosmedFacebook: String? = null,

@@ -1,5 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.deliveryflow
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,11 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddAPhoto
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -31,15 +36,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.krisoft.tridjayaelektronik.data.model.BrokerOption
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Kartu satu barang SPK multi-unit — tiap barang bawa pembayaran/komisi/order sendiri
@@ -57,6 +67,8 @@ fun SpkItemCard(
     onUpdate: (SpkItemDraft) -> Unit,
     onRemove: () -> Unit,
     onSerialFocus: () -> Unit,
+    /** Watermark+upload foto PO barang ini, return URL (null = gagal). */
+    uploadPoPhoto: suspend (File) -> String?,
 ) {
     Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -104,6 +116,11 @@ fun SpkItemCard(
                     ExpressiveTextField(item.diskon, { onUpdate(item.copy(diskon = it.filter { c -> c.isDigit() })) }, label = "Diskon", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
                     ExpressiveTextField(item.alasanDiskon, { onUpdate(item.copy(alasanDiskon = it)) }, label = if ((item.diskon.toLongOrNull() ?: 0L) > 0) "Alasan diskon *" else "Alasan diskon", modifier = Modifier.weight(1f))
                 }
+
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "Pre Order ID (opsional)", modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                PoPhotoField(poPhotoUrl = item.poPhotoUrl, onUploaded = { url -> onUpdate(item.copy(poPhotoUrl = url)) }, uploadPoPhoto = uploadPoPhoto)
 
                 Spacer(Modifier.height(12.dp))
                 Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
@@ -200,6 +217,72 @@ fun SpkItemCard(
                 }
             }
         }
+    }
+}
+
+/** Foto PO per-barang: capture kamera → watermark → upload langsung (bukan
+ *  slot review terpisah spt PDI/deliver — pola sama web `uploadDeliveryPhoto`
+ *  on-file-select, cukup 1x aksi). File cache per-composable-instance (aman
+ *  walau ada beberapa kartu barang sekaligus di layar). */
+@Composable
+private fun PoPhotoField(
+    poPhotoUrl: String,
+    onUploaded: (String) -> Unit,
+    uploadPoPhoto: suspend (File) -> String?,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var uploading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val file = remember { File(context.cacheDir, "delivery/po_item_${System.currentTimeMillis()}.jpg").apply { parentFile?.mkdirs() } }
+    val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
+    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (!ok) return@rememberLauncherForActivityResult
+        uploading = true
+        error = null
+        scope.launch {
+            val url = uploadPoPhoto(file)
+            uploading = false
+            if (url != null) onUploaded(url) else error = "Gagal unggah foto PO"
+        }
+    }
+
+    Text("Foto PO (opsional)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(6.dp))
+    if (poPhotoUrl.isNotBlank()) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Foto PO terunggah", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            IconButton(onClick = { onUploaded("") }) { Icon(Icons.Rounded.Close, contentDescription = "Hapus foto PO") }
+        }
+    } else {
+        Surface(
+            onClick = { if (!uploading) cam.launch(uri) },
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (uploading) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Mengunggah…", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Icon(Icons.Rounded.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ambil / unggah foto PO", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+    if (error != null) {
+        Spacer(Modifier.height(4.dp))
+        Text(error!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
     }
 }
 

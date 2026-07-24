@@ -1083,17 +1083,6 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     var alamat by remember { mutableStateOf("") }
     var mapUrl by remember { mutableStateOf("") }
     var nik by remember { mutableStateOf("") }
-    var preOrderId by remember { mutableStateOf("") }
-    // Foto PO (2026-07-24, opsional) — belum ada job id saat SPK dibuat, jadi
-    // nama file cache pakai timestamp (pola sama file cache foto lain, cuma
-    // id-nya beda sumber).
-    val poContext = LocalContext.current
-    val poFile = remember { File(poContext.cacheDir, "delivery/po_${System.currentTimeMillis()}.jpg").apply { parentFile?.mkdirs() } }
-    val poUri = remember { FileProvider.getUriForFile(poContext, "${poContext.packageName}.fileprovider", poFile) }
-    val poCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) viewModel.onPoPhotoCaptured(poFile) }
-    state.poPhoto?.takeIf { !state.poPhotoConfirmed }?.let { bmp ->
-        PhotoReviewDialog(bmp, onRetake = { viewModel.retakePoPhoto() }, onConfirm = { viewModel.confirmPoPhoto() })
-    }
     var sosTiktok by remember { mutableStateOf("") }
     var sosFb by remember { mutableStateOf("") }
     var sosIg by remember { mutableStateOf("") }
@@ -1151,9 +1140,6 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                     ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
-                    ExpressiveTextField(preOrderId, { preOrderId = it }, label = "Pre Order ID (opsional)", modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(4.dp))
-                    PhotoBox(state.poPhoto, "Foto PO (opsional)") { poCam.launch(poUri) }
                 }
             }
 
@@ -1221,6 +1207,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                                 },
                                 onRemove = { items = items.filterIndexed { i, _ -> i != idx } },
                                 onSerialFocus = { viewModel.ensureSerials(spkCabang, item.kodeBarang) },
+                                uploadPoPhoto = { file -> viewModel.uploadPoPhoto(file) },
                             )
                         }
                     }
@@ -1248,7 +1235,6 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                         customerAddress = alamat.trim().ifBlank { null },
                         customerMapUrl = mapUrl.trim().ifBlank { null },
                         customerNik = nik.trim().ifBlank { null },
-                        preOrderId = preOrderId.trim().ifBlank { null },
                         salesNik = null,
                         sosmedTiktok = sosTiktok.trim().ifBlank { null },
                         sosmedFacebook = sosFb.trim().ifBlank { null },

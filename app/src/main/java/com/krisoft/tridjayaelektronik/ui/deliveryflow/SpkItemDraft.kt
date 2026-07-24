@@ -19,6 +19,10 @@ data class SpkItemDraft(
     val qty: String = "1",
     val warna: String = "",
     val serialNumber: String = "",
+    /** Pre Order ID (2026-07-24, per-barang — melekat ke produk). */
+    val preOrderId: String = "",
+    /** URL foto PO hasil upload (per-barang). */
+    val poPhotoUrl: String = "",
     val hargaOtr: String = "",
     val diskon: String = "",
     val alasanDiskon: String = "",
@@ -76,6 +80,8 @@ data class SpkItemDraft(
             merk = merk, tipe = tipe, qty = qtyInt ?: 1,
             warna = warna.trim().ifBlank { null },
             serialNumber = serialNumber.trim().ifBlank { null },
+            preOrderId = preOrderId.trim().ifBlank { null },
+            poPhotoUrl = poPhotoUrl.trim().ifBlank { null },
             paymentType = paymentType,
             fincoy = if (isCredit) fincoyResolved.ifBlank { null } else null,
             hargaOtr = money(hargaOtr) ?: 0.0,

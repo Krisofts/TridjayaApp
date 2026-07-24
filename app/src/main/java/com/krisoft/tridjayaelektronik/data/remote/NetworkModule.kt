@@ -6,6 +6,7 @@ import com.krisoft.tridjayaelektronik.data.TokenStore
 import com.krisoft.tridjayaelektronik.data.model.RefreshRequest
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
+import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -112,6 +113,16 @@ object NetworkModule {
     fun createDeadstockApi(tokenStore: TokenStore): DeadstockApi =
         authenticatedRetrofit(tokenStore).create(DeadstockApi::class.java)
 
+    // OkHttp default Dispatcher.maxRequestsPerHost = 5 — SEMUA request app ini
+    // (auth, sales, delivery, notif, dst) satu host yang sama (API_BASE_URL),
+    // jadi cap itu berlaku global, bukan per-endpoint. Layar yang nembak >5
+    // request paralel (mis. dashboard sales: kpi+target+leaderboard+sparkline
+    // = 4, ditambah notif badge dsb) bikin request ke-6+ ANTRI DIAM-DIAM di
+    // client sebelum sempat connect — tak kelihatan di UI, user cuma lihat
+    // "loading lama" lalu timeout. Root cause analisa 2026-07-24. Dinaikkan
+    // ke 16 (workspace maxRequests tetap default 64, cukup).
+    private val sharedDispatcher = Dispatcher().apply { maxRequestsPerHost = 16 }
+
     private fun baseClientBuilder(): OkHttpClient.Builder {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
@@ -121,6 +132,7 @@ object NetworkModule {
             }
         }
         return OkHttpClient.Builder()
+            .dispatcher(sharedDispatcher)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
