@@ -23,6 +23,10 @@ data class SpkItemDraft(
     val preOrderId: String = "",
     /** URL foto PO hasil upload (per-barang). */
     val poPhotoUrl: String = "",
+    /** PDI wajib/tidak (2026-07-24, per-barang, independen dari delivery
+     *  method) — default true. false = skip PDI beneran, sales tanggung
+     *  jawab sendiri (biasanya barang kecil). */
+    val pdiRequired: Boolean = true,
     val hargaOtr: String = "",
     val diskon: String = "",
     val alasanDiskon: String = "",
@@ -70,7 +74,8 @@ data class SpkItemDraft(
     /** Header kartu saat collapse. */
     fun summaryLine(): String {
         val bayar = if (isCredit) "Kredit" else "Cash"
-        return "${namaBarang} · ${qty}x · $bayar${money(hargaOtr)?.let { " · Rp${it.toLong()}" } ?: ""}"
+        return "${namaBarang} · ${qty}x · $bayar${money(hargaOtr)?.let { " · Rp${it.toLong()}" } ?: ""}" +
+            if (!pdiRequired) " · Tanpa PDI" else ""
     }
 
     fun toItemBody(kodeDealer: String, kodeCabang: String): CreateDeliveryItemBody {
@@ -82,6 +87,7 @@ data class SpkItemDraft(
             serialNumber = serialNumber.trim().ifBlank { null },
             preOrderId = preOrderId.trim().ifBlank { null },
             poPhotoUrl = poPhotoUrl.trim().ifBlank { null },
+            pdiRequired = if (pdiRequired) null else false,
             paymentType = paymentType,
             fincoy = if (isCredit) fincoyResolved.ifBlank { null } else null,
             hargaOtr = money(hargaOtr) ?: 0.0,

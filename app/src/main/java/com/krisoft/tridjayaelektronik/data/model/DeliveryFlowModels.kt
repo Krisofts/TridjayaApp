@@ -48,10 +48,13 @@ data class DeliveryJobDto(
     /** Link Google Maps konsumen (086) — prasyarat backend sebelum assign driver. */
     val customerMapUrl: String? = null,
     val customerNik: String? = null,
-    /** Pre Order ID (2026-07-24, opsional) — satu per SPK. */
+    /** Pre Order ID (2026-07-24, opsional, per-barang). */
     val preOrderId: String? = null,
-    /** URL foto PO (2026-07-24, opsional). */
+    /** URL foto PO (2026-07-24, opsional, per-barang). */
     val poPhotoUrl: String? = null,
+    /** PDI wajib/tidak (2026-07-24, per-barang, independen dari deliveryMethod).
+     *  `null` = backend lama tanpa kolom ini (perlakukan sbg true). */
+    val pdiRequired: Boolean? = null,
     val fincoy: String? = null,
     val paymentType: String? = null,
     val hargaOtr: Double? = null,
@@ -360,6 +363,10 @@ data class CreateDeliveryItemBody(
     val preOrderId: String? = null,
     /** URL foto PO hasil upload (per-barang). */
     val poPhotoUrl: String? = null,
+    /** PDI wajib/tidak (2026-07-24, per-barang, independen dari deliveryMethod
+     *  SPK). `null`/absen = default true. `false` = skip PDI beneran, sales
+     *  bertanggung jawab cek barang sendiri (biasanya barang kecil). */
+    val pdiRequired: Boolean? = null,
     // ponytail: paksa selalu ter-serialize — Retrofit Json (encodeDefaults=false) buang field
     // yang = default, tapi backend butuh paymentType eksplisit walau nilainya "cash".
     @EncodeDefault(EncodeDefault.Mode.ALWAYS)

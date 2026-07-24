@@ -173,6 +173,12 @@ private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
                 Text(job.customerName ?: "-", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${job.namaBarang ?: job.kodeBarang ?: "-"}${job.tipe?.let { " · $it" } ?: ""}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Tanpa PDI (2026-07-24, per-barang) — job lompat langsung ke
+                // kasir tanpa checklist PDI, penting kasir/DC tahu kenapa.
+                if (job.pdiRequired == false) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Tanpa PDI", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
+                }
             }
             if (onClick != null) {
                 Spacer(modifier = Modifier.width(6.dp))
