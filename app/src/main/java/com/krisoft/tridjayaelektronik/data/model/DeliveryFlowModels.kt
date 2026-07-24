@@ -478,6 +478,8 @@ data class AkiFormDto(
     val tujuanLainnya: String? = null,
     val merkTipe: String = "",
     val jumlahPcs: Int = 0,
+    /** Foto bukti aki (2026-07-24) — wajib diisi PDI saat submit. `null` = form lama sebelum fitur ini. */
+    val photoUrl: String? = null,
     val akiBekasStatus: String = "belum",
     /** `rejected` bila ditolak, `approved` bila approver PUSAT (`aki_approver`)
      *  sudah menyetujui (redesain 2026-07-24, dulu 3 slot kepala-cabang+admin-
@@ -509,7 +511,9 @@ data class CreateAkiFormBody(
     val jumlahKeterangan: String? = null,
     val keterangan: String? = null,
     val ambilCharger: Boolean = false,
-    val ambilKacaSpion: Boolean = false
+    val ambilKacaSpion: Boolean = false,
+    /** Wajib (2026-07-24) — URL hasil upload lewat endpoint upload-photo generic. */
+    val photoUrl: String
 )
 
 /** Body tandai aki bekas dikembalikan (`POST /aki-forms/{id}/return`); kosong = default backend. */

@@ -37,7 +37,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -83,7 +85,7 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
                 state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
                 items(state.akiList, key = { it.id }) { form ->
                     AkiCard(
-                        form, state.submitting,
+                        form, state.submitting, state.akiPhotos[form.id],
                         // Tombol approve/reject HANYA utk approver pusat (page-grant
                         // aki-approval) / admin/manager — redesain 2026-07-24 (dulu
                         // juga kepala-cabang/admin-penjualan/kasir, 3-pihak/089).
@@ -138,7 +140,7 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
 }
 
 @Composable
-private fun AkiCard(form: AkiFormDto, submitting: Boolean, canApprove: Boolean, canReturn: Boolean, onApprove: () -> Unit, onReject: () -> Unit, onMarkReturned: () -> Unit) {
+private fun AkiCard(form: AkiFormDto, submitting: Boolean, photo: android.graphics.Bitmap?, canApprove: Boolean, canReturn: Boolean, onApprove: () -> Unit, onReject: () -> Unit, onMarkReturned: () -> Unit) {
     val sudah = form.akiBekasStatus == "sudah"
     val approved = form.approvalStatus == "approved"
     val rejected = form.approvalStatus == "rejected"
@@ -162,6 +164,15 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, canApprove: Boolean, 
                 "${form.merkTipe} · ${form.jumlahPcs} pcs",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // Foto bukti aki (2026-07-24, wajib form baru) — form lama tanpa foto skip.
+            if (photo != null) {
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.foundation.Image(
+                    bitmap = photo.asImageBitmap(), contentDescription = "Foto bukti aki",
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp))
+                )
+            }
             // Status approver pusat (redesain 2026-07-24, dulu 3 slot).
             if (!rejected) {
                 Spacer(Modifier.height(8.dp))
