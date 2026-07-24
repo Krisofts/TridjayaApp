@@ -118,6 +118,24 @@ fun SpkItemCard(
                 }
 
                 Spacer(Modifier.height(10.dp))
+                Text("Metode PDI", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(true to "PDI (tim PDI)", false to "Tidak PDI").forEach { (v, l) ->
+                        val sel = item.pdiRequired == v
+                        Surface(onClick = { onUpdate(item.copy(pdiRequired = v)) }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                            Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                        }
+                    }
+                }
+                if (!item.pdiRequired) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Barang lompat langsung ke kasir tanpa checklist PDI — sales bertanggung jawab cek barang sendiri.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
                 ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "Pre Order ID (opsional)", modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 PoPhotoField(poPhotoUrl = item.poPhotoUrl, onUploaded = { url -> onUpdate(item.copy(poPhotoUrl = url)) }, uploadPoPhoto = uploadPoPhoto)
