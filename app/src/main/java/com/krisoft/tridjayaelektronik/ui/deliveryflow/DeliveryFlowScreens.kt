@@ -179,6 +179,18 @@ private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Tanpa PDI", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
                 }
+                // Metode pengiriman alternatif (2026-07-24) — job self_pickup/sales_delivery
+                // tak lewat assign-driver biasa, kasir/DC/driver perlu tahu kenapa.
+                when (job.deliveryMethod) {
+                    "self_pickup" -> {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Diambil Sendiri", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF0E9384))
+                    }
+                    "sales_delivery" -> {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Sales Antar Sendiri", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF1565C0))
+                    }
+                }
             }
             if (onClick != null) {
                 Spacer(modifier = Modifier.width(6.dp))
@@ -196,12 +208,15 @@ fun DeliveryQueueScreen(
     status: String?,
     view: String? = null,
     reorderable: Boolean = false,
+    /** Sales antar sendiri (2026-07-24): treat aktor sales sbg driver (job self-delivery
+     *  miliknya sendiri) — dikirim layar "Tugas Antar", driver asli tak terpengaruh. */
+    asDriver: Boolean = false,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     viewModel: DeliveryFlowViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(status, view) { viewModel.loadQueue(status, view) }
+    LaunchedEffect(status, view) { viewModel.loadQueue(status, view, asDriver) }
 
     TridjayaCollapsibleHeader(title = title, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -362,6 +377,10 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
                     job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
                         DeliveryNoteAction(job, viewModel, state.submitting)
+                    // Diambil sendiri (2026-07-24): konsumen ambil unit di cabang — TIDAK
+                    // lewat assign-driver, DC/admin langsung tandai selesai (foto+rating).
+                    job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal && job.deliveryMethod == "self_pickup" ->
+                        SelfPickupCompleteAction(job, viewModel, state.submitting)
                     job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal ->
                         AssignAction(job, viewModel, state.submitting, state.drivers)
                     job.status == DeliveryStatusKey.ASSIGNED && isMyDriverJob ->
@@ -743,6 +762,26 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
         }
         r == null || r == jobRegion
     }
+    // Sales antar sendiri (2026-07-24): fallback manual kalau auto-assign backend
+    // gagal (map_url kosong saat surat jalan terbit) — DC bisa pilih sales pembuat
+    // SPK sbg driver, sama seperti opsi driver asli.
+    if (job.deliveryMethod == "sales_delivery" && !job.salesUserId.isNullOrBlank()) {
+        Text("Sales antar sendiri", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        val salesId = job.salesUserId
+        val salesLabel = job.salesName?.takeIf { it.isNotBlank() } ?: salesId
+        val sel = driverId == salesId
+        Surface(
+            onClick = { driverId = salesId; driverName = salesLabel },
+            shape = RoundedCornerShape(12.dp),
+            color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Sales: $salesLabel", color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.height(10.dp))
+    }
     if (regionDrivers.isNotEmpty()) {
         Text(
             "Pilih driver (region ${BranchRegions.regionLabel(jobRegion)})",
@@ -955,6 +994,57 @@ private fun DeliverAction(
     }
 }
 
+/** Diambil sendiri (2026-07-24): konsumen ambil unit langsung di cabang — DC/admin
+ *  tandai selesai, foto+rating wajib (sama standar [DeliverAction]), TANPA gate
+ *  chat-H1/checklist-driver/cash-photo (tak relevan, bukan diantar). Transisi
+ *  langsung `pending_scheduling → delivered`. */
+@Composable
+private fun SelfPickupCompleteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
+    val id = job.id
+    var rating by remember { mutableStateOf(5) }
+    var comment by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val file = remember { File(context.cacheDir, "delivery/selfpickup_$id.jpg").apply { parentFile?.mkdirs() } }
+    val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
+    val photoState by vm.state.collectAsState()
+    // Reuse slot foto [DeliveryFlowViewModel.onDeliverPhotoCaptured] — job self_pickup
+    // (pending_scheduling) tak pernah bareng job in_transit (deliver) di layar yang sama.
+    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onDeliverPhotoCaptured(file) }
+
+    photoState.deliverPhoto?.takeIf { !photoState.deliverPhotoConfirmed }?.let { bmp ->
+        PhotoReviewDialog(bmp, onRetake = { vm.retakeDeliverPhoto() }, onConfirm = { vm.confirmDeliverPhoto() })
+    }
+
+    Text("Selesai — Diambil Sendiri", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(4.dp))
+    Text("Konsumen mengambil unit langsung di cabang.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(10.dp))
+    PhotoBox(photoState.deliverPhoto, "Foto serah terima (wajib)") { cam.launch(uri) }
+    Spacer(Modifier.height(12.dp))
+    Text("Rating (wajib)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+    Row {
+        (1..5).forEach { i ->
+            Icon(
+                if (i <= rating) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                contentDescription = "Rating $i", tint = Color(0xFFF6B10A),
+                modifier = Modifier.size(36.dp).clickable { rating = i }.padding(2.dp)
+            )
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    ExpressiveTextField(comment, { comment = it }, label = "Komentar (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
+    Spacer(Modifier.height(14.dp))
+    val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
+    ExpressiveFilledButton(
+        onClick = { vm.selfPickupComplete(id, rating, comment) {} },
+        enabled = !submitting && hasPhoto, modifier = Modifier.fillMaxWidth()
+    ) {
+        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
+        Text(if (!hasPhoto) "Ambil foto dulu" else "Tandai Selesai")
+    }
+}
+
 /** 088: chat konsumen H-1 — wajib ≥1 jam sebelum serah terima (gate backend). */
 @Composable
 private fun ChatConsumerCard(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
@@ -1146,6 +1236,8 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     var sosFb by remember { mutableStateOf("") }
     var sosIg by remember { mutableStateOf("") }
     var keterangan by remember { mutableStateOf("") }
+    // Metode pengiriman (2026-07-24): driver biasa (default) | self_pickup | sales_delivery.
+    var deliveryMethodSel by remember { mutableStateOf("driver") }
     // Barang multi-unit
     var spkCabang by remember { mutableStateOf("") }
     var items by remember { mutableStateOf(listOf<SpkItemDraft>()) }
@@ -1199,6 +1291,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                     ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
+                    DeliveryMethodDropdown(deliveryMethodSel) { deliveryMethodSel = it }
                 }
             }
 
@@ -1295,6 +1388,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                         customerMapUrl = mapUrl.trim().ifBlank { null },
                         customerNik = nik.trim().ifBlank { null },
                         salesNik = null,
+                        deliveryMethod = deliveryMethodSel.takeIf { it != "driver" },
                         sosmedTiktok = sosTiktok.trim().ifBlank { null },
                         sosmedFacebook = sosFb.trim().ifBlank { null },
                         sosmedInstagram = sosIg.trim().ifBlank { null },
@@ -1383,6 +1477,41 @@ private fun CabangSelector(selected: String, onSelect: (String) -> Unit) {
                     group.cabang.forEach { c ->
                         DropdownMenuItem(text = { Text(c.label) }, onClick = { onSelect(c.kodeDealer); expanded = false })
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Dropdown Metode Pengiriman (2026-07-24) — driver biasa / diambil sendiri / sales
+ *  antar sendiri (pola sama [CabangSelector]). */
+@Composable
+private fun DeliveryMethodDropdown(selected: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf(
+        "driver" to "Driver (standar)",
+        "self_pickup" to "Diambil Sendiri",
+        "sales_delivery" to "Sales Antar Sendiri",
+    )
+    val label = options.firstOrNull { it.first == selected }?.second ?: options[0].second
+    Column {
+        Text("Metode Pengiriman", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { (k, l) ->
+                    DropdownMenuItem(text = { Text(l) }, onClick = { onSelect(k); expanded = false })
                 }
             }
         }

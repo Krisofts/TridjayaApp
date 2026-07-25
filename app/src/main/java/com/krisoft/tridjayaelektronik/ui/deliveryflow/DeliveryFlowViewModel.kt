@@ -162,10 +162,10 @@ class DeliveryFlowViewModel @Inject constructor(
 
     private val serialFetched = mutableSetOf<String>()
 
-    fun loadQueue(status: String?, view: String? = null) {
+    fun loadQueue(status: String?, view: String? = null, asDriver: Boolean = false) {
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
-            when (val res = repository.list(status = status, view = view)) {
+            when (val res = repository.list(status = status, view = view, asDriver = asDriver)) {
                 is AuthResult.Success -> _state.update { it.copy(loading = false, items = res.data, error = null) }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
             }
@@ -654,6 +654,23 @@ class DeliveryFlowViewModel @Inject constructor(
 
     fun cancel(id: String, reason: String, onDone: () -> Unit) = action {
         repository.cancel(id, reason.trim().ifBlank { "-" }).mapOk { onDone() }
+    }
+
+    /** (2026-07-24) DC/admin tandai job `self_pickup` selesai — reuse slot foto
+     *  [deliverPhotoBytes] (tidak bentrok: self-pickup-complete di `pending_scheduling`,
+     *  `deliver` di `in_transit`, tak pernah sama job di saat sama). */
+    fun selfPickupComplete(id: String, rating: Int, comment: String, onDone: () -> Unit) = action {
+        val bytes = deliverPhotoBytes ?: return@action AuthResult.Failure("validation", "Foto wajib diambil")
+        val photoUrl = when (val up = repository.uploadPhoto(bytes, "selfpickup_${System.currentTimeMillis()}.jpg")) {
+            is AuthResult.Success -> up.data
+            is AuthResult.Failure -> return@action up
+        }
+        repository.selfPickupComplete(
+            id,
+            com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody(
+                photoUrl = photoUrl, reviewRating = rating, reviewComment = comment.trim().ifBlank { null }
+            )
+        ).mapOk { onDone() }
     }
 
     private inline fun <T> AuthResult<T>.mapOk(onOk: () -> Unit): AuthResult<T> {

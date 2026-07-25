@@ -52,6 +52,8 @@ data class DeliveryJobDto(
     val preOrderId: String? = null,
     /** URL foto PO (2026-07-24, opsional, per-barang). */
     val poPhotoUrl: String? = null,
+    /** Metode pengiriman (2026-07-24): null/'driver' (default) | 'self_pickup' | 'sales_delivery'. */
+    val deliveryMethod: String? = null,
     /** PDI wajib/tidak (2026-07-24, per-barang, independen dari deliveryMethod).
      *  `null` = backend lama tanpa kolom ini (perlakukan sbg true). */
     val pdiRequired: Boolean? = null,
@@ -76,6 +78,8 @@ data class DeliveryJobDto(
     val kbkBrokerNama: String? = null,
     val keterangan: String? = null,
     val salesName: String? = null,
+    /** User id sales pembuat SPK (2026-07-24) — opsi "Sales antar sendiri" di assign driver. */
+    val salesUserId: String? = null,
     // Sosmed konsumen (068, denormalisasi per baris)
     val sosmedTiktok: String? = null,
     val sosmedFacebook: String? = null,
@@ -400,12 +404,24 @@ data class CreateDeliveryBody(
     val customerMapUrl: String? = null,
     val customerNik: String? = null,
     val salesNik: String? = null,
+    /** Metode pengiriman (2026-07-24, opsional): kosong = 'driver' (default) |
+     *  'self_pickup' | 'sales_delivery'. Body-level, denormalisasi backend ke semua barang. */
+    val deliveryMethod: String? = null,
     val sosmedTiktok: String? = null,
     val sosmedFacebook: String? = null,
     val sosmedInstagram: String? = null,
     val keterangan: String? = null,
     val tanggalJual: String? = null,
     val items: List<CreateDeliveryItemBody>
+)
+
+/** Body `POST /delivery/{id}/self-pickup-complete` (2026-07-24) — konsumen ambil unit
+ *  sendiri di cabang, DC/admin tandai selesai. Foto+rating wajib, sama standar [DeliverBody]. */
+@Serializable
+data class SelfPickupCompleteBody(
+    val photoUrl: String,
+    val reviewRating: Int,
+    val reviewComment: String? = null
 )
 
 @Serializable

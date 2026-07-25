@@ -71,7 +71,12 @@ object SpkAccessPolicy {
             kasir = admin || hasRole("kasir"),
             note = admin || hasRole("delivery-control"),
             jadwal = admin || hasRole("delivery-control"),
-            driver = admin || hasRole("driver"),
+            // Sales antar sendiri (2026-07-24, backend `authorize_driver` SALES_ROLES
+            // ∪ driver): sales/admin-sales bisa di-assign jadi driver job SPK
+            // miliknya sendiri (`delivery_method='sales_delivery'`) — tanpa ini menu
+            // "Tugas Antar" tak pernah kelihatan buat mereka walau job-nya ada.
+            // Ownership tetap dicek backend per-job (assignedDriverId==actor).
+            driver = admin || hasRole("driver", "sales", "admin-sales"),
         )
     }
 }
