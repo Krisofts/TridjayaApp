@@ -154,6 +154,9 @@ data class DeliveryListData(
 data class DeliveryCreateResult(
     val created: Int = 0,
     val kodePengiriman: List<String> = emptyList(),
+    /** Sejajar `kodePengiriman` (2026-07-26) — dipakai auto-navigate PDI Mandiri,
+     *  langsung tanpa reverse-lookup via search antrian (yang rapuh). */
+    val ids: List<String> = emptyList(),
     val discountPending: Boolean = false
 )
 

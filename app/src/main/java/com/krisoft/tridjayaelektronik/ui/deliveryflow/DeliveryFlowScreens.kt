@@ -462,17 +462,30 @@ private data class TimelineStep(val label: String, val timestamp: String?, val s
  *  langsung, tak pernah lewat driver beneran). */
 @Composable
 private fun SpkTimelineCard(job: DeliveryJobDto) {
-    val skipDriverSteps = job.deliveryMethod == "self_pickup"
+    // Alur beda per metode (2026-07-26):
+    // - "driver" (default): Dibuat -> PDI -> Kasir -> Surat Jalan -> Ditugaskan
+    //   -> Berangkat -> Terkirim. "Tidak PDI" beneran skip PDI (langsung pending_spk).
+    // - "sales_delivery": SAMA persis "driver" (sales jadi driver-nya sendiri,
+    //   surat jalan+assign+berangkat tetap kejadian) — beda cuma siapa yang
+    //   eksekusi, bukan tahapannya. "Tidak PDI" = PDI Mandiri (TETAP wajib).
+    // - "self_pickup": konsumen ambil sendiri ke toko — surat jalan DAN
+    //   assign/berangkat driver dua-duanya tak pernah kejadian (kasir konfirmasi
+    //   lompat LANGSUNG ke pending_scheduling, DC tinggal tandai selesai).
+    //   "Tidak PDI" = PDI Mandiri (TETAP wajib, sama seperti sales_delivery).
+    val isSelfPickup = job.deliveryMethod == "self_pickup"
+    val isSelfPdiMethod = isSelfPickup || job.deliveryMethod == "sales_delivery"
+    // "Tidak PDI" cuma BENERAN skip (bukan PDI Mandiri) di metode "driver".
+    val pdiSkipped = job.pdiRequired == false && !isSelfPdiMethod
     val steps = buildList {
         add(TimelineStep("SPK Dibuat", job.createdAt))
-        add(TimelineStep("PDI Selesai", job.pdiAt, job.pdiByName, skipped = job.pdiRequired == false))
+        add(TimelineStep(if (isSelfPdiMethod) "PDI Mandiri Selesai" else "PDI Selesai", job.pdiAt, job.pdiByName, skipped = pdiSkipped))
         add(TimelineStep("Kasir Konfirmasi", job.spkConfirmedAt))
-        add(TimelineStep("Surat Jalan Terbit", job.deliveryNoteAt, job.deliveryNoteNo))
-        if (!skipDriverSteps) {
+        if (!isSelfPickup) {
+            add(TimelineStep("Surat Jalan Terbit", job.deliveryNoteAt, job.deliveryNoteNo))
             add(TimelineStep("Ditugaskan ke Driver", job.assignedAt, job.assignedDriverName))
             add(TimelineStep("Berangkat", job.dispatchedAt))
         }
-        add(TimelineStep(if (skipDriverSteps) "Diambil/Selesai" else "Terkirim", job.deliveredAt, job.deliveredBy))
+        add(TimelineStep(if (isSelfPickup) "Diambil Konsumen" else "Terkirim", job.deliveredAt, job.deliveredBy))
         if (job.status == DeliveryStatusKey.CANCELLED) add(TimelineStep("Dibatalkan", job.updatedAt, job.cancelReason))
     }
     ClayCard(modifier = Modifier.fillMaxWidth()) {
@@ -1418,14 +1431,18 @@ fun CreateSpkScreen(
     // pertama ber-toggle "PDI Mandiri" (pdiRequired=false) -> langsung lompat ke
     // form PDI barang itu (bukan balik ke daftar) supaya sales isi checklist+foto
     // saat itu juga. Selain itu (atau tak match) -> perilaku lama, balik daftar.
+    // id diambil LANGSUNG dari `result.ids` (sejajar `kodePengiriman`, backend
+    // 2026-07-26) — BUKAN reverse-lookup search antrian (percobaan pertama:
+    // rapuh, kena filter status role-scoped sales + limit pagination, gagal
+    // senyap tanpa error yang kelihatan).
     LaunchedEffect(state.lastCreateResult) {
         val result = state.lastCreateResult ?: return@LaunchedEffect
         val selfPdiMethod = deliveryMethodSel == "self_pickup" || deliveryMethodSel == "sales_delivery"
         val mandiriBaris = items.indexOfFirst { !it.pdiRequired }.takeIf { it >= 0 }?.plus(1)
-        val targetCode = if (selfPdiMethod && mandiriBaris != null) {
-            result.kodePengiriman.firstOrNull { it.contains("-${mandiriBaris}u") }
-        } else null
-        val id = targetCode?.let { viewModel.findJobIdByCode(it) }
+        val targetIdx = if (selfPdiMethod && mandiriBaris != null) {
+            result.kodePengiriman.indexOfFirst { it.contains("-${mandiriBaris}u") }
+        } else -1
+        val id = result.ids.getOrNull(targetIdx)
         if (id != null) onCreated(id) else onBack()
     }
 
