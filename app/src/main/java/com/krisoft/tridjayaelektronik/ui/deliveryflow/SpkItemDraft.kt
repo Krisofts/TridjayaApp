@@ -43,8 +43,12 @@ data class SpkItemDraft(
     val komisiSales: String = "",
     val komisiKbk: String = "",
     val noHpKbk: String = "",
+    /** COD (2026-07-25, cash-only): driver terima uang dari konsumen saat serah terima. */
     val driverTerimaUang: Boolean = false,
-    val nominalTerimaUang: String = "",
+    /** Sub-pilihan COD: "full" | "dp" | "" (belum dipilih). Kosong = belum dipilih. */
+    val codPaymentMode: String = "",
+    /** Jumlah DP yang sudah diterima toko — digit mentah, wajib bila codPaymentMode="dp". */
+    val codDpAmount: String = "",
     /** UI: kartu terbuka/tutup (baru ditambah = terbuka). */
     val expanded: Boolean = true,
 ) {
@@ -67,7 +71,17 @@ data class SpkItemDraft(
         val q = qtyInt
         if (q == null || q < 1 || q > maxQty) out += "Qty harus 1..$maxQty"
         if (isKbk && (kbkBrokerKode.isBlank() || kbkBrokerNama.isBlank())) out += "Broker KBK wajib dipilih"
-        if (driverTerimaUang && (money(nominalTerimaUang) ?: 0.0) <= 0) out += "Nominal terima uang wajib > 0"
+        if (driverTerimaUang) {
+            when (codPaymentMode) {
+                "full" -> {}
+                "dp" -> {
+                    val dp = money(codDpAmount) ?: 0.0
+                    if (dp <= 0) out += "Jumlah DP wajib diisi"
+                    else if (dp >= harga) out += "DP harus lebih kecil dari Total"
+                }
+                else -> out += "Metode COD wajib dipilih (Full Payment/DP)"
+            }
+        }
         return out
     }
 
@@ -104,7 +118,8 @@ data class SpkItemDraft(
             kbkBrokerKode = if (isKbk) kbkBrokerKode.trim().ifBlank { null } else null,
             kbkBrokerNama = if (isKbk) kbkBrokerNama.trim().ifBlank { null } else null,
             driverTerimaUang = if (driverTerimaUang) true else null,
-            driverTerimaNominal = if (driverTerimaUang) money(nominalTerimaUang) else null,
+            codPaymentMode = if (driverTerimaUang) codPaymentMode.ifBlank { null } else null,
+            codDpAmount = if (driverTerimaUang && codPaymentMode == "dp") money(codDpAmount) else null,
             kodeDealer = kodeDealer, kodeCabang = kodeCabang
         )
     }

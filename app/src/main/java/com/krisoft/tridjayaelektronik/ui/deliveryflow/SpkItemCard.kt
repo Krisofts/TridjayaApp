@@ -29,6 +29,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -141,7 +142,15 @@ fun SpkItemCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("cash" to "Cash", "credit" to "Kredit").forEach { (k, l) ->
                         val sel = item.paymentType == k
-                        Surface(onClick = { onUpdate(if (k == "cash") item.copy(paymentType = k, fincoy = "", fincoyLain = "", preOrderId = "", poPhotoUrl = "") else item.copy(paymentType = k)) }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                        Surface(
+                            onClick = {
+                                onUpdate(
+                                    if (k == "cash") item.copy(paymentType = k, fincoy = "", fincoyLain = "", preOrderId = "", poPhotoUrl = "")
+                                    else item.copy(paymentType = k, driverTerimaUang = false, codPaymentMode = "", codDpAmount = "")
+                                )
+                            },
+                            shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)
+                        ) {
                             Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
                         }
                     }
@@ -172,13 +181,55 @@ fun SpkItemCard(
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onUpdate(item.copy(driverTerimaUang = !item.driverTerimaUang)) }) {
-                    Checkbox(checked = item.driverTerimaUang, onCheckedChange = { onUpdate(item.copy(driverTerimaUang = it)) })
-                    Text("Driver terima uang dari konsumen", style = MaterialTheme.typography.bodyMedium)
-                }
-                if (item.driverTerimaUang) {
-                    ExpressiveTextField(item.nominalTerimaUang, { onUpdate(item.copy(nominalTerimaUang = it.filter { c -> c.isDigit() })) }, label = "Nominal diterima driver *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                // COD Full Payment/DP (2026-07-25, cash-only) — mirror web SalesDeliveryFlowPage.
+                // driverTerimaNominal DIHITUNG backend dari hargaOtr+codPaymentMode+codDpAmount,
+                // bukan lagi input manual (cegah mismatch DP vs sisa).
+                if (!item.isCredit) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            val next = !item.driverTerimaUang
+                            onUpdate(item.copy(driverTerimaUang = next, codPaymentMode = if (next) item.codPaymentMode else "", codDpAmount = if (next) item.codDpAmount else ""))
+                        }
+                    ) {
+                        Checkbox(checked = item.driverTerimaUang, onCheckedChange = { checked ->
+                            onUpdate(item.copy(driverTerimaUang = checked, codPaymentMode = if (checked) item.codPaymentMode else "", codDpAmount = if (checked) item.codDpAmount else ""))
+                        })
+                        Text("COD (uang diambil driver saat kirim)", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (item.driverTerimaUang) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            listOf("full" to "Full Payment", "dp" to "DP").forEach { (k, l) ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.clickable { onUpdate(item.copy(codPaymentMode = k)) }
+                                ) {
+                                    RadioButton(selected = item.codPaymentMode == k, onClick = { onUpdate(item.copy(codPaymentMode = k)) })
+                                    Text(l, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                        if (item.codPaymentMode == "dp") {
+                            Spacer(Modifier.height(6.dp))
+                            ExpressiveTextField(item.codDpAmount, { onUpdate(item.copy(codDpAmount = it.filter { c -> c.isDigit() })) }, label = "Jumlah DP *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(4.dp))
+                            val otr = item.hargaOtr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+                            val dp = item.codDpAmount.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+                            Text(
+                                "Sisa diambil driver: ${formatRupiahSimple((otr - dp).coerceAtLeast(0.0))}",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (item.codPaymentMode == "full") {
+                            Spacer(Modifier.height(4.dp))
+                            val otr = item.hargaOtr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+                            Text(
+                                "Sisa diambil driver: ${formatRupiahSimple(otr)} (penuh)",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -239,6 +290,9 @@ fun SpkItemCard(
         }
     }
 }
+
+private fun formatRupiahSimple(value: Double): String =
+    "Rp" + value.toLong().toString().reversed().chunked(3).joinToString(".").reversed()
 
 /** Foto PO per-barang: capture kamera → watermark → upload langsung (bukan
  *  slot review terpisah spt PDI/deliver — pola sama web `uploadDeliveryPhoto`

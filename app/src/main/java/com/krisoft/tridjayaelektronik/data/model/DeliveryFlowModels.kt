@@ -391,7 +391,10 @@ data class CreateDeliveryItemBody(
     val kbkBrokerNama: String? = null,
     /** 088: driver terima uang dari konsumen (gate foto uang saat deliver). */
     val driverTerimaUang: Boolean? = null,
-    val driverTerimaNominal: Double? = null,
+    /** 2026-07-25: driverTerimaNominal DIHITUNG backend dari codPaymentMode/
+     *  codDpAmount + hargaOtr, bukan lagi input manual — field ini tak dikirim lagi. */
+    val codPaymentMode: String? = null,
+    val codDpAmount: Double? = null,
     val kodeDealer: String? = null,
     val kodeCabang: String? = null
 )
