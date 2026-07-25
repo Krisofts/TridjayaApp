@@ -227,7 +227,18 @@ fun HomeNavHost(
                 navController.navigate(route) { launchSingleTop = true }
             })
         }
-        composable(ROUTE_DLV_CREATE) { CreateSpkScreen(onBack = { navController.popBackStack() }) }
+        composable(ROUTE_DLV_CREATE) {
+            CreateSpkScreen(
+                onBack = { navController.popBackStack() },
+                onCreated = { id ->
+                    // PDI Mandiri: ganti layar Input SPK dgn Detail (popUpTo dirinya sendiri)
+                    // biar tombol back dari Detail balik ke Hub, bukan ke form SPK yg sudah terkirim.
+                    navController.navigate(dlvDetailRoute(id)) {
+                        popUpTo(ROUTE_DLV_CREATE) { inclusive = true }
+                    }
+                },
+            )
+        }
         composable(ROUTE_DLV_DISKON) { DiscountApprovalScreen(onBack = { navController.popBackStack() }) }
         composable(ROUTE_DLV_PDI) {
             DeliveryQueueScreen("Antri PDI", DeliveryStatusKey.PENDING_PDI, onBack = { navController.popBackStack() },

@@ -15,6 +15,7 @@ import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryItemBody
 import com.krisoft.tridjayaelektronik.data.model.DeliverBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
+import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody
@@ -72,6 +73,10 @@ data class DeliveryFlowUiState(
     val akiPhotos: Map<String, Bitmap> = emptyMap(),
     /** Preview foto (sudah ber-watermark geotag+jam) — pola sama [AttendanceUiState.selfie]:
      *  bitmap dipegang di state, BUKAN dibaca ulang dari file (hindari cache-basi/race preview). */
+    /** Hasil `POST /delivery` terakhir (2026-07-26) — dipakai `CreateSpkScreen` buat
+     *  resolve id job PDI Mandiri dan auto-navigate langsung ke form PDI, tanpa
+     *  balik dulu ke daftar. */
+    val lastCreateResult: com.krisoft.tridjayaelektronik.data.model.DeliveryCreateResult? = null,
     val pdiPhoto: Bitmap? = null,
     val deliverPhoto: Bitmap? = null,
     val cashPhoto: Bitmap? = null,
@@ -499,9 +504,24 @@ class DeliveryFlowViewModel @Inject constructor(
     // Foto PO (2026-07-24, per-barang): sudah ter-upload & ter-set ke
     // `item.poPhotoUrl` masing-masing SEBELUM submit (lihat [uploadPoPhoto],
     // dipanggil kartu barang saat capture) — body di sini sudah lengkap.
-    fun createSpk(body: CreateDeliveryBody, onDone: () -> Unit) = action {
-        repository.create(body).mapOk { onDone() }
+    fun createSpk(body: CreateDeliveryBody) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null, actionDone = false, lastCreateResult = null) }
+        viewModelScope.launch {
+            when (val res = repository.create(body)) {
+                is AuthResult.Success -> _state.update {
+                    it.copy(submitting = false, actionDone = true, actionError = null, lastCreateResult = res.data)
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
     }
+
+    /** Cari id job (buat auto-navigate PDI Mandiri, 2026-07-26) dari kodePengiriman
+     *  hasil create — antrian pending_pdi selalu punya job yang baru dibuat. */
+    suspend fun findJobIdByCode(kodePengiriman: String): String? =
+        (repository.list(status = DeliveryStatusKey.PENDING_PDI) as? AuthResult.Success)
+            ?.data?.firstOrNull { it.kodePengiriman == kodePengiriman }?.id
 
     fun submitPdi(id: String, serial: String, engine: String, checklist: List<PdiChecklistItemBody>, onDone: () -> Unit) = action {
         val photoUrl = pdiPhotoBytes?.let { bytes ->

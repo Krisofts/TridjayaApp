@@ -1376,9 +1376,14 @@ private fun PhotoReviewDialog(bitmap: Bitmap, onRetake: () -> Unit, onConfirm: (
 // ── Input SPK ────────────────────────────────────────────────────────────────
 
 @Composable
-fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
+fun CreateSpkScreen(
+    onBack: () -> Unit,
+    /** PDI Mandiri (2026-07-26): dipanggil alih-alih [onBack] kalau SPK yang baru
+     *  dibuat butuh sales langsung isi form PDI-nya sendiri (bukan skip). */
+    onCreated: (String) -> Unit = {},
+    viewModel: DeliveryFlowViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(state.actionDone) { if (state.actionDone) onBack() }
     LaunchedEffect(Unit) { viewModel.loadDeliveryContextForCreate() }
 
     // Header — Pelanggan
@@ -1408,6 +1413,21 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
     }
     LaunchedEffect(barangSearch, spkCabang) { delay(300); viewModel.searchStok(barangSearch, spkCabang) }
     LaunchedEffect(brokerSearch) { delay(300); viewModel.searchBrokers(brokerSearch) }
+
+    // PDI Mandiri (2026-07-26): "diambil sendiri"/"sales antar sendiri" + barang
+    // pertama ber-toggle "PDI Mandiri" (pdiRequired=false) -> langsung lompat ke
+    // form PDI barang itu (bukan balik ke daftar) supaya sales isi checklist+foto
+    // saat itu juga. Selain itu (atau tak match) -> perilaku lama, balik daftar.
+    LaunchedEffect(state.lastCreateResult) {
+        val result = state.lastCreateResult ?: return@LaunchedEffect
+        val selfPdiMethod = deliveryMethodSel == "self_pickup" || deliveryMethodSel == "sales_delivery"
+        val mandiriBaris = items.indexOfFirst { !it.pdiRequired }.takeIf { it >= 0 }?.plus(1)
+        val targetCode = if (selfPdiMethod && mandiriBaris != null) {
+            result.kodePengiriman.firstOrNull { it.contains("-${mandiriBaris}u") }
+        } else null
+        val id = targetCode?.let { viewModel.findJobIdByCode(it) }
+        if (id != null) onCreated(id) else onBack()
+    }
 
     fun applyCabangChange(next: String) {
         spkCabang = next; items = emptyList(); barangSearch = ""
@@ -1559,7 +1579,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                         keterangan = keterangan.trim().ifBlank { null },
                         items = items.map { it.toItemBody(spkCabang, BranchRegions.dealerRegion(spkCabang)) }
                     )
-                    viewModel.createSpk(body) {}
+                    viewModel.createSpk(body)
                 },
                 enabled = !state.submitting, modifier = Modifier.fillMaxWidth()
             ) {

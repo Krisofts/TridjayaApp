@@ -121,11 +121,16 @@ fun SpkItemCard(
                     ExpressiveTextField(item.alasanDiskon, { onUpdate(item.copy(alasanDiskon = it)) }, label = if ((item.diskon.toLongOrNull() ?: 0L) > 0) "Alasan diskon *" else "Alasan diskon", modifier = Modifier.weight(1f))
                 }
 
+                // Metode PDI: "Tidak PDI" = skip total (cuma valid metode "driver").
+                // Utk "Diambil Sendiri"/"Sales Antar Sendiri" (2026-07-26) opsi kedua jadi
+                // "PDI Mandiri" — checklist+foto TETAP wajib, cuma dikerjakan sales sendiri
+                // (langsung diarahkan ke form PDI begitu SPK ini selesai dibuat), bukan skip.
+                val isSelfPdiMethod = deliveryMethod == "self_pickup" || deliveryMethod == "sales_delivery"
                 Spacer(Modifier.height(10.dp))
                 Text("Metode PDI", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(true to "PDI (tim PDI)", false to "Tidak PDI").forEach { (v, l) ->
+                    listOf(true to "PDI (tim PDI)", false to if (isSelfPdiMethod) "PDI Mandiri" else "Tidak PDI").forEach { (v, l) ->
                         val sel = item.pdiRequired == v
                         Surface(onClick = { onUpdate(item.copy(pdiRequired = v)) }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
                             Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
@@ -135,7 +140,10 @@ fun SpkItemCard(
                 if (!item.pdiRequired) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Barang lompat langsung ke kasir tanpa checklist PDI — sales bertanggung jawab cek barang sendiri.",
+                        if (isSelfPdiMethod)
+                            "Sales isi checklist PDI + foto unit sendiri — langsung diarahkan ke form-nya begitu SPK ini selesai dibuat. Kasir baru bisa proses setelah PDI mandiri ini lengkap."
+                        else
+                            "Barang lompat langsung ke kasir tanpa checklist PDI — sales bertanggung jawab cek barang sendiri.",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
