@@ -15,7 +15,6 @@ import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryItemBody
 import com.krisoft.tridjayaelektronik.data.model.DeliverBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
-import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody
@@ -518,9 +517,14 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     /** Cari id job (buat auto-navigate PDI Mandiri, 2026-07-26) dari kodePengiriman
-     *  hasil create — antrian pending_pdi selalu punya job yang baru dibuat. */
+     *  hasil create. WAJIB `view=history` (bukan `status=pending_pdi`) — backend
+     *  `list_delivery` OVERRIDE filter status jadi `pending_delivery_note` utk
+     *  role sales/admin-sales kalau `view` bukan "history" (lihat cabang
+     *  `SALES_ROLES` di `delivery.rs`), jadi query tanpa `view=history` tak akan
+     *  pernah nemu job yang baru dibuat (masih `pending_pdi`) -> auto-navigate
+     *  gagal senyap, fallback ke onBack() (bug ditemukan 2026-07-26). */
     suspend fun findJobIdByCode(kodePengiriman: String): String? =
-        (repository.list(status = DeliveryStatusKey.PENDING_PDI) as? AuthResult.Success)
+        (repository.list(status = null, view = "history") as? AuthResult.Success)
             ?.data?.firstOrNull { it.kodePengiriman == kodePengiriman }?.id
 
     fun submitPdi(id: String, serial: String, engine: String, checklist: List<PdiChecklistItemBody>, onDone: () -> Unit) = action {
