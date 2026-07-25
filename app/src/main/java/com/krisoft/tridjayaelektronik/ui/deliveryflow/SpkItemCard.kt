@@ -135,23 +135,25 @@ fun SpkItemCard(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.height(10.dp))
-                ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "Pre Order ID (opsional)", modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                PoPhotoField(poPhotoUrl = item.poPhotoUrl, onUploaded = { url -> onUpdate(item.copy(poPhotoUrl = url)) }, uploadPoPhoto = uploadPoPhoto)
-
                 Spacer(Modifier.height(12.dp))
                 Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("cash" to "Cash", "credit" to "Kredit").forEach { (k, l) ->
                         val sel = item.paymentType == k
-                        Surface(onClick = { onUpdate(if (k == "cash") item.copy(paymentType = k, fincoy = "", fincoyLain = "") else item.copy(paymentType = k)) }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                        Surface(onClick = { onUpdate(if (k == "cash") item.copy(paymentType = k, fincoy = "", fincoyLain = "", preOrderId = "", poPhotoUrl = "") else item.copy(paymentType = k)) }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
                             Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
                         }
                     }
                 }
                 if (item.isCredit) {
+                    // Pre Order ID + foto PO cuma relevan buat kredit (leasing/fincoy
+                    // butuh bukti PO), tetap opsional (koreksi 2026-07-26 — sebelumnya
+                    // tampil unconditional buat cash & kredit).
+                    Spacer(Modifier.height(10.dp))
+                    ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "Pre Order ID (opsional)", modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    PoPhotoField(poPhotoUrl = item.poPhotoUrl, onUploaded = { url -> onUpdate(item.copy(poPhotoUrl = url)) }, uploadPoPhoto = uploadPoPhoto)
                     Spacer(Modifier.height(10.dp))
                     ItemFincoyDropdown(item.fincoy) { onUpdate(item.copy(fincoy = it)) }
                     if (item.fincoy == FINCOY_LAINNYA) {
