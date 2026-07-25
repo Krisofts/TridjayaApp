@@ -699,6 +699,14 @@ private fun OffFormSheet(
             }
             Spacer(modifier = Modifier.height(12.dp))
             ExpressiveTextField(value = alasan, onValueChange = { alasan = it }, label = "Alasan (min 5 huruf)", singleLine = false, modifier = Modifier.fillMaxWidth())
+            if (alasan.isNotEmpty() && alasan.trim().length < 5) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Kurang ${5 - alasan.trim().length} huruf lagi (tombol Kirim aktif setelah alasan minimal 5 huruf)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             if (error != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(error, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
