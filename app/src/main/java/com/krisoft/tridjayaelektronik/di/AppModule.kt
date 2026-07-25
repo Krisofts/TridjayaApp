@@ -11,6 +11,7 @@ import com.krisoft.tridjayaelektronik.data.local.DashboardCacheDao
 import com.krisoft.tridjayaelektronik.data.local.LeadDao
 import com.krisoft.tridjayaelektronik.data.local.OpnameCountDao
 import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
+import com.krisoft.tridjayaelektronik.data.remote.ApkApi
 import com.krisoft.tridjayaelektronik.data.remote.AuthApi
 import com.krisoft.tridjayaelektronik.data.remote.AbsensiApi
 import com.krisoft.tridjayaelektronik.data.remote.DeadstockApi
@@ -111,6 +112,11 @@ object AppModule {
     @Singleton
     fun provideDeadstockApi(tokenStore: TokenStore): DeadstockApi =
         NetworkModule.createDeadstockApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideApkApi(tokenStore: TokenStore): ApkApi =
+        NetworkModule.createApkApi(tokenStore)
 
     /** v11 → v12: kolom aging stok (umurHari + kondisi) di branch_stock. Migrasi ADDITIVE —
      *  jangan destruktif, supaya antrean offline (pending leads, hitungan opname) tidak terhapus

@@ -65,7 +65,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.zIndex
-import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -206,7 +205,7 @@ private fun TridjayaNavHost(
 
     val updateStatus by updateViewModel.status.collectAsState()
     val optionalDismissed by updateViewModel.optionalDismissed.collectAsState()
-    val context = LocalContext.current
+    val updateDownload by updateViewModel.download.collectAsState()
 
     // Single reactive source of truth for which gate we belong on: logout / background
     // session-invalidation → Login; server-flagged forced change → Change Password; otherwise Main.
@@ -306,23 +305,19 @@ private fun TridjayaNavHost(
         }
     }
 
-    // Update gate — a force update blocks the whole app (over any screen incl. login); an optional
-    // update shows a dismissible prompt once. AlertDialog renders in its own window above the NavHost.
+    // Update gate — a force update blocks the whole app (over any screen incl. login) and its
+    // download already auto-started (UpdateViewModel.init); an optional update shows a dismissible
+    // prompt once, download starts on tap. AlertDialog renders in its own window above the NavHost.
     (updateStatus as? UpdateStatus.Available)?.let { available ->
         if (available.force || !optionalDismissed) {
             UpdateDialog(
                 available = available,
-                onUpdate = { openUpdateUrl(context, available.updateUrl) },
+                download = updateDownload,
+                onUpdate = { updateViewModel.startDownload() },
                 onDismiss = if (available.force) null else ({ updateViewModel.dismissOptional() })
             )
         }
     }
-}
-
-/** Opens the update link (Play Store / APK URL); falls back to this app's Play Store page. */
-private fun openUpdateUrl(context: android.content.Context, url: String) {
-    val target = url.ifBlank { "https://play.google.com/store/apps/details?id=${context.packageName}" }
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, target.toUri())) }
 }
 
 @Composable

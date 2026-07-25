@@ -12,6 +12,10 @@
     <!-- Integritas absen: memindai aplikasi mock location (GPS palsu) agar bisa diblok. App
          enterprise side-load, bukan rilis Play Store, sehingga QUERY_ALL_PACKAGES diperbolehkan. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Update wajib/opsional: install APK yang diunduh in-app (UpdateManager.promptInstall).
+         Android tetap menampilkan prompt "izinkan instal dari app ini" sendiri kalau belum
+         diizinkan — permission ini cuma syarat supaya app BOLEH memicu installer sama sekali. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".TridjayaApplication"

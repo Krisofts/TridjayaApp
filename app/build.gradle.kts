@@ -135,12 +135,12 @@ dependencies {
     // so scrolling the Inventory list doesn't refetch images on every recomposition.
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // Firebase (Remote Config powers the update-check / force-update). Active only when a real
+    // Firebase Cloud Messaging (push approval izin/absen). Active only when a real
     // google-services.json is present (the plugin below is applied conditionally); otherwise the
-    // dependency is inert and UpdateManager no-ops (no default FirebaseApp).
+    // dependency is inert (no default FirebaseApp). Remote Config dropped — update-check /
+    // force-update is now driven by our own backend (`UpdateManager` → `/api/users/app-apk/meta`),
+    // not Firebase.
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
-    implementation("com.google.firebase:firebase-config-ktx")
-    // Cloud Messaging (push approval izin/absen). Inert tanpa google-services.json.
     implementation("com.google.firebase:firebase-messaging-ktx")
 
     // Scan barcode serial number (PDI + Input SPK) — Google code scanner:

@@ -4,4 +4,5 @@
     <cache-path name="flyers" path="flyers/" />
     <cache-path name="absensi" path="absensi/" />
     <cache-path name="delivery" path="delivery/" />
+    <cache-path name="update" path="update/" />
 </paths>
