@@ -113,6 +113,9 @@ object NetworkModule {
     fun createDeadstockApi(tokenStore: TokenStore): DeadstockApi =
         authenticatedRetrofit(tokenStore).create(DeadstockApi::class.java)
 
+    fun createApkApi(tokenStore: TokenStore): ApkApi =
+        authenticatedRetrofit(tokenStore).create(ApkApi::class.java)
+
     // OkHttp default Dispatcher.maxRequestsPerHost = 5 — SEMUA request app ini
     // (auth, sales, delivery, notif, dst) satu host yang sama (API_BASE_URL),
     // jadi cap itu berlaku global, bukan per-endpoint. Layar yang nembak >5

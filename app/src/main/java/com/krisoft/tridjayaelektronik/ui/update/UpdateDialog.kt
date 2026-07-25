@@ -1,12 +1,17 @@
 package com.krisoft.tridjayaelektronik.ui.update
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -14,18 +19,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import com.krisoft.tridjayaelektronik.data.update.UpdateDownloadState
 import com.krisoft.tridjayaelektronik.data.update.UpdateStatus
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveShapes
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextButton
 
 /**
- * Update prompt. When [available] is a force update the dialog can't be dismissed (no cancel button,
- * back/outside taps ignored) — the user must update to continue. Optional updates offer "Nanti".
+ * Update prompt. When [available] is a force update the dialog can't be dismissed (no cancel
+ * button, back/outside taps ignored) — the user must update to continue, and [download] is
+ * already auto-progressing ([UpdateViewModel] starts it as soon as a force update is detected).
+ * Optional updates offer "Nanti" and only start downloading once "Perbarui Sekarang" is tapped.
  */
 @Composable
 fun UpdateDialog(
     available: UpdateStatus.Available,
+    download: UpdateDownloadState,
     onUpdate: () -> Unit,
     onDismiss: (() -> Unit)?
 ) {
@@ -33,10 +42,21 @@ fun UpdateDialog(
     AlertDialog(
         onDismissRequest = { onDismiss?.invoke() },
         shape = ExpressiveShapes.Large,
-        icon = { Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        icon = {
+            if (download is UpdateDownloadState.Failed) {
+                Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            } else {
+                Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
+        },
         title = {
             Text(
-                text = if (force) "Pembaruan Wajib" else "Pembaruan Tersedia",
+                text = when {
+                    download is UpdateDownloadState.Downloading -> "Mengunduh Pembaruan"
+                    download is UpdateDownloadState.Failed -> "Gagal Mengunduh"
+                    force -> "Pembaruan Wajib"
+                    else -> "Pembaruan Tersedia"
+                },
                 fontWeight = FontWeight.Bold
             )
         },
@@ -51,26 +71,72 @@ fun UpdateDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                if (force) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Perbarui aplikasi untuk melanjutkan.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                when (download) {
+                    is UpdateDownloadState.Downloading -> {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val progress = download.progress
+                        if (progress != null) {
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.height(4.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${(progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Row {
+                                CircularProgressIndicator(modifier = Modifier.height(16.dp).width(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Mengunduh…",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    is UpdateDownloadState.Failed -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = download.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    else -> {
+                        if (force) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Perbarui aplikasi untuk melanjutkan.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
-            ExpressiveFilledButton(onClick = onUpdate) { Text("Perbarui Sekarang") }
+            when (download) {
+                is UpdateDownloadState.Downloading -> { /* no confirm button while downloading */ }
+                is UpdateDownloadState.Failed ->
+                    ExpressiveFilledButton(onClick = onUpdate) { Text("Coba Lagi") }
+                is UpdateDownloadState.ReadyToInstall ->
+                    ExpressiveFilledButton(onClick = onUpdate) { Text("Instal Sekarang") }
+                UpdateDownloadState.Idle ->
+                    ExpressiveFilledButton(onClick = onUpdate) { Text("Perbarui Sekarang") }
+            }
         },
-        dismissButton = if (force || onDismiss == null) null else {
+        dismissButton = if (force || onDismiss == null || download is UpdateDownloadState.Downloading) null else {
             { ExpressiveTextButton(onClick = onDismiss) { Text("Nanti") } }
         },
         properties = DialogProperties(
-            dismissOnBackPress = !force,
-            dismissOnClickOutside = !force
+            dismissOnBackPress = !force && download !is UpdateDownloadState.Downloading,
+            dismissOnClickOutside = !force && download !is UpdateDownloadState.Downloading
         )
     )
 }

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
 import com.krisoft.tridjayaelektronik.data.model.UserDto
+import com.krisoft.tridjayaelektronik.data.update.UpdateDownloadState
 import com.krisoft.tridjayaelektronik.data.update.UpdateManager
 import com.krisoft.tridjayaelektronik.data.update.UpdateStatus
 import com.krisoft.tridjayaelektronik.domain.auth.GetProfileUseCase
@@ -24,6 +25,7 @@ data class SettingsUiState(
     val checkingUpdate: Boolean = false,
     /** Non-null while an update-available dialog should be shown (from a manual "Cek Pembaruan"). */
     val updateAvailable: UpdateStatus.Available? = null,
+    val updateDownload: UpdateDownloadState = UpdateDownloadState.Idle,
     /** Transient toast text (e.g. "sudah versi terbaru"), consumed once shown. */
     val updateMessage: String? = null,
     /** Preferensi WA alur SPK: true = user matikan WA (dapat push app saja). */
@@ -71,7 +73,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun checkUpdate() {
-        _uiState.update { it.copy(checkingUpdate = true, updateAvailable = null, updateMessage = null) }
+        _uiState.update { it.copy(checkingUpdate = true, updateAvailable = null, updateDownload = UpdateDownloadState.Idle, updateMessage = null) }
         viewModelScope.launch {
             when (val status = updateManager.check()) {
                 is UpdateStatus.Available -> _uiState.update { it.copy(checkingUpdate = false, updateAvailable = status) }
@@ -80,7 +82,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun dismissUpdateDialog() = _uiState.update { it.copy(updateAvailable = null) }
+    /** Starts (or re-fires the install prompt for) the manually-checked update's download —
+     *  mirrors [com.krisoft.tridjayaelektronik.ui.update.UpdateViewModel.startDownload]. */
+    fun startUpdateDownload() {
+        val current = _uiState.value.updateDownload
+        if (current is UpdateDownloadState.Downloading) return
+        if (current is UpdateDownloadState.ReadyToInstall) {
+            updateManager.promptInstall(current.fileUri)
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(updateDownload = UpdateDownloadState.Downloading(null)) }
+            updateManager.downloadApk { progress ->
+                _uiState.update { it.copy(updateDownload = UpdateDownloadState.Downloading(progress)) }
+            }.onSuccess { uri ->
+                _uiState.update { it.copy(updateDownload = UpdateDownloadState.ReadyToInstall(uri)) }
+                updateManager.promptInstall(uri)
+            }.onFailure { error ->
+                _uiState.update { it.copy(updateDownload = UpdateDownloadState.Failed(error.message ?: "Gagal mengunduh pembaruan")) }
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() = _uiState.update { it.copy(updateAvailable = null, updateDownload = UpdateDownloadState.Idle) }
     fun consumeUpdateMessage() = _uiState.update { it.copy(updateMessage = null) }
 
     fun loadProfile() {

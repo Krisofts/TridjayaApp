@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Badge
@@ -47,7 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import com.krisoft.tridjayaelektronik.ui.login.ChangePasswordScreen
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.Material3SettingsGroup
@@ -74,10 +72,8 @@ fun SettingsScreen(
     state.updateAvailable?.let { available ->
         UpdateDialog(
             available = available,
-            onUpdate = {
-                val target = available.updateUrl.ifBlank { "https://play.google.com/store/apps/details?id=${context.packageName}" }
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, target.toUri())) }
-            },
+            download = state.updateDownload,
+            onUpdate = { viewModel.startUpdateDownload() },
             onDismiss = { viewModel.dismissUpdateDialog() }
         )
     }
