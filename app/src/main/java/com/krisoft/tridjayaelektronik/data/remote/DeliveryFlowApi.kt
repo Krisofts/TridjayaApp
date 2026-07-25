@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.data.remote
 import com.krisoft.tridjayaelektronik.data.model.AkiFormCreateData
 import com.krisoft.tridjayaelektronik.data.model.AkiFormsData
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
+import com.krisoft.tridjayaelektronik.data.model.ConfirmSpkBody
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
 import com.krisoft.tridjayaelektronik.data.model.BrokerListData
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
@@ -71,7 +72,7 @@ interface DeliveryFlowApi {
     suspend fun submitPdi(@Path("id") id: String, @Body body: PdiBody): Response<ApiResponse<DeliveryJobDto>>
 
     @POST("api/inventory/delivery/{id}/spk")
-    suspend fun confirmSpk(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
+    suspend fun confirmSpk(@Path("id") id: String, @Body body: ConfirmSpkBody): Response<ApiResponse<DeliveryJobDto>>
 
     @POST("api/inventory/delivery/{id}/delivery-note")
     suspend fun issueDeliveryNote(@Path("id") id: String, @Body body: DeliveryNoteBody): Response<ApiResponse<DeliveryJobDto>>

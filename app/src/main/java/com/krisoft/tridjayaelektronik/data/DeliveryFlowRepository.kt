@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.data
 
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
+import com.krisoft.tridjayaelektronik.data.model.ConfirmSpkBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliverBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto
@@ -62,8 +63,8 @@ class DeliveryFlowRepository @Inject constructor(
     suspend fun submitPdi(id: String, body: PdiBody): AuthResult<DeliveryJobDto> =
         call("Gagal simpan PDI") { api.submitPdi(id, body) }
 
-    suspend fun confirmSpk(id: String): AuthResult<DeliveryJobDto> =
-        call("Gagal konfirmasi SPK") { api.confirmSpk(id) }
+    suspend fun confirmSpk(id: String, body: ConfirmSpkBody): AuthResult<DeliveryJobDto> =
+        call("Gagal konfirmasi SPK") { api.confirmSpk(id, body) }
 
     suspend fun issueDeliveryNote(id: String, body: DeliveryNoteBody): AuthResult<DeliveryJobDto> =
         call("Gagal terbitkan surat jalan") { api.issueDeliveryNote(id, body) }

@@ -461,6 +461,17 @@ data class PdiBody(
     val checklist: List<PdiChecklistItemBody> = emptyList()
 )
 
+/** Body wajib `POST .../spk` sejak 2026-07-25 (migrasi 105) — sebelumnya
+ *  endpoint ini tanpa body sama sekali, sekarang backend WAJIB `Content-Type:
+ *  application/json` + `noTransaksi` non-kosong (axum `Json` extractor 415
+ *  kalau content-type absen/salah — root cause "gagal konfirmasi SPK 415"). */
+@Serializable
+data class ConfirmSpkBody(
+    val noTransaksi: String,
+    val kasirDpDiterima: Double? = null,
+    val kasirKonfirmasiPembayaran: Boolean? = null,
+)
+
 @Serializable
 data class DeliveryNoteBody(
     val sourceBranch: String,

@@ -10,6 +10,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
+import com.krisoft.tridjayaelektronik.data.model.ConfirmSpkBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryItemBody
 import com.krisoft.tridjayaelektronik.data.model.DeliverBody
@@ -602,7 +603,22 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    fun confirmSpk(id: String, onDone: () -> Unit) = action { repository.confirmSpk(id).mapOk { onDone() } }
+    fun confirmSpk(
+        id: String,
+        noTransaksi: String,
+        kasirKonfirmasiPembayaran: Boolean? = null,
+        kasirDpDiterima: Double? = null,
+        onDone: () -> Unit,
+    ) = action {
+        repository.confirmSpk(
+            id,
+            ConfirmSpkBody(
+                noTransaksi = noTransaksi.trim(),
+                kasirKonfirmasiPembayaran = kasirKonfirmasiPembayaran,
+                kasirDpDiterima = kasirDpDiterima,
+            ),
+        ).mapOk { onDone() }
+    }
 
     fun issueDeliveryNote(id: String, sourceBranch: String, onDone: () -> Unit) = action {
         repository.issueDeliveryNote(id, DeliveryNoteBody(sourceBranch = sourceBranch.trim())).mapOk { onDone() }

@@ -418,7 +418,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     job.status == DeliveryStatusKey.PENDING_PDI && (access.pdi || isSelfPdiJob) ->
                         PdiAction(job, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
                     job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
-                        SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
+                        KasirConfirmSpkAction(job, viewModel, state.submitting)
                     job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
                         DeliveryNoteAction(job, viewModel, state.submitting)
                     // Diambil sendiri (2026-07-24): konsumen ambil unit di cabang — TIDAK
@@ -827,6 +827,56 @@ private fun PdiAction(
                 else -> "Simpan PDI"
             }
         )
+    }
+}
+
+/** Konfirmasi SPK kasir (2026-07-26) — backend WAJIB `noTransaksi` non-kosong
+ *  sejak migrasi 105 (endpoint dulu tanpa body sama sekali, root cause error
+ *  415: `Json` extractor axum menolak request tanpa `Content-Type: application/
+ *  json`, yg terjadi kalau body kosong). Kalau job COD (`driverTerimaUang`),
+ *  kasir WAJIB konfirmasi sudah cek pembayaran + nominal DP aktual bila mode dp
+ *  (mirror web `KasirDashboardPage` modal "Sudah SPK"). */
+@Composable
+private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
+    var noTransaksi by remember { mutableStateOf(job.noTransaksi.orEmpty()) }
+    var konfirmasiBayar by remember { mutableStateOf(false) }
+    var dpDiterima by remember { mutableStateOf("") }
+    val isCod = job.driverTerimaUang == true
+    val isCodDp = isCod && job.codPaymentMode == "dp"
+    val codValid = !isCod || (konfirmasiBayar && (!isCodDp || (dpDiterima.toDoubleOrNull() ?: 0.0) > 0.0))
+
+    Text("Konfirmasi SPK (Kasir)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(8.dp))
+    ExpressiveTextField(noTransaksi, { noTransaksi = it }, label = "No. Transaksi GS (wajib)", modifier = Modifier.fillMaxWidth())
+    if (isCod) {
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "COD ${if (job.codPaymentMode == "dp") "DP" else "Full Payment"} · sisa diambil driver: ${job.driverTerimaNominal?.let { rupiah(it) } ?: "-"}",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { konfirmasiBayar = !konfirmasiBayar }) {
+            Checkbox(checked = konfirmasiBayar, onCheckedChange = { konfirmasiBayar = it })
+            Text("Sudah cek pembayaran benar", style = MaterialTheme.typography.bodyMedium)
+        }
+        if (isCodDp) {
+            Spacer(Modifier.height(6.dp))
+            ExpressiveTextField(dpDiterima, { dpDiterima = it.filter { c -> c.isDigit() } }, label = "DP diterima kasir (wajib) *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+        }
+    }
+    Spacer(Modifier.height(14.dp))
+    ExpressiveFilledButton(
+        onClick = {
+            vm.confirmSpk(
+                job.id,
+                noTransaksi,
+                kasirKonfirmasiPembayaran = if (isCod) konfirmasiBayar else null,
+                kasirDpDiterima = if (isCodDp) dpDiterima.toDoubleOrNull() else null,
+            ) {}
+        },
+        enabled = !submitting && noTransaksi.trim().isNotEmpty() && codValid,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Konfirmasi SPK")
     }
 }
 
