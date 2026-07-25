@@ -30,6 +30,7 @@ import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderResult
 import com.krisoft.tridjayaelektronik.data.model.RejectAkiBody
 import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
+import com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangData
@@ -51,7 +52,10 @@ interface DeliveryFlowApi {
         @Query("status") status: String? = null,
         @Query("view") view: String? = null,
         @Query("page") page: Int? = null,
-        @Query("limit") limit: Int? = null
+        @Query("limit") limit: Int? = null,
+        /** Sales antar sendiri (2026-07-24): treat aktor sales sbg driver
+         *  (job self-delivery miliknya sendiri) — paritas web `asDriver`. */
+        @Query("asDriver") asDriver: Boolean? = null
     ): Response<ApiResponse<DeliveryListData>>
 
     @GET("api/inventory/delivery/context")
@@ -80,6 +84,11 @@ interface DeliveryFlowApi {
 
     @POST("api/inventory/delivery/{id}/deliver")
     suspend fun deliver(@Path("id") id: String, @Body body: DeliverBody): Response<ApiResponse<DeliveryJobDto>>
+
+    /** (2026-07-24) Delivery Control: tandai job `self_pickup` selesai — foto+rating
+     *  wajib, langsung transisi pending_scheduling → delivered. */
+    @POST("api/inventory/delivery/{id}/self-pickup-complete")
+    suspend fun selfPickupComplete(@Path("id") id: String, @Body body: SelfPickupCompleteBody): Response<ApiResponse<DeliveryJobDto>>
 
     @POST("api/inventory/delivery/{id}/cancel")
     suspend fun cancel(@Path("id") id: String, @Query("reason") reason: String): Response<ApiResponse<DeliveryJobDto>>

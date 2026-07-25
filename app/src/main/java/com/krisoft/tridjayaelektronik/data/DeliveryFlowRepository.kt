@@ -30,8 +30,8 @@ class DeliveryFlowRepository @Inject constructor(
 ) {
     private val errorJson = Json { ignoreUnknownKeys = true }
 
-    suspend fun list(status: String? = null, view: String? = null): AuthResult<List<DeliveryJobDto>> = try {
-        val response = api.list(status = status, view = view, limit = 200)
+    suspend fun list(status: String? = null, view: String? = null, asDriver: Boolean = false): AuthResult<List<DeliveryJobDto>> = try {
+        val response = api.list(status = status, view = view, limit = 200, asDriver = asDriver.takeIf { it })
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.items)
         else parseError(response, "Gagal memuat daftar pengiriman")
@@ -79,6 +79,12 @@ class DeliveryFlowRepository @Inject constructor(
 
     suspend fun cancel(id: String, reason: String): AuthResult<DeliveryJobDto> =
         call("Gagal membatalkan") { api.cancel(id, reason) }
+
+    /** (2026-07-24) Tandai job `self_pickup` selesai — foto+rating wajib. */
+    suspend fun selfPickupComplete(
+        id: String,
+        body: com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody
+    ): AuthResult<DeliveryJobDto> = call("Gagal menandai diambil sendiri") { api.selfPickupComplete(id, body) }
 
     suspend fun checklist(kategori: String, stage: String? = null): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto>> = try {
         val response = api.checklist(kategori, stage)
