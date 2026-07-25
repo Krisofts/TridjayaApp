@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.MyLocation
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
@@ -297,23 +298,54 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         Text(job.customerName ?: "-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text("${job.namaBarang ?: job.kodeBarang ?: "-"}${job.tipe?.let { " · $it" } ?: ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(10.dp))
+                        InfoLine("No. Transaksi", job.noTransaksi)
+                        InfoLine("Metode Pengiriman", when (job.deliveryMethod) {
+                            "self_pickup" -> "Diambil Sendiri"
+                            "sales_delivery" -> "Sales Antar Sendiri"
+                            else -> "Driver"
+                        })
+                        InfoLine("PDI", if (job.pdiRequired == false) "Tanpa PDI" else "PDI (tim PDI)")
                         InfoLine("Merk / Warna", listOfNotNull(job.merk, job.warna).joinToString(" · ").ifBlank { null })
-                        InfoLine("OTR", job.hargaOtr?.let { rupiah(it) })
-                        InfoLine("Pembayaran", job.paymentType?.replaceFirstChar { it.uppercase() })
                         InfoLine("No. HP", job.customerPhone)
                         InfoLine("Alamat", job.customerAddress)
+                        InfoLine("NIK", job.customerNik)
                         InfoLine("Serial", job.serialNumber)
-                        InfoLine("Surat Jalan", job.deliveryNoteNo)
-                        InfoLine("Driver", job.assignedDriverName)
-                        InfoLine("Jadwal", job.scheduledDate)
+                        InfoLine("Pre Order ID", job.preOrderId)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Cabang", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        InfoLine("Cabang Stok", job.dealerName)
+                        InfoLine("Cabang Asal Sales", job.salesDealerName)
                         InfoLine("Sales", job.salesName)
-                        InfoLine("Kategori", job.kategori)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Pembiayaan", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        InfoLine("Metode Bayar", job.paymentType?.replaceFirstChar { it.uppercase() })
+                        InfoLine("OTR", job.hargaOtr?.let { rupiah(it) })
                         InfoLine("Diskon", job.diskon?.takeIf { it > 0 }?.let { rupiah(it) })
-                        InfoLine("DP Net", job.dpNet?.let { rupiah(it) })
-                        InfoLine("Pembayaran 1", job.pembayaran1?.let { rupiah(it) })
-                        InfoLine("Angsuran", job.angsuran?.let { rupiah(it) })
-                        InfoLine("Tenor", job.tenor?.let { "$it bln" })
-                        InfoLine("Sumber Order", when {
+                        InfoLine("Total", job.hargaTotal?.let { rupiah(it) })
+                        if (job.paymentType == "credit") {
+                            InfoLine("Fincoy", job.fincoy)
+                            InfoLine("DP Net", job.dpNet?.let { rupiah(it) })
+                            InfoLine("Pembayaran 1", job.pembayaran1?.let { rupiah(it) })
+                            InfoLine("Angsuran", job.angsuran?.let { rupiah(it) })
+                            InfoLine("Tenor", job.tenor?.let { "$it bln" })
+                        }
+                        // COD (2026-07-25): uang diambil driver saat kirim — cuma ada
+                        // kalau ada driver beneran (bukan diambil sendiri/sales antar sendiri).
+                        if (job.driverTerimaUang == true) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("COD", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            InfoLine("Metode COD", if (job.codPaymentMode == "dp") "DP" else "Full Payment")
+                            if (job.codPaymentMode == "dp") {
+                                InfoLine("DP Rencana (Sales)", job.codDpAmount?.let { rupiah(it) })
+                                InfoLine("DP Diterima Kasir", job.kasirDpDiterima?.let { rupiah(it) })
+                            }
+                            InfoLine("Sisa Diambil Driver", job.driverTerimaNominal?.let { rupiah(it) })
+                            InfoLine("Kasir Konfirmasi Bayar", if (job.kasirKonfirmasiPembayaran) "Sudah" else "Belum")
+                            InfoLine("Setoran Driver→Kasir", job.setoranKasirNominal?.let { "${rupiah(it)} · ${job.setoranKasirByNama ?: "-"}" })
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("Sumber Order", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        InfoLine("Sumber", when {
                             job.orderSource == "kbk" -> "KBK · ${job.kbkBrokerNama ?: job.kbkBrokerKode ?: "-"}"
                             job.orderSource != null -> "Sales"
                             else -> null
@@ -326,17 +358,23 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                             job.sosmedFacebook?.let { "FB $it" },
                             job.sosmedInstagram?.let { "IG $it" },
                         ).joinToString(" · ").ifBlank { null })
-                        InfoLine("Terima Uang Driver", job.driverTerimaUang?.takeIf { it }?.let {
-                            job.driverTerimaNominal?.let { n -> rupiah(n) } ?: "Ya"
-                        })
+                        Spacer(Modifier.height(8.dp))
+                        Text("Pengiriman", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        InfoLine("Surat Jalan", job.deliveryNoteNo)
+                        InfoLine("Driver", job.assignedDriverName)
+                        InfoLine("Jadwal", job.scheduledDate)
                         InfoLine("Chat Konsumen", job.consumerChatAt)
-                        job.reviewRating?.let { InfoLine("Rating", "★".repeat(it)) }
+                        job.reviewRating?.let { InfoLine("Rating", "★".repeat(it) + (job.reviewComment?.let { c -> " · $c" } ?: "")) }
+                        if (job.status == DeliveryStatusKey.CANCELLED) InfoLine("Alasan Batal", job.cancelReason)
                         job.customerMapUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                            Spacer(Modifier.height(4.dp))
                             val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
                             TextButton(onClick = { runCatching { uriHandler.openUri(url) } }) { Text("Buka Lokasi Maps") }
                         }
                     }
                 }
+                Spacer(Modifier.height(14.dp))
+                SpkTimelineCard(job)
                 // Foto bukti (PDI siap kirim / serah terima / terima uang) — dimuat
                 // ter-autentikasi via VM (kasir/DC/driver bisa verifikasi dari HP).
                 if (state.jobPhotos.isNotEmpty()) {
@@ -364,6 +402,12 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                 val access = viewModel.access
                 val isMyDriverJob = viewModel.isAdminViewer ||
                     (access.driver && job.assignedDriverId == viewModel.currentUserId)
+                // Self-PDI (2026-07-25, ganti mekanisme skip-PDI 098): sales pemilik
+                // SPK metode diambil-sendiri/antar-sendiri boleh PDI unitnya sendiri —
+                // "bertanggung jawab penuh", bukan lagi auto-skip. Backend (`submit_pdi`)
+                // otoritatif, ini murni gate UI (mirror paritas web `PdiDetailPage`).
+                val isSelfPdiJob = (job.deliveryMethod == "self_pickup" || job.deliveryMethod == "sales_delivery") &&
+                    !job.salesUserId.isNullOrBlank() && job.salesUserId == viewModel.currentUserId
                 if (job.driverTerimaUang != null && isMyDriverJob &&
                     (job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT)
                 ) {
@@ -371,7 +415,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     Spacer(Modifier.height(14.dp))
                 }
                 when {
-                    job.status == DeliveryStatusKey.PENDING_PDI && access.pdi ->
+                    job.status == DeliveryStatusKey.PENDING_PDI && (access.pdi || isSelfPdiJob) ->
                         PdiAction(job, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
                     job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
                         SimpleAction("Konfirmasi SPK (Kasir)", state.submitting) { viewModel.confirmSpk(job.id) {} }
@@ -404,6 +448,67 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     Spacer(Modifier.height(10.dp))
                     CancelJobButton(job.id, viewModel, state.submitting)
                 }
+            }
+        }
+    }
+}
+
+private data class TimelineStep(val label: String, val timestamp: String?, val subtitle: String? = null, val skipped: Boolean = false)
+
+/** Riwayat status SPK (2026-07-26) — mirror `Timeline`/`TimelineStep` web
+ *  (`components/delivery/Timeline.tsx`) supaya info lengkap di satu layar,
+ *  tak perlu tebak-tebak dari status chip doang. Langkah assign/berangkat
+ *  di-skip utk `self_pickup` (job lompat pending_scheduling→delivered
+ *  langsung, tak pernah lewat driver beneran). */
+@Composable
+private fun SpkTimelineCard(job: DeliveryJobDto) {
+    val skipDriverSteps = job.deliveryMethod == "self_pickup"
+    val steps = buildList {
+        add(TimelineStep("SPK Dibuat", job.createdAt))
+        add(TimelineStep("PDI Selesai", job.pdiAt, job.pdiByName, skipped = job.pdiRequired == false))
+        add(TimelineStep("Kasir Konfirmasi", job.spkConfirmedAt))
+        add(TimelineStep("Surat Jalan Terbit", job.deliveryNoteAt, job.deliveryNoteNo))
+        if (!skipDriverSteps) {
+            add(TimelineStep("Ditugaskan ke Driver", job.assignedAt, job.assignedDriverName))
+            add(TimelineStep("Berangkat", job.dispatchedAt))
+        }
+        add(TimelineStep(if (skipDriverSteps) "Diambil/Selesai" else "Terkirim", job.deliveredAt, job.deliveredBy))
+        if (job.status == DeliveryStatusKey.CANCELLED) add(TimelineStep("Dibatalkan", job.updatedAt, job.cancelReason))
+    }
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text("Timeline", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            steps.forEachIndexed { i, step ->
+                val done = !step.timestamp.isNullOrBlank()
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(
+                        if (done) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = if (done) Color(0xFF12B76A) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            step.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (done) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (step.skipped) {
+                            Text("Dilewati (tanpa PDI)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else if (done) {
+                            Text(
+                                listOfNotNull(step.timestamp, step.subtitle).joinToString(" · "),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Text("Menunggu", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        }
+                    }
+                }
+                if (i != steps.lastIndex) Spacer(Modifier.height(10.dp))
             }
         }
     }
@@ -1291,7 +1396,15 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                     ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
-                    DeliveryMethodDropdown(deliveryMethodSel) { deliveryMethodSel = it }
+                    DeliveryMethodDropdown(deliveryMethodSel) { next ->
+                        deliveryMethodSel = next
+                        // COD = uang diambil DRIVER — tak relevan tanpa driver (diambil
+                        // sendiri/sales antar sendiri). Clear biar tak nyangkut/ke-submit
+                        // diam-diam (koreksi 2026-07-26).
+                        if (next != "driver") {
+                            items = items.map { it.copy(driverTerimaUang = false, codPaymentMode = "", codDpAmount = "") }
+                        }
+                    }
                 }
             }
 
@@ -1360,6 +1473,7 @@ fun CreateSpkScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltV
                                 onRemove = { items = items.filterIndexed { i, _ -> i != idx } },
                                 onSerialFocus = { viewModel.ensureSerials(spkCabang, item.kodeBarang) },
                                 uploadPoPhoto = { file -> viewModel.uploadPoPhoto(file) },
+                                deliveryMethod = deliveryMethodSel,
                             )
                         }
                     }

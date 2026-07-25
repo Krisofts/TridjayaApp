@@ -70,6 +70,9 @@ fun SpkItemCard(
     onSerialFocus: () -> Unit,
     /** Watermark+upload foto PO barang ini, return URL (null = gagal). */
     uploadPoPhoto: suspend (File) -> String?,
+    /** Metode pengiriman SPK (header, bukan per-barang): "driver" | "self_pickup" |
+     *  "sales_delivery". COD (uang diambil driver) cuma relevan "driver" (2026-07-26). */
+    deliveryMethod: String = "driver",
 ) {
     Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -184,7 +187,7 @@ fun SpkItemCard(
                 // COD Full Payment/DP (2026-07-25, cash-only) — mirror web SalesDeliveryFlowPage.
                 // driverTerimaNominal DIHITUNG backend dari hargaOtr+codPaymentMode+codDpAmount,
                 // bukan lagi input manual (cegah mismatch DP vs sisa).
-                if (!item.isCredit) {
+                if (!item.isCredit && deliveryMethod == "driver") {
                     Spacer(Modifier.height(12.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

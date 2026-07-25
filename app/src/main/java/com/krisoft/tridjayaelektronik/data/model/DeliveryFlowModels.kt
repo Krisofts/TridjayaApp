@@ -119,7 +119,26 @@ data class DeliveryJobDto(
     val consumerChatAt: String? = null,
     val driverTerimaUang: Boolean? = null,
     val driverTerimaNominal: Double? = null,
-    val cashPhotoUrl: String? = null
+    val cashPhotoUrl: String? = null,
+    /** COD Full Payment/DP (2026-07-25, migrasi 103) — "full" | "dp" | null. */
+    val codPaymentMode: String? = null,
+    /** Rencana DP sales saat SPK dibuat — beda dari `kasirDpDiterima` (aktual). */
+    val codDpAmount: Double? = null,
+    /** Cabang LOGIN sales pembuat SPK (2026-07-25, migrasi 104) — independen
+     *  dari `kodeDealer` (cabang stok fisik unit). */
+    val salesDealerCode: String? = null,
+    val salesDealerName: String? = null,
+    /** Nominal DP AKTUAL diterima kasir (2026-07-25, migrasi 105) — beda dari
+     *  `codDpAmount` (rencana sales). */
+    val kasirDpDiterima: Double? = null,
+    /** Kasir sudah konfirmasi cek pembayaran (2026-07-25, migrasi 105). */
+    val kasirKonfirmasiPembayaran: Boolean = false,
+    // Setoran driver→kasir (2026-07-25, migrasi 105) — non-blocking, kasir
+    // konfirmasi terima balik uang COD dari driver setelah delivered.
+    val setoranKasirNominal: Double? = null,
+    val setoranKasirPhotoUrl: String? = null,
+    val setoranKasirByNama: String? = null,
+    val setoranKasirAt: String? = null
 )
 
 /** Response `GET /api/inventory/delivery` (di dalam `data`). */
