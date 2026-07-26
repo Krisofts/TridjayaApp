@@ -422,8 +422,10 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
                         DeliveryNoteAction(job, viewModel, state.submitting)
                     // Diambil sendiri (2026-07-24): konsumen ambil unit di cabang — TIDAK
-                    // lewat assign-driver, DC/admin langsung tandai selesai (foto+rating).
-                    job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal && job.deliveryMethod == "self_pickup" ->
+                    // lewat assign-driver. Sales pemilik SPK yang serah-terima langsung
+                    // (foto+rating wajib, 2026-07-26 — konsisten pola PDI mandiri), DC/admin
+                    // tetap bisa (ditambah, bukan dicabut).
+                    job.status == DeliveryStatusKey.PENDING_SCHEDULING && (access.jadwal || isSelfPdiJob) && job.deliveryMethod == "self_pickup" ->
                         SelfPickupCompleteAction(job, viewModel, state.submitting)
                     job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal ->
                         AssignAction(job, viewModel, state.submitting, state.drivers)
