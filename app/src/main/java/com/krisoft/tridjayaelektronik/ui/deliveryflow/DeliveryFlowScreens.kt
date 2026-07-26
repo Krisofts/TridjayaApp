@@ -464,27 +464,32 @@ private data class TimelineStep(val label: String, val timestamp: String?, val s
  *  langsung, tak pernah lewat driver beneran). */
 @Composable
 private fun SpkTimelineCard(job: DeliveryJobDto) {
-    // Alur beda per metode (2026-07-26):
+    // Alur beda per metode (2026-07-26, "sales antar sendiri: tidak perlu
+    // surat tugas"):
     // - "driver" (default): Dibuat -> PDI -> Kasir -> Surat Jalan -> Ditugaskan
     //   -> Berangkat -> Terkirim. "Tidak PDI" beneran skip PDI (langsung pending_spk).
-    // - "sales_delivery": SAMA persis "driver" (sales jadi driver-nya sendiri,
-    //   surat jalan+assign+berangkat tetap kejadian) — beda cuma siapa yang
-    //   eksekusi, bukan tahapannya. "Tidak PDI" = PDI Mandiri (TETAP wajib).
+    // - "sales_delivery": surat jalan (birokrasi DC) DI-SKIP — kasir konfirmasi
+    //   langsung auto-assign sales sbg driver-nya sendiri (confirm_spk). Assign
+    //   + Berangkat TETAP ada (auto-terisi/self-dispatch, cuma BUKAN manual DC).
+    //   "Tidak PDI" = PDI Mandiri (TETAP wajib, checklist+foto tetap dikerjakan sales).
     // - "self_pickup": konsumen ambil sendiri ke toko — surat jalan DAN
     //   assign/berangkat driver dua-duanya tak pernah kejadian (kasir konfirmasi
-    //   lompat LANGSUNG ke pending_scheduling, DC tinggal tandai selesai).
+    //   lompat LANGSUNG ke pending_scheduling, sales tandai selesai sendiri).
     //   "Tidak PDI" = PDI Mandiri (TETAP wajib, sama seperti sales_delivery).
     val isSelfPickup = job.deliveryMethod == "self_pickup"
-    val isSelfPdiMethod = isSelfPickup || job.deliveryMethod == "sales_delivery"
+    val isSalesDelivery = job.deliveryMethod == "sales_delivery"
+    val isSelfPdiMethod = isSelfPickup || isSalesDelivery
     // "Tidak PDI" cuma BENERAN skip (bukan PDI Mandiri) di metode "driver".
     val pdiSkipped = job.pdiRequired == false && !isSelfPdiMethod
     val steps = buildList {
         add(TimelineStep("SPK Dibuat", job.createdAt))
         add(TimelineStep(if (isSelfPdiMethod) "PDI Mandiri Selesai" else "PDI Selesai", job.pdiAt, job.pdiByName, skipped = pdiSkipped))
         add(TimelineStep("Kasir Konfirmasi", job.spkConfirmedAt))
-        if (!isSelfPickup) {
+        if (!isSelfPdiMethod) {
             add(TimelineStep("Surat Jalan Terbit", job.deliveryNoteAt, job.deliveryNoteNo))
-            add(TimelineStep("Ditugaskan ke Driver", job.assignedAt, job.assignedDriverName))
+        }
+        if (!isSelfPickup) {
+            add(TimelineStep(if (isSalesDelivery) "Ditugaskan (Sales Sendiri)" else "Ditugaskan ke Driver", job.assignedAt, job.assignedDriverName))
             add(TimelineStep("Berangkat", job.dispatchedAt))
         }
         add(TimelineStep(if (isSelfPickup) "Diambil Konsumen" else "Terkirim", job.deliveredAt, job.deliveredBy))
