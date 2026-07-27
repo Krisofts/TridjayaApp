@@ -266,11 +266,7 @@ private fun LazyListScope.homeSection(
                 // karyawan ber-divisi "pdi" tetap dapat tile Antrian PDI. Sales tanpa divisi
                 // pdi TIDAK (kecuali superadmin beri divisi tambahan). Butuh cache roles/divisi
                 // (v2.1) — blob lama terisi setelah profil ter-refresh.
-                val effRoles = buildSet {
-                    state.user?.role?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { add(it) }
-                    state.user?.roles?.forEach { it.trim().lowercase().takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }
-                    state.user?.divisi?.split(",")?.forEach { it.trim().lowercase().takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }
-                }
+                val effRoles = effectiveRoles(state.user)
                 val isPdi = "pdi" in effRoles || "admin" in effRoles || "superadmin" in effRoles
                 QuickAccessRow(
                     onInventory = onQuickAccessInventory,
@@ -291,13 +287,19 @@ private fun LazyListScope.homeSection(
                     showSerialInput = canAccessSerialInput(role),
                     showDeadstock = canAccessDeadstock(role),
                     showMutasiHistori = canAccessMutasiHistori(role),
-                    showPdiQueue = isPdi
+                    showPdiQueue = isPdi,
+                    showCrm = canAccessCrm(effRoles)
                 )
             }
         }
         HomeSection.CRM_SUMMARY -> {
-            item { SectionHeader(title = "Ringkasan CRM", icon = Icons.Rounded.Groups) }
-            item { CrmCard(summary = state.crmSummary) }
+            // Angkanya dihitung dari cache lead lokal, yang diisi `GET /crm/leads`.
+            // Role tanpa akses CRM tak pernah punya isi cache itu → kartu selalu
+            // nol dan menyesatkan. Sembunyikan, sejalan dgn tile CRM di atas.
+            if (canAccessCrm(effectiveRoles(state.user))) {
+                item { SectionHeader(title = "Ringkasan CRM", icon = Icons.Rounded.Groups) }
+                item { CrmCard(summary = state.crmSummary) }
+            }
         }
         HomeSection.LEADERBOARD -> {
             item { SectionHeader(title = "Klasemen", icon = Icons.Rounded.EmojiEvents) }
@@ -446,6 +448,26 @@ internal fun canAccessDeadstock(role: String?): Boolean =
 internal fun canAccessMutasiHistori(role: String?): Boolean =
     role?.trim()?.lowercase() in MUTASI_HISTORI_MENU_ROLES
 
+/** Siapa yang benar-benar bisa memakai menu CRM. Cocok dgn gate `crm-service`
+ *  (`CRM_FULL`/`karyawan_scope`): `karyawan` boleh input + lihat lead miliknya,
+ *  `crm-manager`/admin lihat semua. Role lain (manager, kepala-cabang, owner,
+ *  ai-engineer) dapat 403 di `/crm/leads` — dulu tetap melihat tombolnya lalu
+ *  mendarat di layar gagal (keluhan 2026-07-27). Dicek dari role EFEKTIF
+ *  (role utama + roles + divisi), bukan role utama saja. */
+private val CRM_MENU_ROLES = setOf("karyawan", "crm-manager", "admin", "superadmin")
+
+/** Role EFEKTIF: role utama + `roles` (multi-role) + `divisi` (folding
+ *  divisi-driven access), semuanya lowercase. Dipakai gate tile per-divisi
+ *  (mis. Antrian PDI utk karyawan ber-divisi pdi) dan gate CRM. */
+internal fun effectiveRoles(user: com.krisoft.tridjayaelektronik.data.model.UserDto?): Set<String> = buildSet {
+    user?.role?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { add(it) }
+    user?.roles?.forEach { it.trim().lowercase().takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }
+    user?.divisi?.split(",")?.forEach { it.trim().lowercase().takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }
+}
+
+internal fun canAccessCrm(effectiveRoles: Set<String>): Boolean =
+    effectiveRoles.any { it in CRM_MENU_ROLES }
+
 /**
  * Shortcut row to the app's most-used destinations. Five tiles no longer fit a fixed-width
  * phone row, so this scrolls horizontally with fixed-width tiles instead of weight-splitting.
@@ -470,7 +492,8 @@ private fun QuickAccessRow(
     showSerialInput: Boolean = false,
     showDeadstock: Boolean = false,
     showMutasiHistori: Boolean = false,
-    showPdiQueue: Boolean = false
+    showPdiQueue: Boolean = false,
+    showCrm: Boolean = true
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -516,14 +539,16 @@ private fun QuickAccessRow(
                 modifier = Modifier.width(86.dp)
             )
         }
-        item {
-            QuickAccessTile(
-                icon = Icons.Rounded.Groups,
-                label = "CRM",
-                tint = MaterialTheme.colorScheme.tertiary,
-                onClick = onLeads,
-                modifier = Modifier.width(86.dp)
-            )
+        if (showCrm) {
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.Groups,
+                    label = "CRM",
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    onClick = onLeads,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
         }
         if (showIndent) {
             item {
