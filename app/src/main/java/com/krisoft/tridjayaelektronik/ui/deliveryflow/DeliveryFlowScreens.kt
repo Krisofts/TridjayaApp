@@ -174,11 +174,12 @@ private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
                 Text(job.customerName ?: "-", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${job.namaBarang ?: job.kodeBarang ?: "-"}${job.tipe?.let { " · $it" } ?: ""}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                // Tanpa PDI (2026-07-24, per-barang) — job lompat langsung ke
-                // kasir tanpa checklist PDI, penting kasir/DC tahu kenapa.
+                // PDI Mandiri (per-barang) — PDI tetap dikerjakan, tapi oleh sales
+                // pemilik SPK, bukan tim PDI cabang. Penting kasir/DC tahu siapa yang
+                // ditunggu. (Sampai 2026-07-27 ini berarti "Tanpa PDI"/skip.)
                 if (job.pdiRequired == false) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Tanpa PDI", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
+                    Text("PDI Mandiri", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
                 }
                 // Metode pengiriman alternatif (2026-07-24) — job self_pickup/sales_delivery
                 // tak lewat assign-driver biasa, kasir/DC/driver perlu tahu kenapa.
@@ -304,7 +305,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                             "sales_delivery" -> "Sales Antar Sendiri"
                             else -> "Driver"
                         })
-                        InfoLine("PDI", if (job.pdiRequired == false) "Tanpa PDI" else "PDI (tim PDI)")
+                        InfoLine("PDI", if (job.pdiRequired == false) "PDI Mandiri (sales)" else "PDI (tim PDI)")
                         InfoLine("Merk / Warna", listOfNotNull(job.merk, job.warna).joinToString(" · ").ifBlank { null })
                         InfoLine("No. HP", job.customerPhone)
                         InfoLine("Alamat", job.customerAddress)
@@ -402,11 +403,14 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                 val access = viewModel.access
                 val isMyDriverJob = viewModel.isAdminViewer ||
                     (access.driver && job.assignedDriverId == viewModel.currentUserId)
-                // Self-PDI (2026-07-25, ganti mekanisme skip-PDI 098): sales pemilik
-                // SPK metode diambil-sendiri/antar-sendiri boleh PDI unitnya sendiri —
-                // "bertanggung jawab penuh", bukan lagi auto-skip. Backend (`submit_pdi`)
-                // otoritatif, ini murni gate UI (mirror paritas web `PdiDetailPage`).
-                val isSelfPdiJob = (job.deliveryMethod == "self_pickup" || job.deliveryMethod == "sales_delivery") &&
+                // Self-PDI: sales pemilik SPK boleh PDI unitnya sendiri — "bertanggung
+                // jawab penuh". Syaratnya (mirror `submit_pdi` backend 2026-07-27):
+                // toggle PDI Mandiri (`pdiRequired=false`) ATAU metode diambil-sendiri/
+                // antar-sendiri. `pdiRequired=false` masuk sejak rute skip PDI dibuang —
+                // dulu kombinasi itu tak pernah mampir ke `pending_pdi` sama sekali.
+                // Backend otoritatif, ini murni gate UI (paritas web `PdiDetailPage`).
+                val isSelfPdiJob = (job.pdiRequired == false ||
+                    job.deliveryMethod == "self_pickup" || job.deliveryMethod == "sales_delivery") &&
                     !job.salesUserId.isNullOrBlank() && job.salesUserId == viewModel.currentUserId
                 if (job.driverTerimaUang != null && isMyDriverJob &&
                     (job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT)
@@ -467,24 +471,27 @@ private fun SpkTimelineCard(job: DeliveryJobDto) {
     // Alur beda per metode (2026-07-26, "sales antar sendiri: penugasan +
     // surat tugas otomatis tanpa Delivery Control"):
     // - "driver" (default): Dibuat -> PDI -> Kasir -> Surat Jalan -> Ditugaskan
-    //   -> Berangkat -> Terkirim. "Tidak PDI" beneran skip PDI (langsung pending_spk).
+    //   -> Berangkat -> Terkirim.
     // - "sales_delivery": surat jalan TETAP dibuat (nomor+cap waktu ke-generate
     //   OTOMATIS begitu kasir konfirmasi, bukan manual DC) + auto-assign sales
     //   sbg driver-nya sendiri — SEMUA step (Surat Jalan/Ditugaskan/Berangkat)
     //   tetap tampil, cuma "siapa yang ngerjain" yang beda (sistem, bukan DC).
-    //   "Tidak PDI" = PDI Mandiri (TETAP wajib, checklist+foto tetap dikerjakan sales).
+    //
     // - "self_pickup": konsumen ambil sendiri ke toko — surat jalan DAN
     //   assign/berangkat driver dua-duanya tak pernah kejadian sama sekali
     //   (kasir konfirmasi lompat LANGSUNG ke pending_scheduling, sales tandai
-    //   selesai sendiri). "Tidak PDI" = PDI Mandiri (TETAP wajib).
+    //   selesai sendiri).
+    //
+    // TAK ADA LAGI TAHAP PDI YANG DILEWATI (backend 2026-07-27): `pdiRequired`
+    // cuma menentukan SIAPA yang mengerjakan — false = PDI Mandiri oleh sales
+    // pemilik SPK, true = tim PDI cabang. Checklist + foto wajib di dua-duanya.
     val isSelfPickup = job.deliveryMethod == "self_pickup"
     val isSalesDelivery = job.deliveryMethod == "sales_delivery"
     val isSelfPdiMethod = isSelfPickup || isSalesDelivery
-    // "Tidak PDI" cuma BENERAN skip (bukan PDI Mandiri) di metode "driver".
-    val pdiSkipped = job.pdiRequired == false && !isSelfPdiMethod
+    val isPdiMandiri = job.pdiRequired == false || isSelfPdiMethod
     val steps = buildList {
         add(TimelineStep("SPK Dibuat", job.createdAt))
-        add(TimelineStep(if (isSelfPdiMethod) "PDI Mandiri Selesai" else "PDI Selesai", job.pdiAt, job.pdiByName, skipped = pdiSkipped))
+        add(TimelineStep(if (isPdiMandiri) "PDI Mandiri Selesai" else "PDI Selesai", job.pdiAt, job.pdiByName))
         add(TimelineStep("Kasir Konfirmasi", job.spkConfirmedAt))
         if (!isSelfPickup) {
             add(TimelineStep(if (isSalesDelivery) "Surat Jalan Terbit (Otomatis)" else "Surat Jalan Terbit", job.deliveryNoteAt, job.deliveryNoteNo))
@@ -1433,19 +1440,22 @@ fun CreateSpkScreen(
     LaunchedEffect(barangSearch, spkCabang) { delay(300); viewModel.searchStok(barangSearch, spkCabang) }
     LaunchedEffect(brokerSearch) { delay(300); viewModel.searchBrokers(brokerSearch) }
 
-    // PDI Mandiri (2026-07-26): "diambil sendiri"/"sales antar sendiri" + barang
-    // pertama ber-toggle "PDI Mandiri" (pdiRequired=false) -> langsung lompat ke
-    // form PDI barang itu (bukan balik ke daftar) supaya sales isi checklist+foto
-    // saat itu juga. Selain itu (atau tak match) -> perilaku lama, balik daftar.
+    // PDI Mandiri: barang pertama ber-toggle "PDI Mandiri" (pdiRequired=false) ->
+    // langsung lompat ke form PDI barang itu (bukan balik ke daftar) supaya sales
+    // isi checklist+foto saat itu juga. Tak ada barang mandiri -> balik daftar.
+    // Sejak backend 2026-07-27 syarat metode self_pickup/sales_delivery DIBUANG:
+    // rute skip PDI tak ada lagi, jadi pdiRequired=false pada metode "driver" pun
+    // kini mendarat di pending_pdi dan menunggu sales. Tanpa perubahan ini SPK
+    // begitu nyangkut senyap di antrian PDI — sales balik ke daftar, tak tahu
+    // masih ada yang harus dia kerjakan.
     // id diambil LANGSUNG dari `result.ids` (sejajar `kodePengiriman`, backend
     // 2026-07-26) — BUKAN reverse-lookup search antrian (percobaan pertama:
     // rapuh, kena filter status role-scoped sales + limit pagination, gagal
     // senyap tanpa error yang kelihatan).
     LaunchedEffect(state.lastCreateResult) {
         val result = state.lastCreateResult ?: return@LaunchedEffect
-        val selfPdiMethod = deliveryMethodSel == "self_pickup" || deliveryMethodSel == "sales_delivery"
         val mandiriBaris = items.indexOfFirst { !it.pdiRequired }.takeIf { it >= 0 }?.plus(1)
-        val targetIdx = if (selfPdiMethod && mandiriBaris != null) {
+        val targetIdx = if (mandiriBaris != null) {
             result.kodePengiriman.indexOfFirst { it.contains("-${mandiriBaris}u") }
         } else -1
         val id = result.ids.getOrNull(targetIdx)
