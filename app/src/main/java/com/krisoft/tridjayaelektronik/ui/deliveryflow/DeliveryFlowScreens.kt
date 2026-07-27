@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddAPhoto
+import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
@@ -461,7 +462,15 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
     }
 }
 
-private data class TimelineStep(val label: String, val timestamp: String?, val subtitle: String? = null, val skipped: Boolean = false)
+private data class TimelineStep(
+    val label: String,
+    val timestamp: String?,
+    val subtitle: String? = null,
+    val skipped: Boolean = false,
+    /** done|active|pending|rejected|cancelled (dari server). Fallback lokal
+     *  membiarkannya null → status disimpulkan dari ada/tidaknya timestamp. */
+    val tone: String? = null,
+)
 
 /** Riwayat status SPK (2026-07-26) — mirror `Timeline`/`TimelineStep` web
  *  (`components/delivery/Timeline.tsx`) supaya info lengkap di satu layar,
@@ -495,7 +504,13 @@ private fun SpkTimelineCard(
     val isSalesDelivery = job.deliveryMethod == "sales_delivery"
     val isSelfPdiMethod = isSelfPickup || isSalesDelivery
     val isPdiMandiri = job.pdiRequired == false || isSelfPdiMethod
-    val steps = buildList {
+    // SERVER yang menyusun timeline sejak 2026-07-27 (`delivery/timeline.rs`) —
+    // satu sumber, jadi app & web tak bisa lagi diam-diam berbeda isi. Blok
+    // penyusun lokal di bawah CUMA fallback untuk server lama yang belum
+    // mengirim field `timeline`; jangan tambahkan tahap baru di sini, tambahkan
+    // di backend supaya semua klien ikut sekaligus.
+    val serverSteps = job.timeline.map { TimelineStep(it.label, it.timestamp, it.detail, tone = it.tone) }
+    val steps = serverSteps.ifEmpty { buildList {
         add(TimelineStep("SPK Dibuat", job.createdAt))
         // Peristiwa dari TABEL SAMPING (bug 2026-07-27: dua-duanya tak pernah
         // muncul di timeline mobile). Approval diskon menahan job di
@@ -541,18 +556,27 @@ private fun SpkTimelineCard(
             add(TimelineStep("Setoran Uang ke Kasir", job.setoranKasirAt, job.setoranKasirByNama))
         }
         if (job.status == DeliveryStatusKey.CANCELLED) add(TimelineStep("Dibatalkan", job.updatedAt, job.cancelReason))
-    }
+    } }
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Text("Timeline", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             steps.forEachIndexed { i, step ->
-                val done = !step.timestamp.isNullOrBlank()
+                val rejected = step.tone == "rejected"
+                val done = !rejected && !step.timestamp.isNullOrBlank()
                 Row(verticalAlignment = Alignment.Top) {
                     Icon(
-                        if (done) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                        when {
+                            rejected -> Icons.Rounded.Cancel
+                            done -> Icons.Rounded.CheckCircle
+                            else -> Icons.Rounded.RadioButtonUnchecked
+                        },
                         contentDescription = null,
-                        tint = if (done) Color(0xFF12B76A) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        tint = when {
+                            rejected -> MaterialTheme.colorScheme.error
+                            done -> Color(0xFF12B76A)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        },
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(10.dp))
@@ -561,9 +585,18 @@ private fun SpkTimelineCard(
                             step.label,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (done) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = when {
+                                rejected -> MaterialTheme.colorScheme.error
+                                done -> MaterialTheme.colorScheme.onSurface
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                         )
-                        if (step.skipped) {
+                        if (rejected) {
+                            Text(
+                                listOfNotNull(step.timestamp, step.subtitle).joinToString(" · ").ifBlank { "Ditolak" },
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error,
+                            )
+                        } else if (step.skipped) {
                             Text("Dilewati (tanpa PDI)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else if (done) {
                             Text(

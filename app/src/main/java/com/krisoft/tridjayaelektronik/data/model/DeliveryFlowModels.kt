@@ -138,7 +138,23 @@ data class DeliveryJobDto(
     val setoranKasirNominal: Double? = null,
     val setoranKasirPhotoUrl: String? = null,
     val setoranKasirByNama: String? = null,
-    val setoranKasirAt: String? = null
+    val setoranKasirAt: String? = null,
+    /** Timeline siap-render dari SERVER (2026-07-27) — hanya diisi endpoint
+     *  DETAIL, tidak di list. Satu sumber untuk app & web (termasuk approval
+     *  diskon + form aki dari tabel samping); kosong = server lama, app menyusun
+     *  timeline-nya sendiri. */
+    val timeline: List<TimelineStepDto> = emptyList()
+)
+
+/** Satu tahap timeline SPK (`delivery/timeline.rs`). `tone`:
+ *  done|active|pending|rejected|cancelled. */
+@Serializable
+data class TimelineStepDto(
+    val key: String = "",
+    val label: String = "",
+    val timestamp: String? = null,
+    val detail: String? = null,
+    val tone: String = "pending"
 )
 
 /** Response `GET /api/inventory/delivery` (di dalam `data`). */
