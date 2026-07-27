@@ -59,6 +59,12 @@ fun deliveryNotifRouteKey(type: String): String? = when (type) {
     "delivery_aki_submitted" -> "aki"
     "delivery_aki_decided" -> "pdi"
     "delivery_note_issued" -> "jadwal"
+    // Pengingat berkala SPK nunggak surat jalan (backend 2026-07-27). Tanpa
+    // baris ini tap notifikasi di Pusat Notifikasi cuma menandai dibaca —
+    // padahal justru notif inilah yang tujuannya menyuruh DC bertindak.
+    // Jalur push sudah benar tanpa perubahan (FcmService baca data["route"]
+    // apa adanya, backend mengirim "note").
+    "delivery_note_stalled" -> "note"
     else -> null
 }
 
