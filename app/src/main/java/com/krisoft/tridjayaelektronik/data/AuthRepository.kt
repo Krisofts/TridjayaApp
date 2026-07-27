@@ -53,6 +53,15 @@ class AuthRepository @Inject constructor(
      * HTTP rejection (e.g. 401 with a dead refresh token) still surfaces as a Failure — offline
      * must never mask a genuinely invalid session.
      */
+    /** Kemampuan efektif user dari server (sumber tunggal gate menu). Gagal /
+     *  offline / server lama = `null`, pemanggil jatuh ke gate role lokal. */
+    suspend fun capabilities(): Map<String, Boolean>? = try {
+        val response = api.capabilities()
+        if (response.isSuccessful) response.body()?.data?.capabilities else null
+    } catch (_: Exception) {
+        null
+    }
+
     suspend fun profile(): AuthResult<UserDto> {
         return try {
             val response = api.profile()

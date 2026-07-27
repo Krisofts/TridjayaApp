@@ -26,15 +26,31 @@ internal data class QuickAccessMenu(
     /** Id stabil (dipakai HomeScreen memilih ikon/warna/aksi + dipakai test). */
     val id: String,
     val label: String,
-    /** Role EFEKTIF yang boleh melihat menu ini, atau [ALL_LOGGED_IN]. */
+    /** Kunci kemampuan dari `GET /api/me/capabilities` — SUMBER UTAMA sejak
+     *  2026-07-27. `null` hanya untuk menu yang backend-nya memang tak ber-gate
+     *  (mis. Inventory). */
+    val capability: String?,
+    /** Cadangan saat kemampuan server belum termuat (offline / server lama):
+     *  role EFEKTIF yang boleh melihat menu ini, atau [ALL_LOGGED_IN]. Harus
+     *  tetap mencerminkan guard backend. */
     val allowedRoles: Set<String>,
     /** Guard backend yang dicerminkan — sebut file/konstanta aslinya. */
     val backendGuard: String,
 ) {
-    fun visibleFor(effectiveRoles: Set<String>): Boolean = when {
-        effectiveRoles.isEmpty() -> false // profil belum termuat → jangan tebak, sembunyikan
-        allowedRoles == ALL_LOGGED_IN -> true
-        else -> effectiveRoles.any { it in allowedRoles }
+    /**
+     * `capabilities` dari server dipakai LEBIH DULU; daftar role lokal cuma
+     * cadangan saat peta itu belum ada. Kunci yang absen di peta server
+     * dianggap `false` — server yang tahu daftar role sebenarnya, bukan app.
+     */
+    fun visibleFor(effectiveRoles: Set<String>, capabilities: Map<String, Boolean>?): Boolean {
+        capability?.let { key ->
+            capabilities?.let { caps -> return caps[key] == true }
+        }
+        return when {
+            effectiveRoles.isEmpty() -> false // profil belum termuat → jangan tebak, sembunyikan
+            allowedRoles == ALL_LOGGED_IN -> true
+            else -> effectiveRoles.any { it in allowedRoles }
+        }
     }
 }
 
@@ -69,78 +85,91 @@ internal val SPK_MENU_ROLES: Set<String> = KNOWN_ROLES - "ai-engineer"
 internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
     QuickAccessMenu(
         id = "absen",
+        capability = "absensi.self",
         label = "Absen",
         allowedRoles = STAFF_MENU_ROLES,
         backendGuard = "kinerja-service absensi.rs STAFF_ROLES",
     ),
     QuickAccessMenu(
         id = "gaji",
+        capability = "payroll.self",
         label = "Slip Gaji",
         allowedRoles = STAFF_MENU_ROLES,
         backendGuard = "kinerja-service payroll VIEW_OWN_ROLES (= STAFF_ROLES)",
     ),
     QuickAccessMenu(
         id = "spk",
+        capability = "spk.pipeline",
         label = "SPK",
         allowedRoles = SPK_MENU_ROLES,
         backendGuard = "inventory-service delivery.rs is_pipeline_actor (tolak ai-engineer murni)",
     ),
     QuickAccessMenu(
         id = "pdi_queue",
+        capability = "pdi.queue",
         label = "Antrian PDI",
         allowedRoles = setOf("pdi", "admin", "superadmin"),
         backendGuard = "inventory-service delivery.rs submit_pdi (ROLE_PDI/admin)",
     ),
     QuickAccessMenu(
         id = "inventory",
+        capability = null,
         label = "Inventory",
         allowedRoles = ALL_LOGGED_IN,
         backendGuard = "gateway grup protected — stok cabang tanpa gate role tambahan",
     ),
     QuickAccessMenu(
         id = "crm",
+        capability = "crm.input",
         label = "CRM",
         allowedRoles = CRM_MENU_ROLES,
         backendGuard = "crm-service http.rs CRM_FULL + karyawan_scope",
     ),
     QuickAccessMenu(
         id = "indent",
+        capability = "indent.view",
         label = "Indent",
         allowedRoles = INDENT_MENU_ROLES,
         backendGuard = "gateway INDENT_READ_ROLES",
     ),
     QuickAccessMenu(
         id = "klasemen",
+        capability = "klasemen.view",
         label = "Sales",
         allowedRoles = KLASEMEN_MENU_ROLES,
         backendGuard = "gateway MOBILE_LEADERBOARD_ROLES",
     ),
     QuickAccessMenu(
         id = "opname",
+        capability = "opname.manage",
         label = "Opname",
         allowedRoles = OPNAME_MENU_ROLES,
         backendGuard = "inventory-service opname.rs has_admin/has_manager",
     ),
     QuickAccessMenu(
         id = "harga_gs",
+        capability = "harga_gs.view",
         label = "Harga GS",
         allowedRoles = HARGA_GS_MENU_ROLES,
         backendGuard = "gateway require_price_changes_reader",
     ),
     QuickAccessMenu(
         id = "serial_input",
+        capability = "serial.input",
         label = "Input SN",
         allowedRoles = SERIAL_INPUT_MENU_ROLES,
         backendGuard = "inventory-service serials.rs is_admin_stok_role",
     ),
     QuickAccessMenu(
         id = "deadstock",
+        capability = "deadstock.cabang",
         label = "Deadstock",
         allowedRoles = DEADSTOCK_MENU_ROLES,
         backendGuard = "inventory-service deadstock/mod.rs is_cabang_role",
     ),
     QuickAccessMenu(
         id = "mutasi_histori",
+        capability = "mutasi_histori.view",
         label = "Riwayat Mutasi",
         allowedRoles = MUTASI_HISTORI_MENU_ROLES,
         backendGuard = "tanpa gate role server-side — meniru RoleGuard web InventoryMutasiPage",
@@ -149,5 +178,7 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
 
 /** Menu yang boleh tampil untuk pemilik [effectiveRoles]. Fail-closed: role
  *  kosong (profil belum termuat) = tak ada menu ber-gate yang muncul. */
-internal fun visibleQuickAccessMenus(effectiveRoles: Set<String>): List<QuickAccessMenu> =
-    QUICK_ACCESS_MENUS.filter { it.visibleFor(effectiveRoles) }
+internal fun visibleQuickAccessMenus(
+    effectiveRoles: Set<String>,
+    capabilities: Map<String, Boolean>? = null,
+): List<QuickAccessMenu> = QUICK_ACCESS_MENUS.filter { it.visibleFor(effectiveRoles, capabilities) }

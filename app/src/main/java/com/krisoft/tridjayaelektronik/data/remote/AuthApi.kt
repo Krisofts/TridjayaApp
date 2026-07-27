@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.data.remote
 
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
+import com.krisoft.tridjayaelektronik.data.model.CapabilitiesDto
 import com.krisoft.tridjayaelektronik.data.model.ChangePasswordRequest
 import com.krisoft.tridjayaelektronik.data.model.ForgotPasswordRequest
 import com.krisoft.tridjayaelektronik.data.model.LoginRequest
@@ -29,6 +30,12 @@ interface AuthApi {
 
     @GET("api/auth/profile")
     suspend fun profile(): Response<ApiResponse<UserDto>>
+
+    /** Kemampuan efektif user (backend 2026-07-27) — sumber TUNGGAL untuk
+     *  memutuskan menu mana yang pantas tampil. Menggantikan daftar role yang
+     *  dulu disalin di app dan membusuk diam-diam. */
+    @GET("api/me/capabilities")
+    suspend fun capabilities(): Response<ApiResponse<CapabilitiesDto>>
 
     @PATCH("api/auth/profile")
     suspend fun updateProfile(@Body body: Map<String, String>): Response<ApiResponse<UserDto>>

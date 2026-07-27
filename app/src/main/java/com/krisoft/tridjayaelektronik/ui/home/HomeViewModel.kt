@@ -27,6 +27,10 @@ data class HomeUiState(
     val topBranches: List<LeaderboardBranchItemDto> = emptyList(),
     val topSales: List<LeaderboardSalesItemDto> = emptyList(),
     val crmSummary: LeadSummary? = null,
+    /** Kemampuan dari server (`GET /api/me/capabilities`) — sumber TUNGGAL gate
+     *  menu. `null` = belum termuat / server lama / offline → gate jatuh ke
+     *  daftar role lokal di registri (lihat `visibleQuickAccessMenus`). */
+    val capabilities: Map<String, Boolean>? = null,
     val errorMessage: String? = null
 )
 
@@ -34,7 +38,8 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val getHomeDashboardUseCase: GetHomeDashboardUseCase,
     private val getCrmSummaryUseCase: GetCrmSummaryUseCase,
-    private val updateHomeLayoutUseCase: UpdateHomeLayoutUseCase
+    private val updateHomeLayoutUseCase: UpdateHomeLayoutUseCase,
+    private val authRepository: com.krisoft.tridjayaelektronik.data.AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -52,6 +57,13 @@ class HomeViewModel @Inject constructor(
             }
         }
         loadDashboard()
+        // Kemampuan dari server: fail-soft, gate menu tetap jalan pakai daftar
+        // role lokal kalau panggilan ini gagal (offline / server lama).
+        viewModelScope.launch {
+            authRepository.capabilities()?.let { caps ->
+                _uiState.update { it.copy(capabilities = caps) }
+            }
+        }
     }
 
     /** Move a section one slot earlier in the dashboard order. */

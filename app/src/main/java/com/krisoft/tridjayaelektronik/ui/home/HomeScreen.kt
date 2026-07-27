@@ -267,6 +267,7 @@ private fun LazyListScope.homeSection(
                 // dengan yang dipakai backend saat memutuskan 200/403.
                 QuickAccessRow(
                     effectiveRoles = effectiveRoles(state.user),
+                    capabilities = state.capabilities,
                     onInventory = onQuickAccessInventory,
                     onLeads = onQuickAccessLeads,
                     onIndent = onQuickAccessIndent,
@@ -286,7 +287,7 @@ private fun LazyListScope.homeSection(
             // Angkanya dihitung dari cache lead lokal, yang diisi `GET /crm/leads`.
             // Role tanpa akses CRM tak pernah punya isi cache itu → kartu selalu
             // nol dan menyesatkan. Sembunyikan, sejalan dgn tile CRM di atas.
-            if (canAccessCrm(effectiveRoles(state.user))) {
+            if (visibleQuickAccessMenus(effectiveRoles(state.user), state.capabilities).any { it.id == "crm" }) {
                 item { SectionHeader(title = "Ringkasan CRM", icon = Icons.Rounded.Groups) }
                 item { CrmCard(summary = state.crmSummary) }
             }
@@ -493,6 +494,7 @@ internal fun canAccessCrm(effectiveRoles: Set<String>): Boolean =
 @Composable
 private fun QuickAccessRow(
     effectiveRoles: Set<String>,
+    capabilities: Map<String, Boolean>?,
     onInventory: () -> Unit,
     onLeads: () -> Unit,
     onIndent: () -> Unit,
@@ -509,7 +511,7 @@ private fun QuickAccessRow(
     // Tile dirender dari REGISTRI (`QuickAccessMenus.kt`) — hak akses tiap menu
     // dinyatakan di sana, sekali, di sebelah guard backend yang dicerminkannya.
     // Menambah tile langsung di sini (tanpa entri registri) tidak akan tampil.
-    val menus = visibleQuickAccessMenus(effectiveRoles)
+    val menus = visibleQuickAccessMenus(effectiveRoles, capabilities)
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
         modifier = Modifier.fillMaxWidth().height(224.dp),

@@ -89,3 +89,19 @@ data class ApiErrorResponse(
     val message: String,
     val errors: List<String> = emptyList()
 )
+
+/**
+ * `GET /api/me/capabilities` — kemampuan efektif user, dihitung server dari
+ * SELURUH role efektifnya. Dipakai memutuskan menu mana yang pantas tampil,
+ * menggantikan daftar role yang dulu disalin di app (salinan itu membusuk dan
+ * memunculkan menu yang dijawab 403 — CRM dkk, 2026-07-27).
+ *
+ * BUKAN izin: endpoint tetap menegakkan haknya sendiri, termasuk scoping halus
+ * (karyawan hanya lead miliknya, PDI hanya cabangnya).
+ */
+@Serializable
+data class CapabilitiesDto(
+    val roles: List<String> = emptyList(),
+    /** Kunci tak dikenal app diabaikan; kunci yang absen dianggap `false`. */
+    val capabilities: Map<String, Boolean> = emptyMap(),
+)
