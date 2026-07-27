@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -261,14 +262,11 @@ private fun LazyListScope.homeSection(
         HomeSection.QUICK_ACCESS -> {
             item { SectionHeader(title = "Akses Cepat", icon = Icons.Rounded.Bolt) }
             item {
-                val role = state.user?.role
-                // Role efektif (folded) utk gating tile per-divisi — bukan cuma role utama:
-                // karyawan ber-divisi "pdi" tetap dapat tile Antrian PDI. Sales tanpa divisi
-                // pdi TIDAK (kecuali superadmin beri divisi tambahan). Butuh cache roles/divisi
-                // (v2.1) — blob lama terisi setelah profil ter-refresh.
-                val effRoles = effectiveRoles(state.user)
-                val isPdi = "pdi" in effRoles || "admin" in effRoles || "superadmin" in effRoles
+                // Hak tiap menu dinyatakan di REGISTRI (`QuickAccessMenus.kt`),
+                // dinilai dari role EFEKTIF (role utama + roles + divisi) — sama
+                // dengan yang dipakai backend saat memutuskan 200/403.
                 QuickAccessRow(
+                    effectiveRoles = effectiveRoles(state.user),
                     onInventory = onQuickAccessInventory,
                     onLeads = onQuickAccessLeads,
                     onIndent = onQuickAccessIndent,
@@ -281,17 +279,6 @@ private fun LazyListScope.homeSection(
                     onDeadstock = onQuickAccessDeadstock,
                     onMutasiHistori = onQuickAccessMutasiHistori,
                     onSpkMenu = onSpkMenu,
-                    showIndent = canAccessIndent(effRoles),
-                    showOpname = canAccessOpname(effRoles),
-                    showHargaGs = canAccessHargaGs(effRoles),
-                    showSerialInput = canAccessSerialInput(effRoles),
-                    showDeadstock = canAccessDeadstock(effRoles),
-                    showMutasiHistori = canAccessMutasiHistori(effRoles),
-                    showPdiQueue = isPdi,
-                    showCrm = canAccessCrm(effRoles),
-                    showStaffSelfService = canAccessStaffSelfService(effRoles),
-                    showKlasemen = canAccessKlasemen(effRoles),
-                    showSpk = canAccessSpk(effRoles)
                 )
             }
         }
@@ -416,22 +403,22 @@ private fun EmptyRankRow(message: String) {
  * Inventory/Prospek/Sales are open to every logged-in role. A null role (profile not loaded
  * yet) hides the gated tiles — they appear as soon as the cached profile lands.
  */
-private val INDENT_MENU_ROLES = setOf("admin", "owner", "indent-approver", "manager", "kepala-cabang")
-private val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "manager", "owner")
+internal val INDENT_MENU_ROLES = setOf("admin", "owner", "indent-approver", "manager", "kepala-cabang")
+internal val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "manager", "owner")
 
 /** `require_price_changes_reader` gateway guard (baca tanpa `force`) — lihat gateway/src/lib.rs. */
-private val HARGA_GS_MENU_ROLES = setOf("admin", "manager", "owner", "kepala-cabang", "karyawan")
+internal val HARGA_GS_MENU_ROLES = setOf("admin", "manager", "owner", "kepala-cabang", "karyawan")
 
 /** `is_admin_stok_role` di `serials.rs` — POST /inventory/serial-numbers hanya role ini. */
-private val SERIAL_INPUT_MENU_ROLES = setOf("admin-stok")
+internal val SERIAL_INPUT_MENU_ROLES = setOf("admin-stok")
 
 /** `is_cabang_role` di `deadstock/mod.rs` (dealer dipaksa backend, anti-IDOR) — manager
  *  punya mode terpisah (monitoring+audit, web-only) jadi tidak termasuk di sini. */
-private val DEADSTOCK_MENU_ROLES = setOf("karyawan", "kepala-cabang", "admin-stok")
+internal val DEADSTOCK_MENU_ROLES = setOf("karyawan", "kepala-cabang", "admin-stok")
 
 /** Endpoint mutasi-histori TIDAK di-gate role server-side — RoleGuard halaman web
  *  (`InventoryMutasiPage.tsx`, roles=["admin","admin-stok"]) direplikasi di sini. */
-private val MUTASI_HISTORI_MENU_ROLES = setOf("admin", "admin-stok")
+internal val MUTASI_HISTORI_MENU_ROLES = setOf("admin", "admin-stok")
 
 /** Semua gate menu memakai role EFEKTIF (role utama + roles + divisi), BUKAN
  *  role utama saja — backend juga menilai dari daftar itu. Dulu role utama saja:
@@ -458,7 +445,7 @@ internal fun canAccessMutasiHistori(roles: Set<String>): Boolean =
 /** `STAFF_ROLES` di kinerja-service (`absensi.rs`) — dipakai absensi DAN slip
  *  gaji (`VIEW_OWN_ROLES = STAFF_ROLES`). `crm-manager`/`ai-engineer` TIDAK ada
  *  di sana, jadi dua menu itu 403 untuk mereka. */
-private val STAFF_MENU_ROLES = setOf(
+internal val STAFF_MENU_ROLES = setOf(
     "karyawan", "kepala-cabang", "admin-sales", "sales", "pdi", "driver", "kasir",
     "delivery-control", "admin-stok", "operator", "agent", "hrd", "manager", "admin",
     "superadmin", "owner",
@@ -468,7 +455,7 @@ internal fun canAccessStaffSelfService(roles: Set<String>): Boolean =
     roles.any { it in STAFF_MENU_ROLES }
 
 /** `MOBILE_LEADERBOARD_ROLES` gateway — lihat gateway/src/lib.rs. */
-private val KLASEMEN_MENU_ROLES = setOf(
+internal val KLASEMEN_MENU_ROLES = setOf(
     "manager", "sales-manager", "kepala-cabang", "admin", "superadmin", "owner",
     "karyawan", "agent", "operator", "admin-sales",
 )
@@ -485,7 +472,7 @@ internal fun canAccessSpk(roles: Set<String>): Boolean =
 /** Siapa yang benar-benar dilayani `crm-service`: `karyawan` (input + lead
  *  miliknya sendiri, lewat `karyawan_scope`) dan `crm-manager`/admin (`CRM_FULL`).
  *  Manager, kepala-cabang, owner, ai-engineer dapat 403 di `/crm/leads`. */
-private val CRM_MENU_ROLES = setOf("karyawan", "crm-manager", "admin", "superadmin")
+internal val CRM_MENU_ROLES = setOf("karyawan", "crm-manager", "admin", "superadmin")
 
 /** Role EFEKTIF: role utama + `roles` (multi-role) + `divisi` (folding
  *  divisi-driven access), semuanya lowercase. Backend menilai hak dari daftar
@@ -505,6 +492,7 @@ internal fun canAccessCrm(effectiveRoles: Set<String>): Boolean =
  */
 @Composable
 private fun QuickAccessRow(
+    effectiveRoles: Set<String>,
     onInventory: () -> Unit,
     onLeads: () -> Unit,
     onIndent: () -> Unit,
@@ -517,161 +505,64 @@ private fun QuickAccessRow(
     onDeadstock: () -> Unit,
     onMutasiHistori: () -> Unit,
     onSpkMenu: (String) -> Unit,
-    showIndent: Boolean = true,
-    showOpname: Boolean = true,
-    showHargaGs: Boolean = true,
-    showSerialInput: Boolean = false,
-    showDeadstock: Boolean = false,
-    showMutasiHistori: Boolean = false,
-    showPdiQueue: Boolean = false,
-    showCrm: Boolean = true,
-    showStaffSelfService: Boolean = true,
-    showKlasemen: Boolean = true,
-    showSpk: Boolean = true
 ) {
+    // Tile dirender dari REGISTRI (`QuickAccessMenus.kt`) — hak akses tiap menu
+    // dinyatakan di sana, sekali, di sebelah guard backend yang dicerminkannya.
+    // Menambah tile langsung di sini (tanpa entri registri) tidak akan tampil.
+    val menus = visibleQuickAccessMenus(effectiveRoles)
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
         modifier = Modifier.fillMaxWidth().height(224.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Absen & Slip Gaji dilayani `STAFF_ROLES` kinerja-service (payroll
-        // `VIEW_OWN_ROLES` = konstanta yang sama). `crm-manager`/`ai-engineer`
-        // tak ada di sana → dua menu ini 403 untuk mereka.
-        if (showStaffSelfService) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.Fingerprint,
-                    label = "Absen",
-                    tint = Color(0xFF0E9384),
-                    onClick = onAbsen,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.Payments,
-                    label = "Slip Gaji",
-                    tint = Color(0xFF7A5AF8),
-                    onClick = onGaji,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        // Alur pengiriman SPK — satu pintu (hub); RBAC per tahap di backend.
-        // `is_pipeline_actor` menolak ai-engineer murni.
-        if (showSpk) {
-            item {
-                QuickAccessTile(Icons.Rounded.LocalShipping, "SPK", Color(0xFF1E63E9), { onSpkMenu("hub") }, Modifier.width(86.dp))
-            }
-        }
-        // Akses cepat LANGSUNG ke antrian PDI (skip hub → riwayat) — HANYA divisi pdi
-        // (folded) / admin. PDI dikerjakan di halaman ini, bukan riwayat SPK.
-        if (showPdiQueue) {
-            item {
-                QuickAccessTile(Icons.Rounded.FactCheck, "Antrian PDI", Color(0xFF6941C6), { onSpkMenu("pdi") }, Modifier.width(86.dp))
-            }
-        }
-        item {
+        items(menus, key = { it.id }) { menu ->
+            val (icon, tint) = quickAccessVisual(menu.id)
             QuickAccessTile(
-                icon = Icons.Rounded.Inventory2,
-                label = "Inventory",
-                tint = MaterialTheme.colorScheme.primary,
-                onClick = onInventory,
+                icon = icon,
+                label = menu.label,
+                tint = tint,
+                onClick = {
+                    when (menu.id) {
+                        "absen" -> onAbsen()
+                        "gaji" -> onGaji()
+                        "spk" -> onSpkMenu("hub")
+                        "pdi_queue" -> onSpkMenu("pdi")
+                        "inventory" -> onInventory()
+                        "crm" -> onLeads()
+                        "indent" -> onIndent()
+                        "klasemen" -> onSales()
+                        "opname" -> onOpname()
+                        "harga_gs" -> onHargaGs()
+                        "serial_input" -> onSerialInput()
+                        "deadstock" -> onDeadstock()
+                        "mutasi_histori" -> onMutasiHistori()
+                    }
+                },
                 modifier = Modifier.width(86.dp)
             )
         }
-        if (showCrm) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.Groups,
-                    label = "CRM",
-                    tint = MaterialTheme.colorScheme.tertiary,
-                    onClick = onLeads,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showIndent) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.PlaylistAddCheck,
-                    label = "Indent",
-                    tint = MaterialTheme.colorScheme.secondary,
-                    onClick = onIndent,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        // Klasemen sales → `MOBILE_LEADERBOARD_ROLES` di gateway (tanpa
-        // crm-manager/ai-engineer).
-        if (showKlasemen) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.BarChart,
-                    label = "Sales",
-                    tint = Color(0xFF12B76A),
-                    onClick = onSales,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showOpname) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.FactCheck,
-                    label = "Opname",
-                    tint = Color(0xFF0086C9),
-                    onClick = onOpname,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showHargaGs) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.PriceChange,
-                    label = "Harga GS",
-                    tint = Color(0xFFB5670C),
-                    onClick = onHargaGs,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showSerialInput) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.Numbers,
-                    label = "Input SN",
-                    tint = Color(0xFF7A5AF8),
-                    onClick = onSerialInput,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showDeadstock) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.Inventory2,
-                    label = "Deadstock",
-                    tint = Color(0xFF93370D),
-                    onClick = onDeadstock,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
-        if (showMutasiHistori) {
-            item {
-                QuickAccessTile(
-                    icon = Icons.Rounded.SwapHoriz,
-                    label = "Riwayat Mutasi",
-                    tint = Color(0xFF1E63E9),
-                    onClick = onMutasiHistori,
-                    modifier = Modifier.width(86.dp)
-                )
-            }
-        }
     }
+}
+
+/** Ikon + warna per menu. Dipisah dari registri supaya registri tetap murni data
+ *  (bisa diuji tanpa Compose). */
+@Composable
+private fun quickAccessVisual(id: String): Pair<androidx.compose.ui.graphics.vector.ImageVector, Color> = when (id) {
+    "absen" -> Pair(Icons.Rounded.Fingerprint, Color(0xFF0E9384))
+    "gaji" -> Pair(Icons.Rounded.Payments, Color(0xFF7A5AF8))
+    "spk" -> Pair(Icons.Rounded.LocalShipping, Color(0xFF1E63E9))
+    "pdi_queue" -> Pair(Icons.Rounded.FactCheck, Color(0xFF6941C6))
+    "inventory" -> Pair(Icons.Rounded.Inventory2, MaterialTheme.colorScheme.primary)
+    "crm" -> Pair(Icons.Rounded.Groups, MaterialTheme.colorScheme.tertiary)
+    "indent" -> Pair(Icons.Rounded.PlaylistAddCheck, MaterialTheme.colorScheme.secondary)
+    "klasemen" -> Pair(Icons.Rounded.BarChart, Color(0xFF12B76A))
+    "opname" -> Pair(Icons.Rounded.FactCheck, Color(0xFF0BA5EC))
+    "harga_gs" -> Pair(Icons.Rounded.PriceChange, Color(0xFFF79009))
+    "serial_input" -> Pair(Icons.Rounded.Numbers, Color(0xFF667085))
+    "deadstock" -> Pair(Icons.Rounded.Inventory2, Color(0xFFB54708))
+    "mutasi_histori" -> Pair(Icons.Rounded.SwapHoriz, Color(0xFF7A5AF8))
+    else -> Pair(Icons.Rounded.Bolt, MaterialTheme.colorScheme.primary)
 }
 
 @Composable
