@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1377,18 +1378,33 @@ private fun PhotoBox(bitmap: Bitmap?, label: String, onCapture: () -> Unit) {
 private fun PhotoReviewDialog(bitmap: Bitmap, onRetake: () -> Unit, onConfirm: () -> Unit) {
     Dialog(onDismissRequest = onRetake, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
+            // Dialog full-screen menutupi status bar & navigation bar, jadi inset-nya harus
+            // dibayar sendiri (pola sama `navBottom` di layar-layar lain file ini). Tanpa ini
+            // tombol Ambil Ulang/Pakai Foto Ini menempel di tepi paling bawah — tertindih
+            // gesture bar dan susah dijangkau ibu jari.
+            val systemBars = WindowInsets.systemBars.asPaddingValues()
             Column(Modifier.fillMaxSize()) {
                 Text(
                     "Cek hasil foto — pastikan watermark jam & lokasi terbaca",
                     color = Color.White, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 12.dp + systemBars.calculateTopPadding())
                 )
                 Image(
                     bitmap = bitmap.asImageBitmap(), contentDescription = "Pratinjau foto",
                     contentScale = ContentScale.Fit, modifier = Modifier.weight(1f).fillMaxWidth()
                 )
                 Row(
-                    Modifier.fillMaxWidth().padding(16.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 16.dp,
+                            // Naikkan tombol dari tepi layar: inset navigasi + jarak nyaman.
+                            bottom = 28.dp + systemBars.calculateBottomPadding(),
+                        ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ExpressiveOutlinedButton(onClick = onRetake, modifier = Modifier.weight(1f)) { Text("Ambil Ulang") }
