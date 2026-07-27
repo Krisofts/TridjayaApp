@@ -88,6 +88,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
+import com.krisoft.tridjayaelektronik.ui.home.formatRupiahShort
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
@@ -376,7 +377,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     }
                 }
                 Spacer(Modifier.height(14.dp))
-                SpkTimelineCard(job)
+                SpkTimelineCard(job, state.jobDiscounts, state.akiForms)
                 // Foto bukti (PDI siap kirim / serah terima / terima uang) — dimuat
                 // ter-autentikasi via VM (kasir/DC/driver bisa verifikasi dari HP).
                 if (state.jobPhotos.isNotEmpty()) {
@@ -468,7 +469,11 @@ private data class TimelineStep(val label: String, val timestamp: String?, val s
  *  di-skip utk `self_pickup` (job lompat pending_scheduling→delivered
  *  langsung, tak pernah lewat driver beneran). */
 @Composable
-private fun SpkTimelineCard(job: DeliveryJobDto) {
+private fun SpkTimelineCard(
+    job: DeliveryJobDto,
+    discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
+    akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
+) {
     // Alur beda per metode (2026-07-26, "sales antar sendiri: penugasan +
     // surat tugas otomatis tanpa Delivery Control"):
     // - "driver" (default): Dibuat -> PDI -> Kasir -> Surat Jalan -> Ditugaskan
@@ -492,14 +497,49 @@ private fun SpkTimelineCard(job: DeliveryJobDto) {
     val isPdiMandiri = job.pdiRequired == false || isSelfPdiMethod
     val steps = buildList {
         add(TimelineStep("SPK Dibuat", job.createdAt))
+        // Peristiwa dari TABEL SAMPING (bug 2026-07-27: dua-duanya tak pernah
+        // muncul di timeline mobile). Approval diskon menahan job di
+        // `pending_discount`, approval form aki menahan `submit_pdi` — urutannya
+        // mengikuti kejadian nyata, jadi keduanya sebelum langkah PDI.
+        discounts.firstOrNull()?.let { d ->
+            val nilai = if (d.discountType == "percent") "${d.value.toInt()}%" else formatRupiahShort(d.value)
+            when (d.status) {
+                "approved" -> add(TimelineStep("Diskon Disetujui", d.decidedAt, "$nilai oleh ${d.decidedByName ?: "-"}"))
+                "rejected" -> add(TimelineStep("Diskon Ditolak", d.decidedAt, d.decisionNote ?: d.decidedByName))
+                else -> add(TimelineStep("Menunggu Approval Diskon", null, "$nilai diajukan ${d.requestedByName ?: "-"}"))
+            }
+        }
+        // Form terbaru yang menentukan gate sekarang (form bisa >1 kalau pernah ditolak lalu diajukan ulang).
+        akiForms.maxByOrNull { it.createdAt }?.let { f ->
+            add(TimelineStep("Form Pengambilan Aki Diisi", f.createdAt, "${f.merkTipe} oleh ${f.createdByNama}"))
+            when (f.approvalStatus) {
+                "approved" -> add(TimelineStep("Form Aki Disetujui", f.akiApproverApprovedAt, f.akiApproverApprovedNama))
+                "rejected" -> add(TimelineStep("Form Aki Ditolak", f.rejectedAt, f.rejectedReason ?: f.rejectedByNama))
+                else -> add(TimelineStep("Menunggu Approval Form Aki", null, "approver pusat belum memutuskan"))
+            }
+        }
         add(TimelineStep(if (isPdiMandiri) "PDI Mandiri Selesai" else "PDI Selesai", job.pdiAt, job.pdiByName))
         add(TimelineStep("Kasir Konfirmasi", job.spkConfirmedAt))
         if (!isSelfPickup) {
             add(TimelineStep(if (isSalesDelivery) "Surat Jalan Terbit (Otomatis)" else "Surat Jalan Terbit", job.deliveryNoteAt, job.deliveryNoteNo))
             add(TimelineStep(if (isSalesDelivery) "Ditugaskan (Sales Sendiri, Otomatis)" else "Ditugaskan ke Driver", job.assignedAt, job.assignedDriverName))
             add(TimelineStep("Berangkat", job.dispatchedAt))
+            // Chat H-1 (088) = SYARAT serah terima; tanpa step ini tak kelihatan
+            // kenapa job "diam" di assigned/in_transit. Job pre-088 tak punya cap
+            // waktu ini — tampilkan hanya kalau relevan.
+            if (!job.consumerChatAt.isNullOrBlank() ||
+                job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT
+            ) {
+                add(TimelineStep("Chat Konsumen (H-1)", job.consumerChatAt))
+            }
         }
         add(TimelineStep(if (isSelfPickup) "Diambil Konsumen" else "Terkirim", job.deliveredAt, job.deliveredBy))
+        // Setoran uang COD driver → kasir (105): terjadi SETELAH delivered dan
+        // non-blocking, jadi tanpa step ini tak ada tempat mana pun di detail SPK
+        // yang menunjukkan uangnya sudah disetor atau belum.
+        if (job.driverTerimaUang == true) {
+            add(TimelineStep("Setoran Uang ke Kasir", job.setoranKasirAt, job.setoranKasirByNama))
+        }
         if (job.status == DeliveryStatusKey.CANCELLED) add(TimelineStep("Dibatalkan", job.updatedAt, job.cancelReason))
     }
     ClayCard(modifier = Modifier.fillMaxWidth()) {

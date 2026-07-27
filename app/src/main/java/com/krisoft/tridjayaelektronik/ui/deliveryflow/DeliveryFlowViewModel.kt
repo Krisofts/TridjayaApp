@@ -66,6 +66,10 @@ data class DeliveryFlowUiState(
     /** Gate form aki (tahap pending_pdi, kategori ber-flag `requiresAkiForm`). */
     val requiresAki: Boolean = false,
     val akiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
+    /** Riwayat diskon baris SPK yang sedang dibuka — HANYA untuk timeline detail
+     *  (beda dari [discounts] yang antrian approval). Kosong = tak pernah diajukan
+     *  diskon, atau job lama dari worker GS (tak punya kode batch manual). */
+    val jobDiscounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
     /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
     val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
     /** Foto bukti aki ter-autentikasi per form id (2026-07-24) — key = form.id. */
@@ -213,6 +217,7 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Success -> {
                     _state.update { it.copy(loading = false, detail = res.data) }
                     loadAuxFor(res.data)
+                    loadTimelineExtras(res.data)
                     loadJobPhotos(res.data)
                 }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
@@ -269,6 +274,36 @@ class DeliveryFlowViewModel @Inject constructor(
                 val address = LocationProvider.addressFor(appContext, loc.latitude, loc.longitude)
                 _state.update { it.copy(gpsAddress = address, gpsAddressLoading = false) }
             }
+        }
+    }
+
+    /**
+     * Data timeline yang hidup di TABEL SAMPING — approval diskon
+     * (`discount_requests`) dan form aki (`delivery_aki_forms`). Dimuat untuk
+     * SEMUA status, sengaja TERPISAH dari [loadAuxFor] yang stage-specific:
+     * approval diskon terjadi di `pending_discount` dan form aki di
+     * `pending_pdi`, tapi keduanya harus tetap kelihatan di timeline setelah
+     * tahapnya lewat. Bug 2026-07-27: form aki cuma dimuat saat status
+     * `pending_pdi`, jadi SPK sepeda listrik yang tertahan di
+     * `pending_discount` tak pernah menampilkan approval aki maupun diskon.
+     *
+     * Fail-soft penuh: gagal/kosong = step-nya tak muncul, detail tetap kebuka.
+     */
+    private fun loadTimelineExtras(job: DeliveryJobDto) {
+        viewModelScope.launch {
+            val forms = (repository.jobAkiForms(job.id) as? AuthResult.Success)?.data.orEmpty()
+            _state.update { it.copy(akiForms = if (it.akiForms.isEmpty()) forms else it.akiForms) }
+        }
+        // Kode batch cuma ada di job input manual sales (`DLV-M{batch}-{baris}u{seq}`);
+        // job worker GS lama tak pernah punya discount_request.
+        val baris = job.baris ?: return
+        val unitSeq = job.unitSeq ?: return
+        val suffix = "-${baris}u$unitSeq"
+        if (job.inputChannel != "manual" || !job.kodePengiriman.endsWith(suffix)) return
+        val batch = job.kodePengiriman.removeSuffix(suffix)
+        viewModelScope.launch {
+            val history = (repository.discountHistory(batch, baris) as? AuthResult.Success)?.data.orEmpty()
+            _state.update { it.copy(jobDiscounts = history) }
         }
     }
 

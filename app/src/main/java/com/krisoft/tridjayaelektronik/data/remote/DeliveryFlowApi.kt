@@ -202,6 +202,16 @@ interface DeliveryFlowApi {
         @Query("limit") limit: Int = 100
     ): Response<ApiResponse<DiscountListData>>
 
+    /** Riwayat pengajuan diskon SATU baris SPK — dipakai timeline detail SPK.
+     *  Balasannya array langsung di `data` (bukan `{items:[...]}` seperti
+     *  `discountRequests`). Terbuka untuk semua aktor pipeline, bukan cuma
+     *  approver. */
+    @GET("api/inventory/discount-requests/by-batch")
+    suspend fun discountHistory(
+        @Query("spkBatchKode") spkBatchKode: String,
+        @Query("baris") baris: Int
+    ): Response<ApiResponse<List<DiscountRequestDto>>>
+
     @POST("api/inventory/discount-requests/{id}/approve")
     suspend fun approveDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
 

@@ -547,9 +547,14 @@ data class AkiFormDto(
     val approvalStatus: String = "pending",
     val rejectedByNama: String? = null,
     val rejectedReason: String? = null,
+    val rejectedAt: String? = null,
     /** Satu-satunya slot yang masih ditulis backend (approver pusat). */
     val akiApproverApprovedNama: String? = null,
-    val akiApproverApprovedAt: String? = null
+    val akiApproverApprovedAt: String? = null,
+    /** Dipakai timeline detail SPK (2026-07-27): kapan & siapa yang mengisi form,
+     *  plus penentu form MANA yang berlaku kalau ada pengajuan ulang. */
+    val createdAt: String = "",
+    val createdByNama: String = ""
 )
 
 @Serializable
