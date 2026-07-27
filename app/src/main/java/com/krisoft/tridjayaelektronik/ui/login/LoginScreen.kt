@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -55,6 +56,16 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .systemBarsPadding()
+            // Edge-to-edge (decorFitsSystemWindows=false di Theme.kt) → window TIDAK ikut
+            // resize saat keyboard muncul, jadi `adjustResize` di manifest saja tak cukup:
+            // tanpa ini field NIK/password tertutup keyboard dan tak bisa di-scroll ke atas
+            // (viewport scroll-nya masih setinggi layar penuh). imePadding = 0 saat keyboard
+            // tertutup, menyusut ke atas keyboard saat terbuka → field ter-fokus otomatis
+            // ter-scroll ke area terlihat. WAJIB sebelum verticalScroll: padding di luar
+            // scroll = viewport-nya yang mengecil; di dalam scroll cuma menambah ruang
+            // kosong di bawah konten. Layar auth lain sudah dapat ini dari
+            // `TridjayaCollapsibleHeader`; layar login tidak memakai wrapper itu.
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
