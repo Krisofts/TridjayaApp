@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.data.model
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -48,14 +49,19 @@ class DeliveryFlow088Test {
         assertTrue(s.contains("\"Unit bersih\""))
     }
 
+    /** `driverTerimaNominal` DIBUANG dari body sejak COD Full/DP (2026-07-25):
+     *  server yang menghitung sisa tagihan dari `hargaOtr`/`codDpAmount`, supaya
+     *  tak bisa berbeda dengan angka SPK. Yang dikirim klien kini modenya. */
     @Test
-    fun `item body serialize driverTerimaUang + nominal`() {
+    fun `item body serialize COD tanpa nominal hitungan klien`() {
         val item = CreateDeliveryItemBody(
             kodeBarang = "K", namaBarang = "N", kategori = "C", merk = "M", tipe = "T",
-            hargaOtr = 1.0, driverTerimaUang = true, driverTerimaNominal = 150000.0
+            hargaOtr = 1.0, driverTerimaUang = true, codPaymentMode = "dp", codDpAmount = 150000.0
         )
         val s = json.encodeToString(CreateDeliveryItemBody.serializer(), item)
         assertTrue(s.contains("\"driverTerimaUang\":true"))
-        assertTrue(s.contains("\"driverTerimaNominal\""))
+        assertTrue(s.contains("\"codPaymentMode\":\"dp\""))
+        assertTrue(s.contains("\"codDpAmount\""))
+        assertFalse(s.contains("driverTerimaNominal"))
     }
 }

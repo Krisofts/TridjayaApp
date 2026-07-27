@@ -281,14 +281,17 @@ private fun LazyListScope.homeSection(
                     onDeadstock = onQuickAccessDeadstock,
                     onMutasiHistori = onQuickAccessMutasiHistori,
                     onSpkMenu = onSpkMenu,
-                    showIndent = canAccessIndent(role),
-                    showOpname = canAccessOpname(role),
-                    showHargaGs = canAccessHargaGs(role),
-                    showSerialInput = canAccessSerialInput(role),
-                    showDeadstock = canAccessDeadstock(role),
-                    showMutasiHistori = canAccessMutasiHistori(role),
+                    showIndent = canAccessIndent(effRoles),
+                    showOpname = canAccessOpname(effRoles),
+                    showHargaGs = canAccessHargaGs(effRoles),
+                    showSerialInput = canAccessSerialInput(effRoles),
+                    showDeadstock = canAccessDeadstock(effRoles),
+                    showMutasiHistori = canAccessMutasiHistori(effRoles),
                     showPdiQueue = isPdi,
-                    showCrm = canAccessCrm(effRoles)
+                    showCrm = canAccessCrm(effRoles),
+                    showStaffSelfService = canAccessStaffSelfService(effRoles),
+                    showKlasemen = canAccessKlasemen(effRoles),
+                    showSpk = canAccessSpk(effRoles)
                 )
             }
         }
@@ -430,35 +433,63 @@ private val DEADSTOCK_MENU_ROLES = setOf("karyawan", "kepala-cabang", "admin-sto
  *  (`InventoryMutasiPage.tsx`, roles=["admin","admin-stok"]) direplikasi di sini. */
 private val MUTASI_HISTORI_MENU_ROLES = setOf("admin", "admin-stok")
 
-internal fun canAccessIndent(role: String?): Boolean =
-    role?.trim()?.lowercase() in INDENT_MENU_ROLES
+/** Semua gate menu memakai role EFEKTIF (role utama + roles + divisi), BUKAN
+ *  role utama saja — backend juga menilai dari daftar itu. Dulu role utama saja:
+ *  pemegang `indent-approver` (implied dari page-grant) dan karyawan ber-divisi
+ *  `admin-stok` kehilangan menu yang sebenarnya boleh mereka pakai. */
+internal fun canAccessIndent(roles: Set<String>): Boolean =
+    roles.any { it in INDENT_MENU_ROLES }
 
-internal fun canAccessOpname(role: String?): Boolean =
-    role?.trim()?.lowercase() in OPNAME_MENU_ROLES
+internal fun canAccessOpname(roles: Set<String>): Boolean =
+    roles.any { it in OPNAME_MENU_ROLES }
 
-internal fun canAccessHargaGs(role: String?): Boolean =
-    role?.trim()?.lowercase() in HARGA_GS_MENU_ROLES
+internal fun canAccessHargaGs(roles: Set<String>): Boolean =
+    roles.any { it in HARGA_GS_MENU_ROLES }
 
-internal fun canAccessSerialInput(role: String?): Boolean =
-    role?.trim()?.lowercase() in SERIAL_INPUT_MENU_ROLES
+internal fun canAccessSerialInput(roles: Set<String>): Boolean =
+    roles.any { it in SERIAL_INPUT_MENU_ROLES }
 
-internal fun canAccessDeadstock(role: String?): Boolean =
-    role?.trim()?.lowercase() in DEADSTOCK_MENU_ROLES
+internal fun canAccessDeadstock(roles: Set<String>): Boolean =
+    roles.any { it in DEADSTOCK_MENU_ROLES }
 
-internal fun canAccessMutasiHistori(role: String?): Boolean =
-    role?.trim()?.lowercase() in MUTASI_HISTORI_MENU_ROLES
+internal fun canAccessMutasiHistori(roles: Set<String>): Boolean =
+    roles.any { it in MUTASI_HISTORI_MENU_ROLES }
 
-/** Siapa yang benar-benar bisa memakai menu CRM. Cocok dgn gate `crm-service`
- *  (`CRM_FULL`/`karyawan_scope`): `karyawan` boleh input + lihat lead miliknya,
- *  `crm-manager`/admin lihat semua. Role lain (manager, kepala-cabang, owner,
- *  ai-engineer) dapat 403 di `/crm/leads` — dulu tetap melihat tombolnya lalu
- *  mendarat di layar gagal (keluhan 2026-07-27). Dicek dari role EFEKTIF
- *  (role utama + roles + divisi), bukan role utama saja. */
+/** `STAFF_ROLES` di kinerja-service (`absensi.rs`) — dipakai absensi DAN slip
+ *  gaji (`VIEW_OWN_ROLES = STAFF_ROLES`). `crm-manager`/`ai-engineer` TIDAK ada
+ *  di sana, jadi dua menu itu 403 untuk mereka. */
+private val STAFF_MENU_ROLES = setOf(
+    "karyawan", "kepala-cabang", "admin-sales", "sales", "pdi", "driver", "kasir",
+    "delivery-control", "admin-stok", "operator", "agent", "hrd", "manager", "admin",
+    "superadmin", "owner",
+)
+
+internal fun canAccessStaffSelfService(roles: Set<String>): Boolean =
+    roles.any { it in STAFF_MENU_ROLES }
+
+/** `MOBILE_LEADERBOARD_ROLES` gateway — lihat gateway/src/lib.rs. */
+private val KLASEMEN_MENU_ROLES = setOf(
+    "manager", "sales-manager", "kepala-cabang", "admin", "superadmin", "owner",
+    "karyawan", "agent", "operator", "admin-sales",
+)
+
+internal fun canAccessKlasemen(roles: Set<String>): Boolean =
+    roles.any { it in KLASEMEN_MENU_ROLES }
+
+/** `is_pipeline_actor` di `delivery.rs`: semua role KECUALI ai-engineer murni
+ *  (dan aktor tanpa role sama sekali). */
+internal fun canAccessSpk(roles: Set<String>): Boolean =
+    roles.any { it in setOf("admin", "superadmin", "manager") } ||
+        (roles.isNotEmpty() && roles != setOf("ai-engineer"))
+
+/** Siapa yang benar-benar dilayani `crm-service`: `karyawan` (input + lead
+ *  miliknya sendiri, lewat `karyawan_scope`) dan `crm-manager`/admin (`CRM_FULL`).
+ *  Manager, kepala-cabang, owner, ai-engineer dapat 403 di `/crm/leads`. */
 private val CRM_MENU_ROLES = setOf("karyawan", "crm-manager", "admin", "superadmin")
 
 /** Role EFEKTIF: role utama + `roles` (multi-role) + `divisi` (folding
- *  divisi-driven access), semuanya lowercase. Dipakai gate tile per-divisi
- *  (mis. Antrian PDI utk karyawan ber-divisi pdi) dan gate CRM. */
+ *  divisi-driven access), semuanya lowercase. Backend menilai hak dari daftar
+ *  yang sama — gate menu harus ikut, bukan cuma role utama. */
 internal fun effectiveRoles(user: com.krisoft.tridjayaelektronik.data.model.UserDto?): Set<String> = buildSet {
     user?.role?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { add(it) }
     user?.roles?.forEach { it.trim().lowercase().takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }
@@ -493,7 +524,10 @@ private fun QuickAccessRow(
     showDeadstock: Boolean = false,
     showMutasiHistori: Boolean = false,
     showPdiQueue: Boolean = false,
-    showCrm: Boolean = true
+    showCrm: Boolean = true,
+    showStaffSelfService: Boolean = true,
+    showKlasemen: Boolean = true,
+    showSpk: Boolean = true
 ) {
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
@@ -501,27 +535,35 @@ private fun QuickAccessRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            QuickAccessTile(
-                icon = Icons.Rounded.Fingerprint,
-                label = "Absen",
-                tint = Color(0xFF0E9384),
-                onClick = onAbsen,
-                modifier = Modifier.width(86.dp)
-            )
-        }
-        item {
-            QuickAccessTile(
-                icon = Icons.Rounded.Payments,
-                label = "Slip Gaji",
-                tint = Color(0xFF7A5AF8),
-                onClick = onGaji,
-                modifier = Modifier.width(86.dp)
-            )
+        // Absen & Slip Gaji dilayani `STAFF_ROLES` kinerja-service (payroll
+        // `VIEW_OWN_ROLES` = konstanta yang sama). `crm-manager`/`ai-engineer`
+        // tak ada di sana → dua menu ini 403 untuk mereka.
+        if (showStaffSelfService) {
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.Fingerprint,
+                    label = "Absen",
+                    tint = Color(0xFF0E9384),
+                    onClick = onAbsen,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.Payments,
+                    label = "Slip Gaji",
+                    tint = Color(0xFF7A5AF8),
+                    onClick = onGaji,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
         }
         // Alur pengiriman SPK — satu pintu (hub); RBAC per tahap di backend.
-        item {
-            QuickAccessTile(Icons.Rounded.LocalShipping, "SPK", Color(0xFF1E63E9), { onSpkMenu("hub") }, Modifier.width(86.dp))
+        // `is_pipeline_actor` menolak ai-engineer murni.
+        if (showSpk) {
+            item {
+                QuickAccessTile(Icons.Rounded.LocalShipping, "SPK", Color(0xFF1E63E9), { onSpkMenu("hub") }, Modifier.width(86.dp))
+            }
         }
         // Akses cepat LANGSUNG ke antrian PDI (skip hub → riwayat) — HANYA divisi pdi
         // (folded) / admin. PDI dikerjakan di halaman ini, bukan riwayat SPK.
@@ -561,14 +603,18 @@ private fun QuickAccessRow(
                 )
             }
         }
-        item {
-            QuickAccessTile(
-                icon = Icons.Rounded.BarChart,
-                label = "Sales",
-                tint = Color(0xFF12B76A),
-                onClick = onSales,
-                modifier = Modifier.width(86.dp)
-            )
+        // Klasemen sales → `MOBILE_LEADERBOARD_ROLES` di gateway (tanpa
+        // crm-manager/ai-engineer).
+        if (showKlasemen) {
+            item {
+                QuickAccessTile(
+                    icon = Icons.Rounded.BarChart,
+                    label = "Sales",
+                    tint = Color(0xFF12B76A),
+                    onClick = onSales,
+                    modifier = Modifier.width(86.dp)
+                )
+            }
         }
         if (showOpname) {
             item {

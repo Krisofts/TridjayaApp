@@ -56,11 +56,15 @@ class SpkItemDraftTest {
         assertTrue(k.copy(kbkBrokerKode = "BR1", kbkBrokerNama = "B Satu").issues().isEmpty())
     }
 
+    /** Sejak COD Full/DP (2026-07-25) yang wajib dipilih adalah METODE-nya;
+     *  nominal tagihan dihitung server, dan DP wajib diisi + harus < total. */
     @Test
-    fun `terima uang wajib nominal`() {
+    fun `COD wajib pilih metode, DP wajib nominal di bawah total`() {
         val t = draft().copy(driverTerimaUang = true)
-        assertTrue(t.issues().any { it.contains("Nominal") })
-        assertTrue(t.copy(nominalTerimaUang = "150000").issues().isEmpty())
+        assertTrue(t.issues().any { it.contains("Metode COD") })
+        assertTrue(t.copy(codPaymentMode = "full").issues().isEmpty())
+        assertTrue(t.copy(codPaymentMode = "dp").issues().any { it.contains("Jumlah DP") })
+        assertTrue(t.copy(codPaymentMode = "dp", codDpAmount = "150000").issues().isEmpty())
     }
 
     @Test
