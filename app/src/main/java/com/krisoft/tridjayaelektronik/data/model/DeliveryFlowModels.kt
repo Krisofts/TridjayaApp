@@ -91,6 +91,14 @@ data class DeliveryJobDto(
     val pdiReadyPhotoUrl: String? = null,
     val pdiByName: String? = null,
     val pdiAt: String? = null,
+    /** Klaim PDI (111, 2026-07-29) — petugas yang menekan "Ambil PDI"; server
+     *  mengosongkannya lagi saat PDI selesai / TTL habis. `null` bisa berarti
+     *  DUA hal: belum ada yang mengklaim, ATAU server lama yang belum kenal
+     *  fitur ini. Pembedanya `DeliveryContextDto.pdiClaimTtlHours` — lihat
+     *  `pdiClaimView` (DeliveryFlowScreens.kt). */
+    val pdiClaimedBy: String? = null,
+    val pdiClaimedByName: String? = null,
+    val pdiClaimedAt: String? = null,
     val spkConfirmedBy: String? = null,
     val spkConfirmedAt: String? = null,
     val sourceBranch: String? = null,
@@ -192,7 +200,12 @@ data class DeliveryContextDto(
     val driverGateEnabled: Boolean? = null,
     /** Jeda minimum chat konsumen → serah terima (MENIT; 0 = chat wajib ditandai
      *  tapi tanpa tunggu). null = backend lama → fallback 60. */
-    val chatMinMinutes: Int? = null
+    val chatMinMinutes: Int? = null,
+    /** Umur maksimum klaim PDI (JAM, 111). Kehadiran field ini = satu-satunya
+     *  penanda server sudah kenal klaim PDI; `null` (server lama ATAU konteks
+     *  gagal dimuat) → app TIDAK menawarkan "Ambil PDI" sama sekali dan alur
+     *  PDI persis seperti sebelumnya. */
+    val pdiClaimTtlHours: Int? = null
 )
 
 /** Response upload foto (`POST /delivery/upload-photo`). */

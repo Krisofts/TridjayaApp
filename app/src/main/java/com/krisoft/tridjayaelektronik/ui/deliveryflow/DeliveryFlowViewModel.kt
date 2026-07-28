@@ -706,11 +706,27 @@ class DeliveryFlowViewModel @Inject constructor(
     fun dispatch(id: String, onDone: () -> Unit) = action { repository.dispatch(id).mapOk { onDone() } }
 
     /** 088: tandai sudah chat konsumen — refresh detail job (consumerChatAt terisi). */
-    fun chatConsumer(id: String) {
+    fun chatConsumer(id: String) = jobUpdate { repository.chatConsumer(id) }
+
+    /**
+     * 111: ambil / lepas klaim PDI. Klaim OPSIONAL di server (job tak diklaim
+     * tetap boleh di-PDI), jadi kegagalan di sini TIDAK boleh menutup jalan
+     * kerja: form PDI tetap seperti sebelum tombol ditekan, dan pesan server
+     * ditampilkan apa adanya — pada 409 pesan itulah satu-satunya tempat nama
+     * pemegang klaim disebutkan.
+     */
+    fun claimPdi(id: String) = jobUpdate { repository.claimPdi(id) }
+
+    fun releasePdiClaim(id: String) = jobUpdate { repository.releasePdiClaim(id) }
+
+    /** Aksi yang MEMUTAKHIRKAN job yang sedang dibuka, bukan menyelesaikan
+     *  tahapnya — sengaja TIDAK menyetel `actionDone` (layar detail memakai
+     *  flag itu untuk menutup dirinya sendiri). */
+    private fun jobUpdate(block: suspend () -> AuthResult<DeliveryJobDto>) {
         if (_state.value.submitting) return
         _state.update { it.copy(submitting = true, actionError = null) }
         viewModelScope.launch {
-            when (val res = repository.chatConsumer(id)) {
+            when (val res = block()) {
                 is AuthResult.Success -> _state.update { it.copy(submitting = false, detail = res.data) }
                 is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
             }

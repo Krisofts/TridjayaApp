@@ -39,6 +39,7 @@ import com.krisoft.tridjayaelektronik.data.model.StokCabangData
 import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
@@ -68,6 +69,16 @@ interface DeliveryFlowApi {
 
     @POST("api/inventory/delivery")
     suspend fun create(@Body body: CreateDeliveryBody): Response<ApiResponse<DeliveryCreateResult>>
+
+    /** 111: kunci job ke petugas PDI yang menekan "Ambil PDI" (tanpa body).
+     *  409 = sudah dipegang orang lain, NAMANYA ada di `message` server. Klaim
+     *  OPSIONAL — `submitPdi` tidak mensyaratkannya (APK lama tetap jalan). */
+    @POST("api/inventory/delivery/{id}/claim-pdi")
+    suspend fun claimPdi(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
+
+    /** 111: lepas klaim — pemegangnya sendiri, atau admin/manager melepas paksa. */
+    @DELETE("api/inventory/delivery/{id}/claim-pdi")
+    suspend fun releasePdiClaim(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
 
     @POST("api/inventory/delivery/{id}/pdi")
     suspend fun submitPdi(@Path("id") id: String, @Body body: PdiBody): Response<ApiResponse<DeliveryJobDto>>

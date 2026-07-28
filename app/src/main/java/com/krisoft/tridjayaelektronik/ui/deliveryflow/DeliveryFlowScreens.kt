@@ -117,6 +117,52 @@ private fun statusMeta(status: String): Pair<String, Color> = when (status) {
     else -> status to Color(0xFF667085)
 }
 
+// ── Klaim PDI (111) ──────────────────────────────────────────────────────────
+
+/** Keadaan klaim PDI dari sudut pandang SATU penonton. */
+internal enum class PdiClaimView {
+    /** Server belum kenal klaim (atau konteks gagal dimuat) — alur PDI lama persis. */
+    TAK_DIDUKUNG,
+    BELUM_DIKLAIM,
+    MILIK_SAYA,
+    MILIK_ORANG_LAIN,
+}
+
+/**
+ * Aturan tampilan klaim PDI — fungsi MURNI supaya empat keadaannya bisa diuji
+ * tanpa Compose/jaringan.
+ *
+ * `pdiClaimedBy` kosong punya DUA arti dan bedanya penting: server yang sudah
+ * kenal fitur ini selalu mengirim `pdiClaimTtlHours` di `/delivery/context`,
+ * jadi ketiadaan TTL berarti "jangan tawarkan apa pun" — bukan "belum
+ * diklaim". Tanpa pembedaan itu, APK ini akan menawarkan "Ambil PDI" ke server
+ * lama yang pasti menjawab 404/405, atau (lebih buruk) ke server yang
+ * konteksnya sedang gagal dimuat. Klaim SENGAJA opsional di server, jadi
+ * keadaan [TAK_DIDUKUNG] tak pernah boleh memblokir apa pun.
+ *
+ * @param serverSupportsClaim `pdiClaimTtlHours != null`. Hanya membedakan
+ *   [BELUM_DIKLAIM] vs [TAK_DIDUKUNG] — daftar antrian yang cuma menampilkan
+ *   label (tak menawarkan tombol ambil) boleh membiarkannya `false`.
+ */
+internal fun pdiClaimView(
+    pdiClaimedBy: String?,
+    currentUserId: String,
+    serverSupportsClaim: Boolean = false,
+): PdiClaimView = when {
+    pdiClaimedBy.isNullOrBlank() -> if (serverSupportsClaim) PdiClaimView.BELUM_DIKLAIM else PdiClaimView.TAK_DIDUKUNG
+    pdiClaimedBy == currentUserId && currentUserId.isNotBlank() -> PdiClaimView.MILIK_SAYA
+    else -> PdiClaimView.MILIK_ORANG_LAIN
+}
+
+/** Label klaim (kartu antrian & detail); `null` = tak ada klaim, tak ada label. */
+internal fun pdiClaimLabel(view: PdiClaimView, claimedByName: String?): String? = when (view) {
+    PdiClaimView.MILIK_SAYA -> "Kamu sedang memproses"
+    // Nama BISA kosong (job lama / nama aktor tak terekam) — jangan menampilkan
+    // "Diproses oleh " menggantung.
+    PdiClaimView.MILIK_ORANG_LAIN -> "Diproses oleh ${claimedByName?.trim()?.ifBlank { null } ?: "petugas lain"}"
+    else -> null
+}
+
 private fun rupiah(v: Double?): String {
     val n = (v ?: 0.0).toLong()
     return "Rp" + n.toString().reversed().chunked(3).joinToString(".").reversed()
@@ -164,7 +210,7 @@ private val AKI_KAPASITAS_OPTIONS = listOf("36V12AH", "48V12AH", "48V20AH")
 private const val AKI_PCS_PER_SET = 4
 
 @Composable
-private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
+private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?, currentUserId: String = "") {
     val base = Modifier.fillMaxWidth()
     ClayCard(modifier = if (onClick != null) base.clickable(onClick = onClick) else base) {
         Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -178,6 +224,18 @@ private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?) {
                 Text(job.customerName ?: "-", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${job.namaBarang ?: job.kodeBarang ?: "-"}${job.tipe?.let { " · $it" } ?: ""}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Klaim PDI (111) — job yang sudah dipegang orang lain TETAP tampil
+                // di daftar (cuma ditandai): menyembunyikannya bikin petugas mengira
+                // unitnya hilang, dan klaim bisa kedaluwarsa sendiri.
+                val claim = pdiClaimView(job.pdiClaimedBy, currentUserId)
+                pdiClaimLabel(claim, job.pdiClaimedByName)?.let { label ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        color = if (claim == PdiClaimView.MILIK_SAYA) Color(0xFF12B76A) else Color(0xFFB5670C),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 // PDI Mandiri (per-barang) — PDI tetap dikerjakan, tapi oleh sales
                 // pemilik SPK, bukan tim PDI cabang. Penting kasir/DC tahu siapa yang
                 // ditunggu. (Sampai 2026-07-27 ini berarti "Tanpa PDI"/skip.)
@@ -270,7 +328,7 @@ fun DeliveryQueueScreen(
                     itemsIndexed(state.items, key = { _, it -> it.id }) { index, job ->
                         if (reorderable) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.weight(1f)) { JobCard(job, onClick = { onOpen(job.id) }) }
+                                Box(modifier = Modifier.weight(1f)) { JobCard(job, onClick = { onOpen(job.id) }, currentUserId = viewModel.currentUserId) }
                                 Column {
                                     IconButton(onClick = { viewModel.moveLoad(job.id, up = true) }, enabled = index > 0) {
                                         Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Naikkan urutan")
@@ -287,7 +345,7 @@ fun DeliveryQueueScreen(
                             // tahap yang justru paling sering diproses borongan.
                             // Ketuk kartunya tetap membuka detail seperti biasa.
                             Column {
-                                JobCard(job, onClick = { onOpen(job.id) })
+                                JobCard(job, onClick = { onOpen(job.id) }, currentUserId = viewModel.currentUserId)
                                 Spacer(Modifier.height(6.dp))
                                 ExpressiveFilledButton(
                                     onClick = { terbitkanJob = job },
@@ -296,7 +354,7 @@ fun DeliveryQueueScreen(
                                 ) { Text("Terbitkan Surat Jalan") }
                             }
                         } else {
-                            JobCard(job, onClick = { onOpen(job.id) })
+                            JobCard(job, onClick = { onOpen(job.id) }, currentUserId = viewModel.currentUserId)
                         }
                     }
                 }
@@ -769,6 +827,50 @@ private fun PdiAction(
 
     photoState.pdiPhoto?.takeIf { !photoState.pdiPhotoConfirmed }?.let { bmp ->
         PhotoReviewDialog(bmp, onRetake = { vm.retakePdiPhoto() }, onConfirm = { vm.confirmPdiPhoto() })
+    }
+
+    // ── Klaim PDI (111) ──────────────────────────────────────────────────────
+    // Server SENGAJA tidak mewajibkan klaim (APK lama tak tahu cara mengklaim),
+    // jadi seluruh blok ini murni tampilan: ia mencegah dua petugas mengerjakan
+    // unit yang sama, tapi tak pernah menghalangi pekerjaan saat datanya tak ada.
+    val ttlJam = photoState.deliveryContext?.pdiClaimTtlHours
+    val claim = pdiClaimView(job.pdiClaimedBy, vm.currentUserId, serverSupportsClaim = ttlJam != null)
+    // Cerminan `PDI_ROLES` backend (pdi/admin/superadmin) = gate yang SAMA dengan
+    // submit PDI, lewat `access.pdi` yang sudah melipat divisi. Sales PDI Mandiri
+    // sampai ke sini lewat `isSelfPdiJob` tapi TIDAK berhak mengklaim (403) —
+    // jangan menawarkan tombolnya ke dia.
+    val bolehKlaim = vm.access.pdi
+    pdiClaimLabel(claim, job.pdiClaimedByName)?.let { label ->
+        Text(
+            label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+            color = if (claim == PdiClaimView.MILIK_SAYA) Color(0xFF12B76A) else Color(0xFFB5670C),
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+    if (claim == PdiClaimView.MILIK_ORANG_LAIN) {
+        Text(
+            "Unit ini sedang dikerjakan petugas lain, jadi form PDI-nya ditutup di sini." +
+                (ttlJam?.let { " Klaimnya lepas sendiri setelah $it jam." } ?: ""),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Jalan keluar kalau pengklaimnya pulang sebelum TTL habis (backend
+        // mengizinkan admin/superadmin/manager merebut).
+        if (vm.isAdminViewer) {
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = { vm.releasePdiClaim(id) }, enabled = !submitting) { Text("Lepas Klaim (Paksa)") }
+        }
+        return
+    }
+    if (claim == PdiClaimView.BELUM_DIKLAIM && bolehKlaim) {
+        ExpressiveFilledButton(onClick = { vm.claimPdi(id) }, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
+            Text("Ambil PDI")
+        }
+        Spacer(Modifier.height(14.dp))
+    } else if (claim == PdiClaimView.MILIK_SAYA) {
+        ExpressiveOutlinedButton(onClick = { vm.releasePdiClaim(id) }, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
+            Text("Lepas Klaim")
+        }
+        Spacer(Modifier.height(14.dp))
     }
 
     Text("PDI / Inspeksi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)

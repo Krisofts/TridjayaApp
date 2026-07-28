@@ -68,6 +68,14 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** 111: ambil klaim PDI. Pesan 409 dari server memuat nama pemegangnya —
+     *  [parseError] meneruskannya apa adanya, jangan dikarang ulang di UI. */
+    suspend fun claimPdi(id: String): AuthResult<DeliveryJobDto> =
+        call("Gagal mengambil PDI") { api.claimPdi(id) }
+
+    suspend fun releasePdiClaim(id: String): AuthResult<DeliveryJobDto> =
+        call("Gagal melepas klaim PDI") { api.releasePdiClaim(id) }
+
     suspend fun submitPdi(id: String, body: PdiBody): AuthResult<DeliveryJobDto> =
         call("Gagal simpan PDI") { api.submitPdi(id, body) }
 
