@@ -1069,7 +1069,7 @@ private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
     var nominal by remember { mutableStateOf("") }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/setoran_$id.jpg").apply { parentFile?.mkdirs() } }
-    val uri = remember { FileProvider.getUriForFile(context, "${'$'}{context.packageName}.fileprovider", file) }
+    val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
     val photoState by vm.state.collectAsState()
     val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onDeliverPhotoCaptured(file) }
 
