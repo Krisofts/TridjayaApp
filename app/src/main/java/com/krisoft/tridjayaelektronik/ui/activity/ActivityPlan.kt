@@ -45,7 +45,11 @@ internal fun buildQueueCards(
     }
     .sortedByDescending { it.count ?: -1 }
 
-/** Jam dari timestamp kontrak absensi (`YYYY-MM-DD HH:MM:SS`, bukan ISO "T"). */
+/**
+ * Jam dari timestamp kontrak absensi (`YYYY-MM-DD HH:MM:SS`, bukan ISO "T").
+ * Asumsi: backend absensi SELALU mengirim format penuh itu (posisi 11-16 tetap
+ * "HH:MM") — JANGAN pakai ulang parser ini untuk timestamp dari sumber lain.
+ */
 private fun jam(timestamp: String?): String? =
     timestamp?.takeIf { it.length >= 16 }?.substring(11, 16)
 

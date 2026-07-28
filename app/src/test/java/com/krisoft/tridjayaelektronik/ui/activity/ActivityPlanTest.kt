@@ -59,6 +59,21 @@ class ActivityPlanTest {
         assertEquals(1, driver.size)
     }
 
+    @Test
+    fun `tugas antar yang gagal dimuat tetap tampil walau bukan driver`() {
+        // Gagal != nol: kalau angkanya tak diketahui, kartu tak boleh hilang
+        // diam-diam — user harus bisa melihat "—" dan mencoba lagi.
+        val cards = buildQueueCards(
+            items = listOf(item("tugas_antar")),
+            counts = emptyMap(),
+            failed = setOf(ActivitySource.DLV_AS_DRIVER),
+            effectiveRoles = setOf("sales"),
+        )
+        assertEquals(1, cards.size)
+        assertTrue(cards.single().failed)
+        assertEquals(null, cards.single().count)
+    }
+
     // ── Tugas harian ────────────────────────────────────────────────────────
 
     @Test
