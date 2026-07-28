@@ -34,7 +34,13 @@ class SerialInputRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
-    /** Semua produk stok cabang (search kosong = tanpa filter server; UI filter client-side). */
+    /**
+     * Produk BERSTOK di cabang (search kosong = tanpa filter teks server; UI
+     * filter client-side). Filter `Stok > 0` datang dari default `inStock` di
+     * [DeliveryFlowApi.stokCabang] — tanpa itu katalog GS penuh (~5.500 baris
+     * per cabang) MELEBIHI [STOK_FETCH_LIMIT] dan daftar produknya terpotong
+     * senyap. SN memang cuma diinput untuk unit yang fisiknya ada di gudang.
+     */
     suspend fun stokCabang(kodeDealer: String): AuthResult<List<StokCabangRow>> = try {
         val response = api.stokCabang(search = "", kodeDealer = kodeDealer, limit = STOK_FETCH_LIMIT)
         val data = response.body()?.data

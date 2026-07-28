@@ -118,12 +118,24 @@ interface DeliveryFlowApi {
     @POST("api/inventory/delivery/driver/reorder")
     suspend fun reorderLoads(@Body body: ReorderBody): Response<ApiResponse<ReorderResult>>
 
-    /** Autocomplete barang Input SPK, di-scope satu cabang. */
+    /**
+     * Autocomplete barang Input SPK, di-scope satu cabang.
+     *
+     * `inStock` default TRUE dan itu disengaja: SP GS `GetStokCabang`
+     * mengembalikan katalog penuh per cabang (~5.500 baris) yang cuma 4-16%-nya
+     * berstok, jadi tanpa filter ini `limit` baris pertama (urut nama) hampir
+     * seluruhnya barang stok 0 — barang yang benar-benar ada tak pernah muncul.
+     * Filter DITEGAKKAN SERVER karena paging diiris di sana; menyaring hasilnya
+     * di klien cuma membuang sebagian halaman yang sudah telanjur terpilih.
+     * Dua pemakai method ini (picker SPK & picker input serial admin-stok)
+     * sama-sama cuma peduli barang yang fisiknya ada.
+     */
     @GET("api/inventory/stok-cabang")
     suspend fun stokCabang(
         @Query("search") search: String,
         @Query("kodeDealer") kodeDealer: String,
-        @Query("limit") limit: Int = 24
+        @Query("limit") limit: Int = 24,
+        @Query("inStock") inStock: Boolean = true
     ): Response<ApiResponse<StokCabangData>>
 
     /** Autocomplete broker KBK — di-scope query. */
