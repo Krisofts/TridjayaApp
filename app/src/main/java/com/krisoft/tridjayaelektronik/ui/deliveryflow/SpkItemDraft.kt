@@ -125,6 +125,39 @@ data class SpkItemDraft(
     }
 }
 
+/**
+ * Alasan form SPK belum boleh dikirim, atau `null` kalau sudah boleh. Satu
+ * sumber untuk tombol Simpan DAN pesan merah di bawahnya — dulu dua daftar
+ * syarat terpisah yang gampang berselisih.
+ *
+ * `mapUrl` WAJIB khusus metode `sales_delivery`: `try_auto_assign_sales_delivery`
+ * (inventory-service delivery.rs) hanya menugaskan sales sebagai driver job-nya
+ * sendiri kalau `customer_map_url` terisi; kosong = fail-soft diam ke antrian
+ * Delivery Control.
+ */
+fun spkSubmitBlocker(
+    pelanggan: String,
+    telepon: String,
+    nik: String,
+    mapUrl: String,
+    deliveryMethod: String,
+    spkCabang: String,
+    itemsCount: Int,
+    itemsValid: Boolean,
+    totalUnits: Int,
+): String? = when {
+    pelanggan.trim().length < 3 || telepon.trim().length < 6 -> "Lengkapi nama & No. HP pelanggan."
+    nik.isNotEmpty() && nik.length != 16 -> "NIK harus 16 digit angka."
+    deliveryMethod == "sales_delivery" && mapUrl.isBlank() ->
+        "Isi Link Lokasi Maps — wajib untuk metode Sales Antar Sendiri."
+    spkCabang.isBlank() -> "Pilih cabang dulu."
+    itemsCount == 0 -> "Tambah minimal 1 barang dari pencarian stok."
+    totalUnits > 200 -> "Total unit maksimal 200."
+    totalUnits < 1 -> "Isi jumlah unit minimal 1."
+    !itemsValid -> "Ada barang belum lengkap — cek tanda merah di kartu."
+    else -> null
+}
+
 /** Baris baru dari hasil picker stok (mirror web `pickBarang`+`emptySaleItem`). */
 fun newSpkItemDraft(row: StokCabangRow): SpkItemDraft = SpkItemDraft(
     kodeBarang = row.kode.trim(),

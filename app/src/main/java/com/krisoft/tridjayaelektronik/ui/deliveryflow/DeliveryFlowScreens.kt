@@ -1678,9 +1678,14 @@ fun CreateSpkScreen(
 
     val totalUnits = items.sumOf { it.qtyInt ?: 0 }
     val itemsValid = items.isNotEmpty() && items.all { it.issues().isEmpty() }
-    val canSubmit = pelanggan.trim().length >= 3 && telepon.trim().length >= 6 &&
-        (nik.isEmpty() || nik.length == 16) &&
-        spkCabang.isNotBlank() && itemsValid && totalUnits in 1..200
+    val mapUrlWajib = deliveryMethodSel == "sales_delivery"
+    val mapUrlKurang = mapUrlWajib && mapUrl.isBlank()
+    val blocker = spkSubmitBlocker(
+        pelanggan = pelanggan, telepon = telepon, nik = nik, mapUrl = mapUrl,
+        deliveryMethod = deliveryMethodSel, spkCabang = spkCabang,
+        itemsCount = items.size, itemsValid = itemsValid, totalUnits = totalUnits,
+    )
+    val canSubmit = blocker == null
 
     TridjayaCollapsibleHeader(title = "Input SPK", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -1694,7 +1699,16 @@ fun CreateSpkScreen(
                     ExpressiveTextField(pelanggan, { pelanggan = it }, label = "Nama pelanggan *", modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(telepon, { telepon = it }, label = "No. HP *", keyboardType = KeyboardType.Phone, modifier = Modifier.fillMaxWidth())
                     ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
-                    ExpressiveTextField(mapUrl, { mapUrl = it }, label = "Link Lokasi Maps", keyboardType = KeyboardType.Uri, modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(
+                        mapUrl, { mapUrl = it },
+                        label = if (mapUrlWajib) "Link Lokasi Maps *" else "Link Lokasi Maps",
+                        keyboardType = KeyboardType.Uri,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = attemptedSubmit && mapUrlKurang,
+                        supportingText = if (mapUrlWajib)
+                            "Wajib untuk Sales Antar Sendiri — tanpa ini job masuk antrian Delivery Control, bukan ke kamu."
+                        else null
+                    )
                     // NIK KTP = 16 digit; backend menolak <16 digit (delivery.rs
                     // "NIK konsumen minimal 16 digit angka") — filter + gate di sini
                     // supaya tak mentok 400 saat submit.
@@ -1823,16 +1837,8 @@ fun CreateSpkScreen(
             }
 
             state.actionError?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) }
-            if (attemptedSubmit && !canSubmit) {
-                Text(
-                    when {
-                        pelanggan.trim().length < 3 || telepon.trim().length < 6 -> "Lengkapi nama & No. HP pelanggan."
-                        items.isEmpty() -> "Tambah minimal 1 barang dari pencarian stok."
-                        totalUnits > 200 -> "Total unit maksimal 200."
-                        else -> "Ada barang belum lengkap — cek tanda merah di kartu."
-                    },
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error
-                )
+            if (attemptedSubmit) blocker?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
             }
             ExpressiveFilledButton(
                 onClick = {
