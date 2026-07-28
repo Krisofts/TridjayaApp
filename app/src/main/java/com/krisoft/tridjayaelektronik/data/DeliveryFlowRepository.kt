@@ -31,6 +31,13 @@ class DeliveryFlowRepository @Inject constructor(
 ) {
     private val errorJson = Json { ignoreUnknownKeys = true }
 
+    // ponytail: `limit = 200` — plafon backend (`list_delivery`, inventory-service
+    // delivery.rs, clamp `.clamp(1, 200)`). Respons cuma balas `{items, page,
+    // limit}` — TIDAK ada field total/count keseluruhan (diverifikasi langsung di
+    // handler backend, Minor 6 audit final-fix-2), jadi badge Activity yang
+    // memakai `.data.size` (`ActivityViewModel.antrianStatus`) bisa mentok di 200
+    // kalau antrian sungguhan lebih banyak. Naikkan limit atau minta backend
+    // menambah field total kalau ada laporan angka macet di 200.
     suspend fun list(status: String? = null, view: String? = null, asDriver: Boolean = false): AuthResult<List<DeliveryJobDto>> = try {
         val response = api.list(status = status, view = view, limit = 200, asDriver = asDriver.takeIf { it })
         val data = response.body()?.data

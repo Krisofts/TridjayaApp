@@ -60,11 +60,26 @@ class ActivityViewModel @Inject constructor(
 
     init {
         refresh(force = true)
+        // I2 audit 2026-07-28: dulu di-await DI DALAM `load()`, memblokir SELURUH
+        // layar (termasuk HARI INI & BUAT BARU yang sengaja tak butuh jaringan)
+        // sampai timeout OkHttp saat sinyal jelek. Pola sama `HomeViewModel.init`:
+        // coroutine TERPISAH — render duluan dgn `capabilities = null` (gate jatuh
+        // ke `allowedRoles`, sudah didukung `gateAllows`), lalu muat ulang PENUH
+        // begitu peta tiba supaya item yang baru terbuka ikut fan-out (bukan
+        // tertinggal tanpa angka).
+        viewModelScope.launch {
+            authRepository.capabilities()?.let { caps ->
+                capabilities = caps
+                load()
+            }
+        }
     }
 
     /**
-     * Tab tetap hidup di `MainScreen`, jadi tanpa jendela cache ini setiap
-     * kembali ke tab Activity akan menembak ulang seluruh endpoint.
+     * `force = false` dipakai observer ON_RESUME di `ActivityScreen` (I1 audit
+     * 2026-07-28) — tanpa jendela cache ini, bolak-balik cepat antara layar ini
+     * dan layar anak (absen/PDI/kasir/dst, ON_RESUME ikut jalan tiap balik ke
+     * root) akan menembak ulang seluruh endpoint tiap kali.
      */
     fun refresh(force: Boolean) {
         val now = System.currentTimeMillis()
@@ -75,7 +90,6 @@ class ActivityViewModel @Inject constructor(
 
     private suspend fun load() {
         _uiState.value = _uiState.value.copy(isLoading = true)
-        if (capabilities == null) capabilities = authRepository.capabilities()
 
         val user = authRepository.cachedUser
         val roles = effectiveRoles(user)
@@ -180,6 +194,9 @@ class ActivityViewModel @Inject constructor(
             checkInAt = checkInAt,
             checkOutAt = checkOutAt,
             leadsToday = leadsToday,
+            // I3 audit 2026-07-28: tanpa ini, gagal jaringan tampil identik dgn
+            // "belum absen" → user yang sudah check-in didorong absen lagi.
+            absensiFailed = ActivitySource.ABSENSI_TODAY in failed,
         )
 
         _uiState.value = ActivityUiState(

@@ -17,6 +17,12 @@ data class DailyTask(
     val done: Boolean,
     /** Teks kanan kartu: jam absen, "2 lead hari ini", "SEGERA", "belum". */
     val detail: String,
+    /**
+     * true = sumbernya GAGAL dimuat (jaringan/API), BUKAN "belum dikerjakan"
+     * (I3 audit 2026-07-28). Dikecualikan dari penyebut [dailyProgressLabel] —
+     * kegagalan jaringan bukan salah user, jangan menghukum progresnya.
+     */
+    val loadFailed: Boolean = false,
 )
 
 /**
@@ -58,16 +64,27 @@ internal fun buildDailyTasks(
     checkInAt: String?,
     checkOutAt: String?,
     leadsToday: Int,
+    /** true = panggilan absensi hari ini gagal (jaringan/API) — [checkInAt]/
+     *  [checkOutAt] di atas TIDAK bisa dipercaya (bukan benar-benar "belum"). */
+    absensiFailed: Boolean = false,
 ): List<DailyTask> = items
     .filter { it.kind == ActivityKind.TUGAS_HARIAN }
     // Absen pulang tak relevan sebelum check-in — menampilkannya sejak pagi
-    // membuat progres harian selalu terlihat gagal.
-    .filterNot { it.id == "absen_pulang" && checkInAt.isNullOrBlank() }
+    // membuat progres harian selalu terlihat gagal. Gagal-muat dikecualikan
+    // dari aturan ini (di bawah): kita tak TAHU status check-in-nya, jadi
+    // jangan diam-diam menyembunyikan tugas gara-gara ketidaktahuan itu.
+    .filterNot { it.id == "absen_pulang" && checkInAt.isNullOrBlank() && !absensiFailed }
     .map { item ->
-        when (item.id) {
-            "absen_masuk" -> DailyTask(item, !checkInAt.isNullOrBlank(), jam(checkInAt) ?: "belum")
-            "absen_pulang" -> DailyTask(item, !checkOutAt.isNullOrBlank(), jam(checkOutAt) ?: "belum")
-            "prospek" -> DailyTask(
+        when {
+            absensiFailed && (item.id == "absen_masuk" || item.id == "absen_pulang") ->
+                // I3 audit 2026-07-28: sebelumnya jatuh ke detail "belum" — tak
+                // bisa dibedakan dari benar-benar belum absen, jadi kartu yang
+                // bisa ditap MENDORONG USER YANG SUDAH CHECK-IN untuk absen
+                // lagi. "gagal muat" jujur soal ketidaktahuan kita.
+                DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
+            item.id == "absen_masuk" -> DailyTask(item, !checkInAt.isNullOrBlank(), jam(checkInAt) ?: "belum")
+            item.id == "absen_pulang" -> DailyTask(item, !checkOutAt.isNullOrBlank(), jam(checkOutAt) ?: "belum")
+            item.id == "prospek" -> DailyTask(
                 item,
                 leadsToday > 0,
                 if (leadsToday > 0) "$leadsToday lead hari ini" else "belum ada",
@@ -76,9 +93,12 @@ internal fun buildDailyTasks(
         }
     }
 
-/** `n/total` — item `comingSoon` tak ikut jadi penyebut (belum bisa dikerjakan). */
+/**
+ * `n/total` — item `comingSoon` (belum bisa dikerjakan) DAN [DailyTask.loadFailed]
+ * (bukan salah user, kegagalan jaringan) tak ikut jadi penyebut.
+ */
 internal fun dailyProgressLabel(tasks: List<DailyTask>): String {
-    val nyata = tasks.filterNot { it.item.comingSoon }
+    val nyata = tasks.filterNot { it.item.comingSoon || it.loadFailed }
     return "${nyata.count { it.done }}/${nyata.size}"
 }
 
@@ -96,11 +116,3 @@ internal fun leadsCreatedTodayBy(
 ): Int = leads.count { (createdAt, createdBy) ->
     createdAt.startsWith(todayIso) && (userId == null || createdBy == null || createdBy == userId)
 }
-
-/** Nilai counter SPK berikutnya; ganti hari = mulai dari 1 lagi. */
-internal fun spkCounterAfterIncrement(
-    storedDate: String?,
-    storedCount: Int,
-    todayIso: String,
-): Pair<String, Int> =
-    if (storedDate == todayIso) todayIso to (storedCount + 1) else todayIso to 1

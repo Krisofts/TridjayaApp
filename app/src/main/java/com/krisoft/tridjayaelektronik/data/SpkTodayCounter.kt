@@ -1,10 +1,24 @@
 package com.krisoft.tridjayaelektronik.data
 
 import android.content.Context
-import com.krisoft.tridjayaelektronik.ui.activity.spkCounterAfterIncrement
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Nilai counter SPK berikutnya; ganti hari = mulai dari 1 lagi. Fungsi murni
+ * supaya bisa diuji tanpa Context/SharedPreferences.
+ *
+ * Minor 2 audit final-fix-2: dulu tinggal di `ui.activity.ActivityPlan.kt` dan
+ * diimpor ke sini — arah dependensi kebalik (lapisan `data` mengimpor `ui`).
+ * Dipindah ke lapisan `data`, satu-satunya pemakainya.
+ */
+internal fun spkCounterAfterIncrement(
+    storedDate: String?,
+    storedCount: Int,
+    todayIso: String,
+): Pair<String, Int> =
+    if (storedDate == todayIso) todayIso to (storedCount + 1) else todayIso to 1
 
 /**
  * Berapa SPK yang dibuat DARI PERANGKAT INI hari ini — dipakai kartu

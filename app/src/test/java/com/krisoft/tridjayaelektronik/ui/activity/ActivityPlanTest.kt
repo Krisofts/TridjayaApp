@@ -1,5 +1,9 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
+// Minor 2 audit final-fix-2: `spkCounterAfterIncrement` pindah ke lapisan
+// `data` (satu-satunya pemakainya, `SpkTodayCounter`) — arah dependensi lama
+// (data mengimpor ui) kebalik. Test murninya tetap di sini, tinggal impor.
+import com.krisoft.tridjayaelektronik.data.spkCounterAfterIncrement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -118,6 +122,32 @@ class ActivityPlanTest {
         val tasks = buildDailyTasks(items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0)
         assertEquals("1/1", dailyProgressLabel(tasks))
         assertEquals("SEGERA", tasks.first { it.item.id == "raport" }.detail)
+    }
+
+    @Test
+    fun `absensi gagal dimuat tampil gagal muat bukan belum`() {
+        // I3 audit 2026-07-28: gagal jaringan dulu jatuh ke "belum" — tak bisa
+        // dibedakan dari benar-benar belum absen, kartunya bisa mendorong user
+        // yang sudah check-in untuk absen lagi.
+        val items = listOf(item("absen_masuk"), item("absen_pulang"))
+        val tasks = buildDailyTasks(
+            items, checkInAt = null, checkOutAt = null, leadsToday = 0, absensiFailed = true
+        )
+        // Absen pulang TETAP tampil walau checkInAt null — gagal-muat bukan
+        // "belum check-in", jadi aturan sembunyi-sebelum-check-in tak berlaku.
+        assertEquals(listOf("absen_masuk", "absen_pulang"), tasks.map { it.item.id })
+        assertTrue(tasks.all { it.detail == "gagal muat" && !it.done && it.loadFailed })
+    }
+
+    @Test
+    fun `tugas gagal muat tak dihitung di penyebut progres`() {
+        val items = listOf(item("absen_masuk"), item("prospek"))
+        val tasks = buildDailyTasks(
+            items, checkInAt = null, checkOutAt = null, leadsToday = 1, absensiFailed = true
+        )
+        // absen_masuk gagal (dibuang dari penyebut) → cuma prospek yang dihitung,
+        // dan itu sudah selesai (leadsToday > 0) → "1/1", bukan "1/2".
+        assertEquals("1/1", dailyProgressLabel(tasks))
     }
 
     // ── Lead hari ini ───────────────────────────────────────────────────────

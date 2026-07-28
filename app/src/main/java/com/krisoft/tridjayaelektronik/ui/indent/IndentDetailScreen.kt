@@ -76,11 +76,22 @@ class IndentDetailViewModel @Inject constructor(
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
-    val effectiveRoles: Set<String>
-        get() = com.krisoft.tridjayaelektronik.ui.home.effectiveRoles(authRepository.cachedUser)
+    // Minor 5 audit final-fix-2: dulu getter biasa (baca `authRepository.cachedUser`
+    // tiap dipanggil) — kalau profil termuat SETELAH komposisi awal, Compose tak
+    // tahu harus recompose (bukan `State`), jadi tombol Setujui/Tolak baru muncul
+    // saat ada recomposition karena sebab lain. `mutableStateOf` = observed, pola
+    // sama `capabilities` di VM ini.
+    var effectiveRoles by mutableStateOf<Set<String>>(emptySet())
+        private set
 
     init {
-        viewModelScope.launch { capabilities = authRepository.capabilities() }
+        effectiveRoles = com.krisoft.tridjayaelektronik.ui.home.effectiveRoles(authRepository.cachedUser)
+        viewModelScope.launch {
+            capabilities = authRepository.capabilities()
+            // Baca ulang di titik yang sama: kalau profil baru termuat selagi
+            // panggilan di atas berjalan, effectiveRoles ikut ter-update juga.
+            effectiveRoles = com.krisoft.tridjayaelektronik.ui.home.effectiveRoles(authRepository.cachedUser)
+        }
     }
 
     /** [onDone] dipanggil setelah server menerima putusan — pemanggil menutup

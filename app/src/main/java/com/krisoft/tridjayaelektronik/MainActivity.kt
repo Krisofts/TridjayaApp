@@ -440,11 +440,11 @@ private fun MainScreen(
                 if (sub != null) activityNav.navigate(sub) { launchSingleTop = true }
             }
             // Tab CRM sudah tak ada di bottom nav; buka layarnya lewat jalur yang
-            // sama dengan tap kartu "Input prospek" di Activity.
-            "crm" -> {
-                selected = AppDestination.ACTIVITY
-                onQuickAccessLeads()
-            }
+            // sama dengan tap kartu "Input prospek" di Activity. `onQuickAccessLeads()`
+            // sendiri sudah men-set `selected = AppDestination.LEADS` (Minor 3 audit
+            // final-fix-2: baris `selected = AppDestination.ACTIVITY` sebelumnya di
+            // sini mati — langsung ditimpa panggilan berikut).
+            "crm" -> onQuickAccessLeads()
             null -> return@LaunchedEffect
         }
         onConsumeNotifChannel()

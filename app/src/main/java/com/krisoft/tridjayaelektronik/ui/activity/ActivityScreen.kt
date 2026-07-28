@@ -20,7 +20,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.ui.home.NotificationPermissionBanner
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
@@ -56,8 +59,26 @@ fun ActivityScreen(
     val notifViewModel: NotificationCenterViewModel = hiltViewModel()
     val notifState by notifViewModel.state.collectAsState()
     LaunchedEffect(Unit) { notifViewModel.refreshUnreadCount() }
-    // Tab tetap hidup; ini menyegarkan angka saat user kembali ke Activity.
-    LaunchedEffect(Unit) { viewModel.refresh(force = false) }
+
+    // I1 audit 2026-07-28: masuk layar ini = "refresh saat masuk layar" (spec §5),
+    // jadi paksa lewati cache 60 detik. `LaunchedEffect(Unit)` cuma jalan sekali per
+    // masuknya komposisi ini — tak cukup sendirian karena `MainScreen` (tab
+    // kept-alive) bisa membuatnya tak pernah dikomposisi ulang.
+    LaunchedEffect(Unit) { viewModel.refresh(force = true) }
+    // ON_RESUME menyusul: app di-resume dari background ATAU layar ini kembali
+    // jadi top-of-backstack setelah pop dari layar anak (absen/PDI/kasir/dst,
+    // semuanya berbagi NavHost yang sama — lihat `ActivityNavHost`). Di sinilah
+    // cache 60 detik (`ActivityViewModel.CACHE_WINDOW_MS`) akhirnya berguna
+    // (mencegah badai request saat bolak-balik cepat), bukan mati tak terpakai
+    // seperti sebelumnya. Pola sama `DeliveryFlowScreens.kt` (`GpsStatusRow`).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh(force = false)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     TridjayaCollapsibleHeader(
         title = "Activity",
@@ -76,15 +97,22 @@ fun ActivityScreen(
         }
     ) { contentModifier ->
         val pullState = rememberPullToRefreshState()
+        // Minor 4 audit final-fix-2: `state.isLoading` menutup load PERTAMA maupun
+        // refresh susulan sekaligus — memakainya langsung bikin indikator tarik-turun
+        // muncul menumpuk DI ATAS skeleton saat load pertama (dua penanda "sedang
+        // memuat" sekaligus). `userName` baru terisi setelah minimal satu load sukses,
+        // jadi "isLoading DAN sudah pernah punya data" = refresh beneran, bukan load
+        // pertama (skeleton sudah cukup mewakili itu).
+        val isRefreshing = state.isLoading && state.userName.isNotBlank()
         PullToRefreshBox(
-            isRefreshing = state.isLoading,
+            isRefreshing = isRefreshing,
             onRefresh = { viewModel.refresh(force = true) },
             state = pullState,
             modifier = contentModifier.fillMaxSize(),
             indicator = {
                 PullToRefreshDefaults.Indicator(
                     modifier = Modifier.align(Alignment.TopCenter),
-                    isRefreshing = state.isLoading,
+                    isRefreshing = isRefreshing,
                     state = pullState,
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     color = MaterialTheme.colorScheme.primary
@@ -104,36 +132,45 @@ fun ActivityScreen(
                     DailyTaskRow(task) { if (!task.item.comingSoon) onOpen(task.item.navKey) }
                 }
 
-                item { SectionTitle("PERLU TINDAKAN") }
-                if (state.isLoading && state.queueCards.isEmpty()) {
-                    items(3) {
-                        SkeletonBox(
-                            modifier = Modifier.fillMaxWidth().height(60.dp),
-                            shape = RoundedCornerShape(20.dp)
-                        )
-                    }
-                } else {
-                    items(state.queueCards, key = { it.item.id }) { card ->
-                        QueueRow(card) {
-                            if (card.failed) viewModel.refresh(force = true) else onOpen(card.item.navKey)
+                // I4 audit 2026-07-28: judul seksi tanpa isi menggantung permanen buat
+                // sebagian persona (mis. manager/owner tak pernah punya BUAT BARU).
+                // Sembunyikan HANYA saat benar-benar kosong DAN sudah selesai memuat —
+                // render pertama & skeleton tetap butuh judulnya supaya tak melompat
+                // begitu data datang.
+                if (state.isLoading || state.queueCards.isNotEmpty()) {
+                    item { SectionTitle("PERLU TINDAKAN") }
+                    if (state.isLoading && state.queueCards.isEmpty()) {
+                        items(3) {
+                            SkeletonBox(
+                                modifier = Modifier.fillMaxWidth().height(60.dp),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                        }
+                    } else {
+                        items(state.queueCards, key = { it.item.id }) { card ->
+                            QueueRow(card) {
+                                if (card.failed) viewModel.refresh(force = true) else onOpen(card.item.navKey)
+                            }
                         }
                     }
                 }
 
-                item { SectionTitle("BUAT BARU") }
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.actions.forEach { action ->
-                            AssistChip(
-                                onClick = { onOpen(action.navKey) },
-                                label = {
-                                    val extra = if (action.id == "buat_spk" && state.spkToday > 0) {
-                                        " · ${state.spkToday} hari ini"
-                                    } else ""
-                                    Text(action.label + extra)
-                                },
-                                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                            )
+                if (state.isLoading || state.actions.isNotEmpty()) {
+                    item { SectionTitle("BUAT BARU") }
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.actions.forEach { action ->
+                                AssistChip(
+                                    onClick = { onOpen(action.navKey) },
+                                    label = {
+                                        val extra = if (action.id == "buat_spk" && state.spkToday > 0) {
+                                            " · ${state.spkToday} hari ini"
+                                        } else ""
+                                        Text(action.label + extra)
+                                    },
+                                    leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                                )
+                            }
                         }
                     }
                 }

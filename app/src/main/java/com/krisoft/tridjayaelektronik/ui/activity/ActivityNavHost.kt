@@ -79,6 +79,25 @@ private fun salesTransactionsRoute(kodePegawai: String, salesName: String) =
     "home_ranking_transactions/${RankingKind.SALES.name}/${Uri.encode(kodePegawai)}?name=${Uri.encode(salesName)}"
 
 /**
+ * Kunci tahap delivery → route child — bagian yang SAMA dipakai [routeForNavKey],
+ * `onSpkMenu` (tab Ringkasan), dan `onOpenDelivery` (deep-link notifikasi).
+ * Minor 1 audit final-fix-2: dulu tersalin 3× di file ini (drift risk — satu
+ * diperbarui, dua lainnya lupa). Tiap pemanggil menambah kunci sendiri
+ * (`hub`/`input`/`history`) dan fallback berbeda DI ATAS fungsi ini —
+ * perbedaan itu SENGAJA, jangan disamakan.
+ */
+private fun deliveryStageRoute(key: String): String? = when (key) {
+    "diskon" -> ROUTE_DLV_DISKON
+    "pdi" -> ROUTE_DLV_PDI
+    "aki" -> ROUTE_DLV_AKI
+    "kasir" -> ROUTE_DLV_KASIR
+    "note" -> ROUTE_DLV_NOTE
+    "jadwal" -> ROUTE_DLV_SCHEDULE
+    "driver" -> ROUTE_DLV_DRIVER
+    else -> null
+}
+
+/**
  * Peta `navKey` (kontrak `ActivityRegistry.ACTIVITY_ITEMS`) → route child di
  * tabel ini. Fungsi MURNI (tanpa Compose) supaya bisa diuji JUnit biasa —
  * `navKey` adalah kontrak stringly-typed tanpa pemeriksa kompiler, jadi satu
@@ -91,14 +110,7 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "absen" -> ROUTE_ABSEN
     "indent" -> ROUTE_INDENT
     "spk_input" -> ROUTE_DLV_CREATE
-    "pdi" -> ROUTE_DLV_PDI
-    "aki" -> ROUTE_DLV_AKI
-    "kasir" -> ROUTE_DLV_KASIR
-    "note" -> ROUTE_DLV_NOTE
-    "jadwal" -> ROUTE_DLV_SCHEDULE
-    "driver" -> ROUTE_DLV_DRIVER
-    "diskon" -> ROUTE_DLV_DISKON
-    else -> null
+    else -> deliveryStageRoute(navKey)
 }
 
 /**
@@ -190,15 +202,8 @@ fun ActivityNavHost(
                     val route = when (key) {
                         "hub" -> ROUTE_SPK_HUB
                         "input" -> ROUTE_DLV_CREATE
-                        "diskon" -> ROUTE_DLV_DISKON
-                        "pdi" -> ROUTE_DLV_PDI
-                        "aki" -> ROUTE_DLV_AKI
-                        "kasir" -> ROUTE_DLV_KASIR
-                        "note" -> ROUTE_DLV_NOTE
-                        "jadwal" -> ROUTE_DLV_SCHEDULE
-                        "driver" -> ROUTE_DLV_DRIVER
                         "history" -> ROUTE_DLV_HISTORY
-                        else -> ROUTE_DLV_CREATE
+                        else -> deliveryStageRoute(key) ?: ROUTE_DLV_CREATE
                     }
                     navController.navigate(route) { launchSingleTop = true }
                 }
@@ -235,15 +240,8 @@ fun ActivityNavHost(
                 // dgn onSpkMenu HomeScreen + deep-link push FcmService).
                 onOpenDelivery = { key ->
                     val route = when (key) {
-                        "diskon" -> ROUTE_DLV_DISKON
-                        "pdi" -> ROUTE_DLV_PDI
-                        "aki" -> ROUTE_DLV_AKI
-                        "kasir" -> ROUTE_DLV_KASIR
-                        "note" -> ROUTE_DLV_NOTE
-                        "jadwal" -> ROUTE_DLV_SCHEDULE
-                        "driver" -> ROUTE_DLV_DRIVER
                         "history" -> ROUTE_DLV_HISTORY
-                        else -> ROUTE_SPK_HUB
+                        else -> deliveryStageRoute(key) ?: ROUTE_SPK_HUB
                     }
                     navController.navigate(route) { launchSingleTop = true }
                 },
