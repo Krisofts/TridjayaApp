@@ -75,6 +75,8 @@ import com.krisoft.tridjayaelektronik.data.ThemePreferences
 import com.krisoft.tridjayaelektronik.ui.activity.ACTIVITY_ROUTE_ROOT
 import com.krisoft.tridjayaelektronik.ui.activity.ActivityNavHost
 import com.krisoft.tridjayaelektronik.ui.activity.HOME_ROUTE_DASHBOARD
+import com.krisoft.tridjayaelektronik.ui.activity.landsOnSummary
+import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
 import com.krisoft.tridjayaelektronik.ui.inventory.InventoryNavHost
 import com.krisoft.tridjayaelektronik.ui.inventory.SEARCH_ROUTE_ROOT
 import com.krisoft.tridjayaelektronik.ui.leads.LEADS_ROUTE_LIST
@@ -301,7 +303,8 @@ private fun TridjayaNavHost(
             MainScreen(
                 pendingNotifChannel = pendingNotifChannel,
                 pendingNotifRoute = pendingNotifRoute,
-                onConsumeNotifChannel = onConsumeNotifChannel
+                onConsumeNotifChannel = onConsumeNotifChannel,
+                sessionViewModel = sessionViewModel
             )
         }
     }
@@ -394,12 +397,26 @@ private fun RequestOperationalPermissions() {
 private fun MainScreen(
     pendingNotifChannel: String? = null,
     pendingNotifRoute: String? = null,
-    onConsumeNotifChannel: () -> Unit = {}
+    onConsumeNotifChannel: () -> Unit = {},
+    sessionViewModel: SessionViewModel = hiltViewModel()
 ) {
     RequestOperationalPermissions()
 
     val destinations = AppDestination.bottomNavItems
-    var selected by remember { mutableStateOf(destinations.first()) }
+    // Tab awal ditentukan SEKALI dari role efektif saat komposisi pertama (lihat
+    // doc `landsOnSummary` di ActivityRegistry.kt) — bukan dievaluasi ulang tiap
+    // recomposition, supaya profil yang termuat belakangan tak membuat tab
+    // melompat sendiri sesudah user sudah melihat/menyentuh layarnya. Profil
+    // belum termuat saat itu (cachedUser null) → jatuh ke default lama,
+    // `destinations.first()` (Activity).
+    var selected by remember {
+        val initial = if (landsOnSummary(effectiveRoles(sessionViewModel.cachedUser))) {
+            AppDestination.SUMMARY
+        } else {
+            destinations.first()
+        }
+        mutableStateOf(initial)
+    }
     // Bumped by Home's "Akses Cepat" Inventory tile — see the LaunchedEffect inside
     // InventoryNavHost for why the actual navigate() call lives there, not here.
     var inventoryOpenListTrigger by remember { mutableStateOf(0) }

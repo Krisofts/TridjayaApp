@@ -206,4 +206,29 @@ class ActivityRegistryTest {
             assertFalse(driverCardVisible(null, setOf(role)))
         }
     }
+
+    // ── Tab awal saat app dibuka (manager/owner → Ringkasan) ────────────────
+
+    @Test
+    fun `manager dan owner mendarat di Ringkasan`() {
+        assertTrue(landsOnSummary(setOf("manager")))
+        assertTrue(landsOnSummary(setOf("owner")))
+        // Multi-role: cukup salah satu ada di daftar.
+        assertTrue(landsOnSummary(setOf("karyawan", "manager")))
+    }
+
+    @Test
+    fun `role lain tetap mendarat di Activity`() {
+        for (role in listOf(
+            "karyawan", "sales", "pdi", "kasir", "driver", "delivery-control",
+            "admin", "superadmin",
+        )) {
+            assertFalse("role '$role' seharusnya tetap di Activity", landsOnSummary(setOf(role)))
+        }
+    }
+
+    @Test
+    fun `profil belum termuat tetap mendarat di Activity`() {
+        assertFalse(landsOnSummary(emptySet()))
+    }
 }

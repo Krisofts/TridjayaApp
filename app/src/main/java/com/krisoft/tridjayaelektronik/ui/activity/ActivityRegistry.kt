@@ -310,3 +310,38 @@ internal val DELIVERY_READ_ALL_ROLES = setOf("manager", "owner", "admin", "super
 internal fun driverCardVisible(count: Int?, effectiveRoles: Set<String>): Boolean =
     if (effectiveRoles.any { it in DELIVERY_READ_ALL_ROLES }) false
     else "driver" in effectiveRoles || (count ?: 0) > 0
+
+/**
+ * Role yang MENDARAT di tab Ringkasan saat app dibuka, bukan Activity (default
+ * untuk semua role lain).
+ *
+ * HANYA manager & owner. Kedua guard backend yang mengisi seksi "BUAT BARU" di
+ * Activity menolak mereka: `can_create_spk` ([SPK_CREATE_ROLES] di atas
+ * mengurangi "manager" DAN "owner") dan `require_indent_submitter_role`
+ * ([INDENT_SUBMIT_ROLES] memuat "manager" tapi TIDAK "owner"). Jadi Activity
+ * manager/owner nyaris kosong: HARI INI cuma absen, BUAT BARU kosong/nyaris
+ * kosong, PERLU TINDAKAN paling banter 1-2 kartu approval. Dashboard (tab
+ * Ringkasan) sudah lama jadi layar utama kedua role ini.
+ *
+ * JANGAN tambah admin/superadmin: mereka lolos `spk.create` PENUH
+ * ([SPK_CREATE_ROLES] tak mengurangi mereka) dan hampir semua kartu antrian
+ * ([PDI_QUEUE_ROLES], [KASIR_QUEUE_ROLES], [DELIVERY_CONTROL_ROLES], plus
+ * ketiga approval [AKI_APPROVE_ROLES]/[DISCOUNT_APPROVE_ROLES]/
+ * [INDENT_APPROVE_ROLES] lewat page-grant) — Activity mereka justru padat,
+ * mendaratkan mereka di Ringkasan malah menyembunyikan layar paling berguna
+ * buat mereka.
+ */
+internal val SUMMARY_LANDING_ROLES: Set<String> = setOf("manager", "owner")
+
+/**
+ * `true` bila salah satu role efektif ada di [SUMMARY_LANDING_ROLES] — dipakai
+ * `MainScreen` SEKALI saat komposisi pertama (`remember`) untuk memilih tab
+ * awal (`AppDestination.SUMMARY` vs default lama `AppDestination.ACTIVITY`).
+ * Role kosong (profil belum termuat saat itu) selalu `false` — jatuh ke
+ * default lama, BUKAN ditebak, sama prinsip [gateAllows] di
+ * `QuickAccessMenus.kt`. Sengaja TIDAK dievaluasi ulang setelah tab awal
+ * dipilih: melompat tab sendiri setelah user sudah melihat/menyentuh layar
+ * itu mengganggu.
+ */
+internal fun landsOnSummary(effectiveRoles: Set<String>): Boolean =
+    effectiveRoles.any { it in SUMMARY_LANDING_ROLES }

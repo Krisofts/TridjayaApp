@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.ui.session
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.DeviceRepository
 import com.krisoft.tridjayaelektronik.domain.auth.ObserveMustChangePasswordUseCase
 import com.krisoft.tridjayaelektronik.domain.auth.ObserveSessionStateUseCase
@@ -23,13 +24,18 @@ class SessionViewModel @Inject constructor(
     observeSessionStateUseCase: ObserveSessionStateUseCase,
     observeMustChangePasswordUseCase: ObserveMustChangePasswordUseCase,
     private val validateSessionUseCase: ValidateSessionUseCase,
-    private val deviceRepository: DeviceRepository
+    private val deviceRepository: DeviceRepository,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     val sessionState: StateFlow<Boolean> = observeSessionStateUseCase()
 
     /** When true (and logged in), the app must show the forced change-password gate. */
     val mustChangePassword: StateFlow<Boolean> = observeMustChangePasswordUseCase()
+
+    /** Profil dari cache sesi (sinkron, tanpa network) — dipakai `MainScreen` memilih tab
+     *  awal (Activity vs Ringkasan) dari role efektif saat komposisi pertama. */
+    val cachedUser get() = authRepository.cachedUser
 
     init {
         if (sessionState.value) {
