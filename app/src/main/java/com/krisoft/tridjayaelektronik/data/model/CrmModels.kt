@@ -98,6 +98,25 @@ data class CreateProspekData(
     val id: Long? = null
 )
 
+/**
+ * `GET /api/prospek-harian/my-target` — target prospek harian MILIK pemegang
+ * token (login-only, isinya tak pernah berisi angka orang lain).
+ *
+ * Angka ini SENGAJA tidak dihitung ulang di klien: server menghitung per
+ * `karyawan_id` (penerima penugasan), sedangkan cache lokal hanya tahu
+ * `createdBy` (penginput). Prospek yang dilempar ke sales lain membuat kedua
+ * angka itu berselisih, dan raport/summary/KPI memakai angka server.
+ *
+ * `target = 0` berarti setelan target tak diketahui/nonaktif — perlakukan sama
+ * dengan tak ada data (lihat `buildDailyTasks`), jangan dirender "3/0".
+ */
+@Serializable
+data class ProspekTargetDto(
+    val target: Int = 0,
+    val aktual: Int = 0,
+    val tercapai: Boolean = false
+)
+
 /** One selectable assignment target from `GET /api/prospek-harian/assignees` (active employees). */
 @Serializable
 data class AssigneeDto(

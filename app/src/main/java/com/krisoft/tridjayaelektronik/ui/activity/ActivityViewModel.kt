@@ -10,6 +10,7 @@ import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
 import com.krisoft.tridjayaelektronik.data.RaportRepository
 import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
+import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
 import com.krisoft.tridjayaelektronik.domain.indent.ListIndentUseCase
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
@@ -136,6 +137,8 @@ class ActivityViewModel @Inject constructor(
         var checkOutAt: String? = null
         /** `null` = penyebut jobdesk tak diketahui — lihat `raportJobdeskDetail`. */
         var raportExpected: Int? = null
+        /** `null` = target prospek tak diketahui — lihat `prospekTaskDetail`. */
+        var prospekTarget: ProspekTargetDto? = null
 
         coroutineScope {
             val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
@@ -240,6 +243,16 @@ class ActivityViewModel @Inject constructor(
                 }
             }
 
+            // Kartu "Input Prospek": aktual/target dari SERVER. Ikut fan-out ini
+            // (bukan panggilan berurutan) supaya tak menambah waktu buka layar.
+            // Gagal = diamkan `null` → kartu jatuh ke hitungan cache lama, TIDAK
+            // ditandai "gagal muat": angka cache tetap ada gunanya offline, dan
+            // menandainya gagal justru menyembunyikan tugasnya dari progres.
+            if (ActivitySource.LEADS_CACHE in sources) jobs += async {
+                val r = crmRepository.myProspekTarget(todayIso)
+                if (r is AuthResult.Success) prospekTarget = r.data
+            }
+
             if (ActivitySource.INDENT_PENDING in sources) jobs += async {
                 when (val r = listIndentUseCase(status = "menunggu")) {
                     is AuthResult.Success -> counts[ActivitySource.INDENT_PENDING] = r.data.count
@@ -271,6 +284,7 @@ class ActivityViewModel @Inject constructor(
             raportToday = counts[ActivitySource.RAPORT_TODAY] ?: 0,
             raportFailed = ActivitySource.RAPORT_TODAY in failed,
             raportExpected = raportExpected,
+            prospekTarget = prospekTarget,
         )
 
         // Ada load() yang lebih baru sudah dipanggil sejak kita mulai (atau sedang

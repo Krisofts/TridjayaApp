@@ -1,5 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
+import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
+
 /**
  * Penyusun tampilan layar Activity — SENGAJA fungsi murni tanpa Android/Compose
  * supaya bisa diuji JUnit biasa (repo ini tak punya mockk / coroutines-test).
@@ -78,6 +80,12 @@ internal fun buildDailyTasks(
      * boleh dipakai sebagai sentinel.
      */
     raportExpected: Int? = null,
+    /**
+     * Target prospek harian dari server (`GET /prospek-harian/my-target`).
+     * `null` = TIDAK DIKETAHUI (panggilan gagal / offline) → kartu jatuh ke
+     * perilaku lama, JANGAN divonis belum selesai. Lihat [prospekTaskDetail].
+     */
+    prospekTarget: ProspekTargetDto? = null,
 ): List<DailyTask> = items
     .filter { it.kind == ActivityKind.TUGAS_HARIAN }
     // Absen pulang tak relevan sebelum check-in — menampilkannya sejak pagi
@@ -95,11 +103,21 @@ internal fun buildDailyTasks(
                 DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
             item.id == "absen_masuk" -> DailyTask(item, !checkInAt.isNullOrBlank(), jam(checkInAt) ?: "belum")
             item.id == "absen_pulang" -> DailyTask(item, !checkOutAt.isNullOrBlank(), jam(checkOutAt) ?: "belum")
-            item.id == "prospek" -> DailyTask(
-                item,
-                leadsToday > 0,
-                if (leadsToday > 0) "$leadsToday lead hari ini" else "belum ada",
-            )
+            item.id == "prospek" -> {
+                // Angka SERVER menang mutlak atas hitungan cache lokal: server
+                // menghitung per `karyawan_id` (penerima penugasan), klien cuma
+                // tahu `createdBy` — kalau klien tetap menghitung sendiri,
+                // angkanya berselisih dgn raport/summary/KPI dan user melapor
+                // "sudah input tapi tak tercentang".
+                val srv = prospekTarget?.takeIf { it.target > 0 }
+                DailyTask(
+                    item,
+                    // Server yang memutuskan tercapai/tidak; tanpa data →
+                    // aturan lama "ada minimal satu lead hari ini".
+                    done = srv?.tercapai ?: (leadsToday > 0),
+                    detail = prospekTaskDetail(srv, leadsToday),
+                )
+            }
             raportFailed && item.id == "raport" ->
                 DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
             item.id == "raport" -> DailyTask(
@@ -132,6 +150,22 @@ internal fun raportJobdeskDetail(terkirim: Int, expected: Int?): String = when {
     expected != null && expected > 0 -> "$terkirim/$expected jobdesk"
     terkirim > 0 -> "$terkirim jobdesk terkirim"
     else -> "belum"
+}
+
+/**
+ * Teks kanan kartu "Input Prospek": "3/20 prospek" kalau targetnya diketahui,
+ * teks lama kalau tidak.
+ *
+ * [server] `null` (panggilan gagal / offline) DAN `target = 0` (setelan tak
+ * terbaca / dimatikan) sama-sama berarti TIDAK DIKETAHUI: merendernya "3/0"
+ * memberi penyebut palsu dan membuat kartunya tak pernah bisa tercentang.
+ * Fallback-nya hitungan cache lokal — kurang tepat (lihat [ProspekTargetDto])
+ * tapi tetap benar saat offline, dan tak pernah memvonis "belum".
+ */
+internal fun prospekTaskDetail(server: ProspekTargetDto?, leadsToday: Int): String = when {
+    server != null && server.target > 0 -> "${server.aktual}/${server.target} prospek"
+    leadsToday > 0 -> "$leadsToday lead hari ini"
+    else -> "belum ada"
 }
 
 /**

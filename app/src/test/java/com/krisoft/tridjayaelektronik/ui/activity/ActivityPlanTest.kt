@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.ui.activity
 // Minor 2 audit final-fix-2: `spkCounterAfterIncrement` pindah ke lapisan
 // `data` (satu-satunya pemakainya, `SpkTodayCounter`) — arah dependensi lama
 // (data mengimpor ui) kebalik. Test murninya tetap di sini, tinggal impor.
+import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
 import com.krisoft.tridjayaelektronik.data.spkCounterAfterIncrement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -114,6 +115,58 @@ class ActivityPlanTest {
         val ada = buildDailyTasks(items, null, null, leadsToday = 2).single()
         assertTrue(ada.done)
         assertEquals("2 lead hari ini", ada.detail)
+    }
+
+    @Test
+    fun `prospek di bawah target belum tercentang dan tampil aktual per target`() {
+        val items = listOf(item("prospek"))
+        // `leadsToday` sengaja diisi angka LAIN (5) — kalau ia sampai bocor ke
+        // tampilan/centang, berarti klien masih menghitung sendiri.
+        val kurang = buildDailyTasks(
+            items, null, null, leadsToday = 5,
+            prospekTarget = ProspekTargetDto(target = 20, aktual = 3, tercapai = false),
+        ).single()
+        assertEquals("3/20 prospek", kurang.detail)
+        assertFalse(kurang.done)
+    }
+
+    @Test
+    fun `prospek tercentang begitu server bilang target tercapai`() {
+        val items = listOf(item("prospek"))
+        val pas = buildDailyTasks(
+            items, null, null, leadsToday = 0,
+            prospekTarget = ProspekTargetDto(target = 5, aktual = 5, tercapai = true),
+        ).single()
+        assertEquals("5/5 prospek", pas.detail)
+        assertTrue(pas.done)
+
+        // Lebih dari target tetap tercentang, dan angkanya tidak dipotong.
+        val lebih = buildDailyTasks(
+            items, null, null, leadsToday = 0,
+            prospekTarget = ProspekTargetDto(target = 5, aktual = 8, tercapai = true),
+        ).single()
+        assertEquals("8/5 prospek", lebih.detail)
+        assertTrue(lebih.done)
+    }
+
+    @Test
+    fun `target prospek tak diketahui jatuh ke perilaku lama bukan divonis belum`() {
+        val items = listOf(item("prospek"))
+        // `null` = panggilan gagal/offline; `target = 0` = setelan tak terbaca.
+        // Keduanya TIDAK boleh jadi "0/0" atau "3/0", dan tak boleh membatalkan
+        // centang orang yang sudah menginput hari ini.
+        for (server in listOf(null, ProspekTargetDto(target = 0, aktual = 0, tercapai = false))) {
+            val ada = buildDailyTasks(items, null, null, leadsToday = 2, prospekTarget = server).single()
+            assertEquals("2 lead hari ini", ada.detail)
+            assertTrue(ada.done)
+
+            val kosong = buildDailyTasks(items, null, null, leadsToday = 0, prospekTarget = server).single()
+            assertEquals("belum ada", kosong.detail)
+            assertFalse(kosong.done)
+            // Tetap masuk penyebut progres — ini bukan "gagal muat".
+            assertFalse(kosong.loadFailed)
+            assertEquals("0/1", dailyProgressLabel(listOf(kosong)))
+        }
     }
 
     @Test

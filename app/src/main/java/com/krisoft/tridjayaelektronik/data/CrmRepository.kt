@@ -17,6 +17,7 @@ import com.krisoft.tridjayaelektronik.data.model.LostLeadRequest
 import com.krisoft.tridjayaelektronik.data.model.MoveStageRequest
 import com.krisoft.tridjayaelektronik.data.model.PipelineDto
 import com.krisoft.tridjayaelektronik.data.model.PipelinesData
+import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
 import com.krisoft.tridjayaelektronik.data.remote.CrmApi
 import com.krisoft.tridjayaelektronik.di.AppScope
 import kotlinx.coroutines.CoroutineScope
@@ -276,6 +277,24 @@ class CrmRepository @Inject constructor(
             runCatching { errorJson.decodeFromString(AssigneesData.serializer(), entity.jsonPayload) }.getOrNull()
         }
         return if (cached != null) AuthResult.Success(cached.items) else network
+    }
+
+    /**
+     * Target prospek harian user sendiri (`{target, aktual, tercapai}`).
+     *
+     * SENGAJA tanpa cache-fallback ala [pipelines]/[assignees]: itu angka
+     * PER-HARI, jadi salinan basi bisa mengklaim "target tercapai" di hari yang
+     * belum dikerjakan sama sekali. Gagal = [AuthResult.Failure], dan pemanggil
+     * (kartu Activity) jatuh ke perilaku lamanya — bukan divonis "belum".
+     */
+    suspend fun myProspekTarget(tanggal: String? = null): AuthResult<ProspekTargetDto> {
+        return try {
+            val response = api.myProspekTarget(tanggal)
+            val data = response.body()?.data
+            if (response.isSuccessful && data != null) AuthResult.Success(data) else parseError(response)
+        } catch (e: Exception) {
+            AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+        }
     }
 
     suspend fun myLeads(assignedTo: String, search: String?, page: Int, limit: Int): AuthResult<LeadListData> {

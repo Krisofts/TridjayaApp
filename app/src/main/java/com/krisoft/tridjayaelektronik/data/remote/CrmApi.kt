@@ -10,6 +10,7 @@ import com.krisoft.tridjayaelektronik.data.model.LeadListData
 import com.krisoft.tridjayaelektronik.data.model.LostLeadRequest
 import com.krisoft.tridjayaelektronik.data.model.MoveStageRequest
 import com.krisoft.tridjayaelektronik.data.model.PipelinesData
+import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -43,6 +44,12 @@ interface CrmApi {
     /** Active employees (all branches, sales & non-sales) selectable as the prospect's assignee. */
     @GET("api/prospek-harian/assignees")
     suspend fun assignees(): Response<ApiResponse<AssigneesData>>
+
+    /** Target prospek harian pemegang token. `tanggal` opsional — server default hari ini. */
+    @GET("api/prospek-harian/my-target")
+    suspend fun myProspekTarget(
+        @Query("tanggal") tanggal: String? = null
+    ): Response<ApiResponse<ProspekTargetDto>>
 
     @POST("api/crm/leads/{id}/move-stage")
     suspend fun moveStage(@Path("id") id: Long, @Body body: MoveStageRequest): Response<ApiResponse<LeadDto>>
