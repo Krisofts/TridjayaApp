@@ -47,3 +47,17 @@ data class CreateIndentRequest(
 
 @Serializable
 data class UploadProofResponseDto(val url: String = "")
+
+/**
+ * `PATCH /api/inventory/indent/{id}` — kontrol status oleh approver.
+ * `UpdateBody` di inventory-service `indent.rs` memakai
+ * `#[serde(rename_all = "camelCase")]`, jadi nama field di sini sudah final.
+ * `alasanBatal` WAJIB dan harus salah satu kode `ALASAN_BATAL` saat
+ * `status == "batal"`; diabaikan untuk status lain.
+ */
+@Serializable
+data class UpdateIndentRequest(
+    val status: String,
+    val alasanBatal: String? = null,
+    val decisionNote: String? = null
+)

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
@@ -55,14 +56,60 @@ import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveShapes
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** Tiny VM: only exists to hand the bearer token to Coil for the authenticated bukti images. */
+/** VM layar detail: bearer untuk Coil + putusan approver. */
 @HiltViewModel
 class IndentDetailViewModel @Inject constructor(
-    private val tokenStore: TokenStore
+    private val tokenStore: TokenStore,
+    private val authRepository: com.krisoft.tridjayaelektronik.data.AuthRepository,
+    private val updateIndentStatusUseCase:
+        com.krisoft.tridjayaelektronik.domain.indent.UpdateIndentStatusUseCase,
 ) : ViewModel() {
     fun bearerToken(): String? = tokenStore.accessToken
+
+    var capabilities by mutableStateOf<Map<String, Boolean>?>(null)
+        private set
+    var isSubmitting by mutableStateOf(false)
+        private set
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    val effectiveRoles: Set<String>
+        get() = com.krisoft.tridjayaelektronik.ui.home.effectiveRoles(authRepository.cachedUser)
+
+    init {
+        viewModelScope.launch { capabilities = authRepository.capabilities() }
+    }
+
+    /** [onDone] dipanggil setelah server menerima putusan — pemanggil menutup
+     *  detail & memuat ulang daftar supaya angka di Activity ikut turun. */
+    fun decide(
+        id: String,
+        status: String,
+        alasanBatal: String? = null,
+        onDone: () -> Unit,
+    ) {
+        if (isSubmitting) return
+        isSubmitting = true
+        errorMessage = null
+        viewModelScope.launch {
+            val result = updateIndentStatusUseCase(
+                id,
+                com.krisoft.tridjayaelektronik.data.model.UpdateIndentRequest(
+                    status = status,
+                    alasanBatal = alasanBatal,
+                )
+            )
+            isSubmitting = false
+            when (result) {
+                is com.krisoft.tridjayaelektronik.data.AuthResult.Success -> onDone()
+                is com.krisoft.tridjayaelektronik.data.AuthResult.Failure ->
+                    errorMessage = result.message
+            }
+        }
+    }
 }
 
 /**
@@ -74,6 +121,34 @@ internal fun buktiDisplayUrl(raw: String): String {
     val filename = raw.substringAfterLast('/')
     return BuildConfig.API_BASE_URL.trimEnd('/') + "/api/inventory/indent/bukti/" + filename
 }
+
+/**
+ * Kode alasan batal — divalidasi KETAT oleh backend (`ALASAN_BATAL` di
+ * inventory-service `indent.rs`); teks bebas dijawab 400. Label mengikuti
+ * halaman web `InventoryIndentPage.tsx` supaya istilahnya seragam.
+ */
+internal val INDENT_ALASAN_BATAL: List<Pair<String, String>> = listOf(
+    "discontinue" to "Discontinue",
+    "barang_tidak_ada" to "Barang tidak ada",
+    "lainnya" to "Lainnya",
+)
+
+/**
+ * Tombol putusan hanya untuk pengajuan yang masih `menunggu` dan pemegang
+ * `indent.approve`. Lanjutan pipeline (`tiba`/`selesai`), koreksi detail,
+ * bukti DP, dan cetak invoice sengaja tetap di web.
+ */
+internal fun canDecideIndent(
+    status: String,
+    capabilities: Map<String, Boolean>?,
+    effectiveRoles: Set<String>,
+): Boolean = status.equals("menunggu", ignoreCase = true) &&
+    com.krisoft.tridjayaelektronik.ui.home.gateAllows(
+        capability = "indent.approve",
+        allowedRoles = com.krisoft.tridjayaelektronik.ui.activity.INDENT_APPROVE_ROLES,
+        effectiveRoles = effectiveRoles,
+        capabilities = capabilities,
+    )
 
 // Lookup bulan murni (tanpa SimpleDateFormat) — dipanggil per baris list saat scroll;
 // konstruksi SimpleDateFormat per panggilan mahal (parsing pola + simbol locale).
@@ -99,6 +174,7 @@ private fun formatRupiah(value: Double): String {
 fun IndentDetailScreen(
     indent: IndentDto,
     onBack: () -> Unit,
+    onDecided: () -> Unit = onBack,
     viewModel: IndentDetailViewModel = hiltViewModel()
 ) {
     // Detail is a state-swap inside the Indent list route, not its own nav destination —
@@ -208,6 +284,90 @@ fun IndentDetailScreen(
                             }
                         }
                     }
+                }
+            }
+
+            if (canDecideIndent(indent.status, viewModel.capabilities, viewModel.effectiveRoles)) {
+                var showTolak by remember { mutableStateOf(false) }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Putusan approver",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Lanjutan status (tiba/selesai), koreksi detail, bukti DP, dan cetak " +
+                        "invoice dikerjakan di web.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
+                )
+                viewModel.errorMessage?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.Button(
+                        onClick = { viewModel.decide(indent.id, "dipesan", onDone = onDecided) },
+                        enabled = !viewModel.isSubmitting,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Setujui") }
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { showTolak = true },
+                        enabled = !viewModel.isSubmitting,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Tolak") }
+                }
+                if (showTolak) {
+                    var alasan by remember { mutableStateOf<String?>(null) }
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showTolak = false },
+                        title = { Text("Tolak pengajuan inden?", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column {
+                                Text(
+                                    "Pilih alasan — server hanya menerima pilihan di bawah.",
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                INDENT_ALASAN_BATAL.forEach { (kode, label) ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { alasan = kode },
+                                    ) {
+                                        androidx.compose.material3.RadioButton(
+                                            selected = alasan == kode,
+                                            onClick = { alasan = kode },
+                                        )
+                                        Text(label)
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                enabled = alasan != null && !viewModel.isSubmitting,
+                                onClick = {
+                                    showTolak = false
+                                    viewModel.decide(
+                                        indent.id, "batal", alasanBatal = alasan, onDone = onDecided
+                                    )
+                                },
+                            ) { Text("Tolak") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { showTolak = false }) {
+                                Text("Batal")
+                            }
+                        },
+                    )
                 }
             }
         }

@@ -80,7 +80,13 @@ fun IndentListScreen(
     }
 
     selected?.let { indent ->
-        IndentDetailScreen(indent = indent, onBack = { selected = null })
+        IndentDetailScreen(
+            indent = indent,
+            onBack = { selected = null },
+            // Putusan mengubah antrean — tutup detail lalu muat ulang daftar
+            // supaya angka "Approval Inden" di Activity ikut turun.
+            onDecided = { selected = null; viewModel.load() },
+        )
         return
     }
 

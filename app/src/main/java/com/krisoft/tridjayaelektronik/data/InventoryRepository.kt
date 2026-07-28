@@ -12,6 +12,7 @@ import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.IndentDto
 import com.krisoft.tridjayaelektronik.data.model.IndentListData
+import com.krisoft.tridjayaelektronik.data.model.UpdateIndentRequest
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
@@ -152,6 +153,24 @@ class InventoryRepository @Inject constructor(
                 AuthResult.Success(data)
             } else {
                 parseError(response, "Gagal memuat daftar indent")
+            }
+        } catch (e: Exception) {
+            AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+        }
+    }
+
+    /** Putusan approver: setujui (`dipesan`) atau tolak (`batal` + alasan). */
+    suspend fun updateIndentStatus(
+        id: String,
+        body: UpdateIndentRequest
+    ): AuthResult<IndentDto> {
+        return try {
+            val response = api.updateIndentStatus(id, body)
+            val data = response.body()?.data
+            if (response.isSuccessful && data != null) {
+                AuthResult.Success(data)
+            } else {
+                parseError(response, "Gagal memperbarui status indent")
             }
         } catch (e: Exception) {
             AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")

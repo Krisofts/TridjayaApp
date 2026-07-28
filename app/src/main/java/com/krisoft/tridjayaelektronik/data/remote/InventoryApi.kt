@@ -11,6 +11,7 @@ import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameListData
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangPageDto
+import com.krisoft.tridjayaelektronik.data.model.UpdateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.UploadProofResponseDto
 import com.krisoft.tridjayaelektronik.data.model.UpsertOpnameItemRequest
 import okhttp3.MultipartBody
@@ -18,6 +19,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Multipart
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
@@ -39,6 +41,12 @@ interface InventoryApi {
 
     @POST("api/inventory/indent")
     suspend fun createIndent(@Body body: CreateIndentRequest): Response<ApiResponse<IndentDto>>
+
+    @PATCH("api/inventory/indent/{id}")
+    suspend fun updateIndentStatus(
+        @Path("id") id: String,
+        @Body body: UpdateIndentRequest
+    ): Response<ApiResponse<IndentDto>>
 
     @Multipart
     @POST("api/inventory/indent/upload-proof")
