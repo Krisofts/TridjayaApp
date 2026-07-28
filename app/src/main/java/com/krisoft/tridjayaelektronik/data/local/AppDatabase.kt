@@ -4,8 +4,8 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [BranchStockEntity::class, SyncMetaEntity::class, DashboardCacheEntity::class, LeadEntity::class, OpnameCountEntity::class],
-    version = 13,
+    entities = [BranchStockEntity::class, SyncMetaEntity::class, DashboardCacheEntity::class, LeadEntity::class, OpnameUnitEntity::class],
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -13,5 +13,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncMetaDao(): SyncMetaDao
     abstract fun dashboardCacheDao(): DashboardCacheDao
     abstract fun leadDao(): LeadDao
-    abstract fun opnameCountDao(): OpnameCountDao
+    abstract fun opnameUnitDao(): OpnameUnitDao
 }

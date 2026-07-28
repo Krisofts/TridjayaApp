@@ -1,7 +1,8 @@
 package com.krisoft.tridjayaelektronik.data.remote
 
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
-import com.krisoft.tridjayaelektronik.data.model.BatchOpnameItemsRequest
+import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsData
+import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameRequest
 import com.krisoft.tridjayaelektronik.data.model.IndentDto
@@ -15,10 +16,11 @@ import com.krisoft.tridjayaelektronik.data.model.OpnameStockData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangPageDto
 import com.krisoft.tridjayaelektronik.data.model.UpdateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.UploadProofResponseDto
-import com.krisoft.tridjayaelektronik.data.model.UpsertOpnameItemRequest
+import com.krisoft.tridjayaelektronik.data.model.OpnameUnitListData
 import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
@@ -78,16 +80,19 @@ interface InventoryApi {
     @GET("api/inventory/opname/{id}/stock")
     suspend fun opnameStock(@Path("id") id: String): Response<ApiResponse<OpnameStockData>>
 
-    @POST("api/inventory/opname/{id}/items")
-    suspend fun upsertOpnameItem(
+    @POST("api/inventory/opname/{id}/units")
+    suspend fun createOpnameUnits(
         @Path("id") id: String,
-        @Body body: UpsertOpnameItemRequest
-    ): Response<ApiResponse<OpnameDetailDto>>
+        @Body body: CreateOpnameUnitsRequest
+    ): Response<ApiResponse<CreateOpnameUnitsData>>
 
-    @POST("api/inventory/opname/{id}/items/batch")
-    suspend fun batchUpsertOpnameItems(
+    @GET("api/inventory/opname/{id}/units")
+    suspend fun listOpnameUnits(@Path("id") id: String): Response<ApiResponse<OpnameUnitListData>>
+
+    @DELETE("api/inventory/opname/{id}/units/{unitId}")
+    suspend fun deleteOpnameUnit(
         @Path("id") id: String,
-        @Body body: BatchOpnameItemsRequest
+        @Path("unitId") unitId: String
     ): Response<ApiResponse<OpnameDetailDto>>
 
     @POST("api/inventory/opname/{id}/complete")

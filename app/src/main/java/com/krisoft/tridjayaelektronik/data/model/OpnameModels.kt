@@ -119,16 +119,57 @@ data class CreateOpnameRequest(
     val catatan: String? = null
 )
 
+/** Satu unit fisik terhitung — satu baris per serial number. */
 @Serializable
-data class UpsertOpnameItemRequest(
+data class OpnameUnitDto(
+    val id: String = "",
+    val kodeBarang: String = "",
+    val serialNumber: String = "",
+    val kondisi: String = "layak",
+    val temuan: String? = null,
+    val keterangan: String? = null,
+    val countedByUserId: String = "",
+    val countedByName: String? = null,
+    val countedAt: String = ""
+)
+
+@Serializable
+data class OpnameUnitInput(
     val kodeBarang: String,
-    val stokFisikLayak: Long,
-    val stokFisikTidakLayak: Long,
+    val serialNumber: String,
+    val kondisi: String = "layak",
     val keterangan: String? = null
 )
 
-/** Batch push of the locally-buffered counts — one transaction server-side. */
 @Serializable
-data class BatchOpnameItemsRequest(
-    val items: List<UpsertOpnameItemRequest>
+data class CreateOpnameUnitsRequest(
+    val items: List<OpnameUnitInput>
+)
+
+@Serializable
+data class OpnameUnitAccepted(
+    val serialNumber: String = "",
+    val temuan: String? = null
+)
+
+@Serializable
+data class OpnameUnitRejected(
+    val serialNumber: String = "",
+    val reason: String = ""
+)
+
+/**
+ * Hasil per-baris: satu serial bermasalah tidak menggagalkan sisanya, jadi
+ * petugas tak perlu mengulang seluruh batch scan di lapangan.
+ */
+@Serializable
+data class CreateOpnameUnitsData(
+    val accepted: List<OpnameUnitAccepted> = emptyList(),
+    val rejected: List<OpnameUnitRejected> = emptyList(),
+    val session: OpnameDetailDto = OpnameDetailDto()
+)
+
+@Serializable
+data class OpnameUnitListData(
+    val items: List<OpnameUnitDto> = emptyList()
 )
