@@ -272,12 +272,34 @@ fun InventoryScreen(
                         }
                     } else if (pagingItems.itemCount == 0) {
                         item {
+                            // Barang bisa gak kebaca gara-gara lagi mutasi antar cabang (stok 0 di dua
+                            // sisi selama jeda GS OUT->IN) -- cek sekali tiap masuk state kosong ini,
+                            // bukan tiap keystroke (lihat InventoryViewModel.checkInTransitHint).
+                            LaunchedEffect(state.filters.search, state.filters.dealer, state.filters.region) {
+                                viewModel.checkInTransitHint()
+                            }
                             Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                                ExpressiveEmptyState(
-                                    icon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                    title = "Tidak ada barang",
-                                    subtitle = "Tidak ada barang yang cocok dengan filter"
-                                )
+                                val hint = state.inTransitHint
+                                if (hint != null) {
+                                    ExpressiveEmptyState(
+                                        icon = {
+                                            Icon(
+                                                Icons.Rounded.Share,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        },
+                                        title = "Sedang Dalam Perjalanan",
+                                        subtitle = "${hint.namaBarang} sedang dikirim ke ${hint.tujuanCabang} (${hint.tanggal}). " +
+                                            "Belum tercatat di stok cabang manapun sampai diterima."
+                                    )
+                                } else {
+                                    ExpressiveEmptyState(
+                                        icon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                        title = "Tidak ada barang",
+                                        subtitle = "Tidak ada barang yang cocok dengan filter"
+                                    )
+                                }
                             }
                         }
                     }

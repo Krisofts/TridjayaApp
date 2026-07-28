@@ -6,6 +6,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
+import com.krisoft.tridjayaelektronik.data.InTransitHint
 import com.krisoft.tridjayaelektronik.data.local.BranchStockEntity
 import com.krisoft.tridjayaelektronik.data.local.DealerAlias
 import com.krisoft.tridjayaelektronik.data.local.ProductAggregate
@@ -13,6 +14,7 @@ import com.krisoft.tridjayaelektronik.data.local.ProductSortOrder
 import com.krisoft.tridjayaelektronik.data.local.RegionAlias
 import com.krisoft.tridjayaelektronik.domain.inventory.ExportProductsUseCase
 import com.krisoft.tridjayaelektronik.domain.inventory.GetBranchBreakdownUseCase
+import com.krisoft.tridjayaelektronik.domain.inventory.GetInTransitHintUseCase
 import com.krisoft.tridjayaelektronik.domain.inventory.GetProductFiltersUseCase
 import com.krisoft.tridjayaelektronik.domain.inventory.SyncInventoryUseCase
 import com.krisoft.tridjayaelektronik.domain.inventory.WatchProductsUseCase
@@ -51,7 +53,10 @@ data class InventoryUiState(
     val loadingBranchFor: String? = null,
     val categories: List<String> = emptyList(),
     val merks: List<String> = emptyList(),
-    val isExporting: Boolean = false
+    val isExporting: Boolean = false,
+    /** Diisi saat search kosong tapi barangnya ketemu lagi mutasi (stok 0 di dua cabang, jeda GS OUT→IN). */
+    val inTransitHint: InTransitHint? = null,
+    val inTransitHintLoading: Boolean = false
 )
 
 /** Product identity is `kode` + `kodeCabang` — the same `kode` can be a different product per region. */
@@ -64,6 +69,7 @@ class InventoryViewModel @Inject constructor(
     private val syncInventoryUseCase: SyncInventoryUseCase,
     private val exportProductsUseCase: ExportProductsUseCase,
     private val getBranchBreakdownUseCase: GetBranchBreakdownUseCase,
+    private val getInTransitHintUseCase: GetInTransitHintUseCase,
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
@@ -95,7 +101,21 @@ class InventoryViewModel @Inject constructor(
 
     fun onSearchChange(value: String) {
         _searchQuery.value = value
-        _uiState.update { it.copy(filters = it.filters.copy(search = value)) }
+        _uiState.update { it.copy(filters = it.filters.copy(search = value), inTransitHint = null) }
+    }
+
+    /** Dipanggil dari layar saat hasil search benar-benar kosong — cek apakah barangnya
+     *  lagi mutasi (stok 0 di dua cabang selama jeda GS OUT→IN, lihat delivery-flow-audit.md #5).
+     *  Toko yang dicek: filter toko aktif, atau toko sendiri kalau lagi lihat "semua toko". */
+    fun checkInTransitHint() {
+        val query = _uiState.value.filters.search.trim()
+        val dealer = _uiState.value.filters.dealer.ifEmpty { _uiState.value.myDealer.orEmpty() }
+        if (query.isEmpty() || dealer.isEmpty() || _uiState.value.inTransitHintLoading) return
+        _uiState.update { it.copy(inTransitHintLoading = true) }
+        viewModelScope.launch {
+            val hint = getInTransitHintUseCase(dealer, query)
+            _uiState.update { it.copy(inTransitHintLoading = false, inTransitHint = hint) }
+        }
     }
 
     fun toggleReadyOnly() {
@@ -105,7 +125,7 @@ class InventoryViewModel @Inject constructor(
     fun setRegion(region: String) {
         _uiState.update {
             val newRegion = if (it.filters.region == region) "" else region
-            it.copy(filters = it.filters.copy(region = newRegion))
+            it.copy(filters = it.filters.copy(region = newRegion), inTransitHint = null)
         }
     }
 
@@ -118,7 +138,7 @@ class InventoryViewModel @Inject constructor(
     fun setDealer(dealer: String) {
         _uiState.update {
             val newDealer = if (it.filters.dealer == dealer) "" else dealer
-            it.copy(filters = it.filters.copy(dealer = newDealer))
+            it.copy(filters = it.filters.copy(dealer = newDealer), inTransitHint = null)
         }
     }
 
@@ -154,7 +174,8 @@ class InventoryViewModel @Inject constructor(
                     merk = merk.trim(),
                     sortOrder = sortOrder,
                     dealer = dealerCode
-                )
+                ),
+                inTransitHint = null
             )
         }
     }

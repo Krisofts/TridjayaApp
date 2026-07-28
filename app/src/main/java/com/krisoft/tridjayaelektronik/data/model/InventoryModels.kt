@@ -35,6 +35,38 @@ data class StokCabangPageDto(
 )
 
 @Serializable
+data class MutasiHistoriRowDto(
+    val arah: String = "",
+    val noTransaksi: String = "",
+    val tanggal: String = "",
+    val cabang: String = "",
+    val cabangNama: String = "",
+    val lawan: String = "",
+    val lawanNama: String = "",
+    val usernya: String = "",
+    val totalQty: Double? = null,
+    val jumlahItem: Int? = null
+)
+
+@Serializable
+data class MutasiHistoriListDto(
+    val items: List<MutasiHistoriRowDto> = emptyList()
+)
+
+@Serializable
+data class MutasiHistoriDetailRowDto(
+    val kodeBarang: String = "",
+    val nama: String = "",
+    val jumlah: Double? = null,
+    val sn: String = ""
+)
+
+@Serializable
+data class MutasiHistoriDetailListDto(
+    val items: List<MutasiHistoriDetailRowDto> = emptyList()
+)
+
+@Serializable
 data class KpiPairDto(
     val today: Double = 0.0,
     val yesterday: Double = 0.0,

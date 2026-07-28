@@ -6,6 +6,8 @@ import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameRequest
 import com.krisoft.tridjayaelektronik.data.model.IndentDto
 import com.krisoft.tridjayaelektronik.data.model.IndentListData
+import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
+import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameContextDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameListData
@@ -86,4 +88,21 @@ interface InventoryApi {
 
     @POST("api/inventory/opname/{id}/cancel")
     suspend fun cancelOpname(@Path("id") id: String): Response<ApiResponse<OpnameDetailDto>>
+
+    // ---- Mutasi histori (arsip GS, read-only) — dipakai buat cek barang "dalam perjalanan"
+    // saat search stok kosong (lihat InventoryRepository.findInTransitHint) ----
+
+    @GET("api/inventory/mutasi-histori")
+    suspend fun mutasiHistori(
+        @Query("dealer") dealer: String? = null,
+        @Query("arah") arah: String? = null,
+        @Query("from") from: String? = null,
+        @Query("limit") limit: Int? = null
+    ): Response<ApiResponse<MutasiHistoriListDto>>
+
+    @GET("api/inventory/mutasi-histori/detail")
+    suspend fun mutasiHistoriDetail(
+        @Query("noTransaksi") noTransaksi: String,
+        @Query("arah") arah: String
+    ): Response<ApiResponse<MutasiHistoriDetailListDto>>
 }

@@ -26,6 +26,13 @@ import javax.inject.Singleton
 private const val SYNC_PAGE_LIMIT = 1000
 private val SYNC_INTERVAL_MILLIS = java.util.concurrent.TimeUnit.HOURS.toMillis(5)
 
+/** Hasil [InventoryRepository.findInTransitHint] — barang ketemu di mutasi OUT belum ada padanan IN. */
+data class InTransitHint(
+    val namaBarang: String,
+    val tujuanCabang: String,
+    val tanggal: String
+)
+
 @Singleton
 class InventoryRepository @Inject constructor(
     private val api: InventoryApi,
@@ -93,6 +100,41 @@ class InventoryRepository @Inject constructor(
 
     suspend fun productDetail(kode: String, kodeCabang: String): ProductAggregate? =
         branchStockDao.productAggregate(kode, kodeCabang)
+
+    /**
+     * Barang lagi mutasi antar cabang bikin stok 0 di dua sisi selama jeda GS OUT→IN
+     * (lihat delivery-flow-audit.md item #5) — jadi gak nongol di search biasa. Cuma
+     * dipanggil saat hasil search kosong (bukan tiap keystroke): cek [limit] transaksi
+     * OUT terakhir dari cabang sendiri, buka detail satu-satu sampai ketemu barang yang
+     * namanya/kodenya cocok [query]. Fail-soft — gagal jaringan/parse cukup return null,
+     * ini cuma hint tambahan di empty-state, bukan jalur kritis.
+     */
+    suspend fun findInTransitHint(dealerCode: String, query: String, limit: Int = 15): InTransitHint? {
+        val needle = query.trim()
+        if (needle.isEmpty() || dealerCode.isEmpty()) return null
+        return try {
+            val fromDate = java.time.LocalDate.now().minusDays(30).toString()
+            val listResponse = api.mutasiHistori(dealer = dealerCode, arah = "out", from = fromDate, limit = limit)
+            val rows = listResponse.body()?.data?.items.orEmpty()
+            for (row in rows) {
+                val detailResponse = api.mutasiHistoriDetail(noTransaksi = row.noTransaksi, arah = "out")
+                val items = detailResponse.body()?.data?.items.orEmpty()
+                val match = items.firstOrNull {
+                    it.nama.contains(needle, ignoreCase = true) || it.kodeBarang.equals(needle, ignoreCase = true)
+                }
+                if (match != null) {
+                    return InTransitHint(
+                        namaBarang = match.nama,
+                        tujuanCabang = row.lawanNama.ifEmpty { row.lawan },
+                        tanggal = row.tanggal
+                    )
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     /** Refreshes the local cache from the network only if the last sync is older than 6 hours. */
     suspend fun syncIfStale(): AuthResult<Unit> {
