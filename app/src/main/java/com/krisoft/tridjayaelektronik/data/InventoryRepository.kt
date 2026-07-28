@@ -26,6 +26,43 @@ import javax.inject.Singleton
 private const val SYNC_PAGE_LIMIT = 1000
 private val SYNC_INTERVAL_MILLIS = java.util.concurrent.TimeUnit.HOURS.toMillis(5)
 
+/**
+ * Batas waras sinkronisasi stok: 20 halaman × [SYNC_PAGE_LIMIT] = 20.000 baris.
+ *
+ * Dengan `inStock=true` katalog nyata ±3.6k baris (4 halaman), jadi batas ini murni sabuk
+ * pengaman: 28 Jul 2026 SP GS `GetStokCabang` mulai mengembalikan katalog penuh per dealer
+ * (66.482 baris = 67 halaman) dan sinkronisasi HP lapangan tak pernah selesai — 834 percobaan
+ * berhenti di halaman 4-5, hanya 19 yang tuntas. Kalau server mengabaikan/rollback filter
+ * `inStock`, lebih baik berhenti dengan 20.000 baris terpakai + catatan log daripada menarik
+ * tanpa akhir.
+ */
+private const val SYNC_MAX_PAGES = 20
+
+private const val SYNC_LOG_TAG = "InventorySync"
+
+/** Keputusan setelah satu halaman stok berhasil ditarik & ditulis. */
+internal enum class SyncStep {
+    /** Masih ada halaman berikutnya dan batas belum tersentuh. */
+    CONTINUE,
+
+    /** Server bilang habis — data yang terkumpul = snapshot utuh, boleh menggantikan cache. */
+    DONE,
+
+    /** Berhenti karena batas waras / respons tak jelas — data parsial, JANGAN buang baris lama. */
+    TRUNCATED
+}
+
+/**
+ * Fungsi murni penentu langkah paging (diuji di `InventorySyncPagingTest`). Dipisah dari [sync]
+ * supaya batas & syarat berhenti bisa diuji tanpa Retrofit/Room.
+ */
+internal fun nextSyncStep(page: Int, hasMore: Boolean, maxPages: Int = SYNC_MAX_PAGES): SyncStep =
+    when {
+        !hasMore -> SyncStep.DONE
+        page >= maxPages -> SyncStep.TRUNCATED
+        else -> SyncStep.CONTINUE
+    }
+
 /** Hasil [InventoryRepository.findInTransitHint] — barang ketemu di mutasi OUT belum ada padanan IN. */
 data class InTransitHint(
     val namaBarang: String,
@@ -144,24 +181,42 @@ class InventoryRepository @Inject constructor(
         return sync()
     }
 
-    /** Forces a network refresh regardless of the last sync time (pull-to-refresh). */
+    /**
+     * Forces a network refresh regardless of the last sync time (pull-to-refresh).
+     *
+     * **Tulis per halaman, bukan semua-atau-tidak.** Tiap halaman langsung di-upsert ke Room, jadi
+     * sinkronisasi yang putus di halaman ke-4 tetap meninggalkan data yang bisa dipakai (dulu:
+     * satu `replaceAll` di akhir → putus di tengah = nol baris tersimpan, layar Inventory kosong
+     * terus). Pembersihan baris yang hilang dari server (stok jadi 0 → tak dikirim lagi karena
+     * `inStock=true`) baru dilakukan saat snapshot benar-benar utuh, lewat [BranchStockDao.replaceAll]
+     * yang `@Transaction` — jadi TIDAK PERNAH ada jendela "DB kosong": pembaca melihat data lama
+     * sampai transaksi commit, tak pernah tabel setengah terhapus.
+     */
     suspend fun sync(): AuthResult<Unit> {
         return try {
             val rows = mutableListOf<BranchStockEntity>()
             var page = 1
+            var step: SyncStep
             while (true) {
-                val response = api.stokCabang(page = page, limit = SYNC_PAGE_LIMIT)
+                val response = api.stokCabang(page = page, limit = SYNC_PAGE_LIMIT, inStock = true)
                 if (!response.isSuccessful) {
-                    return AuthResult.Failure("http_${response.code()}", "Gagal mengambil data stok (${response.code()})")
+                    // Halaman yang sudah masuk Room tetap tinggal; syncMeta sengaja TIDAK diperbarui
+                    // supaya percobaan berikutnya menyegarkan lagi (upsert = idempoten).
+                    return AuthResult.Failure(
+                        "http_${response.code()}",
+                        "Gagal mengambil data stok (${response.code()})"
+                    )
                 }
                 val data = response.body()?.data
                 if (data == null) {
                     // Page pertama sukses tapi body kosong/null → JANGAN timpa cache dengan list kosong
-                    // (bisa mengosongkan inventori selama 5 jam). Page berikutnya null → berhenti saja.
+                    // (bisa mengosongkan inventori selama 5 jam). Page berikutnya null → data parsial.
                     if (page == 1) return AuthResult.Failure("empty_response", "Respons stok kosong dari server")
+                    step = SyncStep.TRUNCATED
+                    android.util.Log.w(SYNC_LOG_TAG, "Body kosong di halaman $page — snapshot parsial (${rows.size} baris)")
                     break
                 }
-                rows += data.items.map {
+                val pageRows = data.items.map {
                     BranchStockEntity(
                         kode = it.Kode,
                         kodeDealer = it.kodeDealer,
@@ -176,10 +231,26 @@ class InventoryRepository @Inject constructor(
                         kondisi = it.kondisi
                     )
                 }
-                if (!data.hasMore) break
+                branchStockDao.insertAll(pageRows)
+                rows += pageRows
+                step = nextSyncStep(page, data.hasMore)
+                if (step != SyncStep.CONTINUE) break
                 page += 1
             }
-            branchStockDao.replaceAll(rows)
+            if (step == SyncStep.DONE && rows.isNotEmpty()) {
+                branchStockDao.replaceAll(rows)
+            } else if (rows.isEmpty()) {
+                // Snapshot utuh TAPI nol baris (mis. mirror stok server lagi kosong sesaat) —
+                // dengan `inStock=true` ini mungkin terjadi tanpa error HTTP. Menukar cache
+                // dengan list kosong = inventori HP kosong 5 jam; lebih baik pertahankan yang lama.
+                android.util.Log.w(SYNC_LOG_TAG, "Server mengembalikan 0 baris stok — cache lama dipertahankan")
+            } else {
+                android.util.Log.w(
+                    SYNC_LOG_TAG,
+                    "Sinkronisasi stok DIPOTONG di halaman $page (batas $SYNC_MAX_PAGES halaman × $SYNC_PAGE_LIMIT baris): " +
+                        "${rows.size} baris tersimpan, baris lama TIDAK dibersihkan karena snapshot tak utuh"
+                )
+            }
             syncMetaDao.upsert(SyncMetaEntity(SyncMetaEntity.KEY_BRANCH_STOCK, System.currentTimeMillis()))
             AuthResult.Success(Unit)
         } catch (e: Exception) {

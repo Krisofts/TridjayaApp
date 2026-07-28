@@ -29,11 +29,18 @@ import retrofit2.http.Query
 
 interface InventoryApi {
 
+    /**
+     * [inStock] `true` = hanya baris berstok > 0. WAJIB dikirim eksplisit oleh sinkronisasi:
+     * default server pernah berarti "seluruh katalog dealer" (66.482 baris, hanya 5,5% berstok
+     * — perubahan perilaku SP GS `GetStokCabang` 28 Jul 2026), dan server lama/rollback bisa
+     * mengembalikan default itu lagi. Jangan bergantung pada default sisi server.
+     */
     @GET("api/inventory/stok-cabang")
     suspend fun stokCabang(
         @Query("page") page: Int? = null,
         @Query("limit") limit: Int? = null,
-        @Query("refresh") refresh: Boolean? = null
+        @Query("refresh") refresh: Boolean? = null,
+        @Query("inStock") inStock: Boolean? = null
     ): Response<ApiResponse<StokCabangPageDto>>
 
     @GET("api/inventory/indent")
