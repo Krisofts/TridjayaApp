@@ -312,7 +312,11 @@ Done in a dedicated "is this ready to ship?" pass; don't regress these:
   pointed at previously doesn't exist on this machine — use the Laragon JDK 17 above.
 - Builds are slow (1-3+ min for debug, much longer for release/R8) — always run via
   `run_in_background: true` and poll with `ScheduleWakeup`, don't block synchronously.
-- `adb.exe` lives at `C:\Users\adm_c\AppData\Local\Android\Sdk\platform-tools\adb.exe` (not on
+- Android SDK: `$ANDROID_HOME` = `C:\laragon\android-sdk` (yang dipakai Gradle). `local.properties`
+  masih menunjuk `C:/Users/acer/AppData/Local/Android/Sdk` yang **tidak ada** — build tetap jalan
+  karena jatuh ke `ANDROID_HOME`, jangan bingung kalau path itu tak ketemu.
+- `adb.exe` lives at `C:\laragon\android-sdk\platform-tools\adb.exe` (mesin ini; catatan lama
+  menyebut `C:\Users\adm_c\...` yang tidak ada di sini) (not on
   PATH in the sandboxed shell — use the full path).
 - Test device: physical phone, serial `30531702210004R`. `adb devices -l` sometimes shows it
   disconnected if the USB cable/authorization dropped — ask the user to reconnect rather than
@@ -386,6 +390,17 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
 - CRM/Leads: list with search + summary stats, add lead, detail screen (WhatsApp chat deep link,
   pipeline stage picker, won/lost/reopen actions)
 - Settings: profile display, logout
+- Input Aktivitas / raport harian (`ui/raport/`, **BETA** — kartu di Activity berlabel BETA):
+  daftar jobdesk posisi karyawan dari `GET /api/jobdesk-divisions` (dicocokkan ke `divisi`
+  profil lewat `matchJobdeskPosition`, port 1:1 `getPositionMatch` web — **tak boleh** jatuh ke
+  posisi pertama saat tak cocok, itu bikin orang dinilai atas jobdesk divisi lain), kirim per
+  baris ke `POST /api/raport-harian`. Bukti = foto kamera ber-watermark (`PhotoWatermark`,
+  sama dengan absensi/PDI) atau `mode=none` + alasan ≥10 karakter. **Belum ada** video &
+  unggah dari galeri (masih lewat web). Guard: `POST` cuma role `karyawan` (`KARYAWAN_ROLES`
+  di kinerja-service `raport.rs`) — dicerminkan `RAPORT_INPUT_ROLES` di `ActivityRegistry.kt`.
+  Jendela jam pelaporan (default 08:00–18:00) & larangan hari Minggu ditegakkan server;
+  pesan detailnya ada di `errors[0]`, bukan `message` — `RaportRepository.parseError`
+  sengaja mengutamakan `errors[0]` (repository lain di app ini belum).
 - All three tabs' data is Room-cached with a uniform 5-hour TTL and survives tab switches
 
 ## Official Android/Material guideline compliance

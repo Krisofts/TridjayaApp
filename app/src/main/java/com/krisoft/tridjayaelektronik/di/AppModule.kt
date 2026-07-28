@@ -20,6 +20,7 @@ import com.krisoft.tridjayaelektronik.data.remote.CrmApi
 import com.krisoft.tridjayaelektronik.data.remote.DeviceApi
 import com.krisoft.tridjayaelektronik.data.remote.ErpPriceChangesApi
 import com.krisoft.tridjayaelektronik.data.remote.OffApi
+import com.krisoft.tridjayaelektronik.data.remote.RaportApi
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import com.krisoft.tridjayaelektronik.data.remote.NetworkModule
 import com.krisoft.tridjayaelektronik.data.remote.NotificationsApi
@@ -82,6 +83,11 @@ object AppModule {
     @Singleton
     fun provideOffApi(tokenStore: TokenStore): OffApi =
         NetworkModule.createOffApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideRaportApi(tokenStore: TokenStore): RaportApi =
+        NetworkModule.createRaportApi(tokenStore)
 
     @Provides
     @Singleton

@@ -117,11 +117,42 @@ class ActivityPlanTest {
     }
 
     @Test
-    fun `item coming soon tak dihitung sebagai penyebut progres`() {
+    fun `raport BETA ikut dihitung dan selesai begitu ada jobdesk terkirim`() {
         val items = listOf(item("absen_masuk"), item("raport"))
-        val tasks = buildDailyTasks(items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0)
+        val belum = buildDailyTasks(items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0)
+        // Sudah bisa dikerjakan (bukan `comingSoon` lagi) → masuk penyebut.
+        assertEquals("1/2", dailyProgressLabel(belum))
+        assertEquals("belum", belum.first { it.item.id == "raport" }.detail)
+
+        val terkirim = buildDailyTasks(
+            items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0, raportToday = 3
+        )
+        assertEquals("2/2", dailyProgressLabel(terkirim))
+        val raport = terkirim.first { it.item.id == "raport" }
+        assertTrue(raport.done)
+        assertEquals("3 jobdesk terkirim", raport.detail)
+    }
+
+    @Test
+    fun `raport gagal dimuat tampil gagal muat dan tak menghukum progres`() {
+        val items = listOf(item("raport"))
+        val tasks = buildDailyTasks(items, null, null, leadsToday = 0, raportFailed = true)
+        assertEquals("gagal muat", tasks.single().detail)
+        assertTrue(tasks.single().loadFailed)
+        assertEquals("0/0", dailyProgressLabel(tasks))
+    }
+
+    @Test
+    fun `item coming soon tak dihitung sebagai penyebut progres`() {
+        // Tak ada item `comingSoon` tersisa di registri — aturannya tetap diuji
+        // lewat salinan item supaya penambah item baru tak kehilangan jaringnya.
+        val palsu = item("absen_masuk").copy(id = "nanti", comingSoon = true)
+        val tasks = buildDailyTasks(
+            listOf(item("absen_masuk"), palsu),
+            checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0
+        )
         assertEquals("1/1", dailyProgressLabel(tasks))
-        assertEquals("SEGERA", tasks.first { it.item.id == "raport" }.detail)
+        assertEquals("SEGERA", tasks.first { it.item.id == "nanti" }.detail)
     }
 
     @Test

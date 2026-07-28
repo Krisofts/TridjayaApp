@@ -159,7 +159,7 @@ fun HomeScreen(
     LaunchedEffect(Unit) { notifViewModel.refreshUnreadCount() }
 
     TridjayaCollapsibleHeader(
-        title = "Tridjaya.com",
+        title = "Tridjaya App",
         actions = {
             ExpressiveFilledIconButton(onClick = onOpenNotifications) {
                 BadgedBox(badge = {
