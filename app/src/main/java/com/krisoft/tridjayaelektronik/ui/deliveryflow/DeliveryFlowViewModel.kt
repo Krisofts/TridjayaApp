@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
+import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
 import com.krisoft.tridjayaelektronik.data.model.ConfirmSpkBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
@@ -18,6 +19,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.PdiChecklistItemBody
+import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -114,6 +116,7 @@ data class DeliveryFlowUiState(
 class DeliveryFlowViewModel @Inject constructor(
     private val repository: DeliveryFlowRepository,
     authRepository: AuthRepository,
+    private val spkTodayCounter: SpkTodayCounter,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -543,8 +546,12 @@ class DeliveryFlowViewModel @Inject constructor(
         _state.update { it.copy(submitting = true, actionError = null, actionDone = false, lastCreateResult = null) }
         viewModelScope.launch {
             when (val res = repository.create(body)) {
-                is AuthResult.Success -> _state.update {
-                    it.copy(submitting = false, actionDone = true, actionError = null, lastCreateResult = res.data)
+                is AuthResult.Success -> {
+                    // Angka informatif kartu "Buat SPK" di layar Activity (lokal per-device).
+                    spkTodayCounter.increment(KlasemenStandings.todayIso())
+                    _state.update {
+                        it.copy(submitting = false, actionDone = true, actionError = null, lastCreateResult = res.data)
+                    }
                 }
                 is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
             }

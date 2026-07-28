@@ -1,0 +1,192 @@
+package com.krisoft.tridjayaelektronik.ui.activity
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.krisoft.tridjayaelektronik.data.AbsensiRepository
+import com.krisoft.tridjayaelektronik.data.AuthRepository
+import com.krisoft.tridjayaelektronik.data.AuthResult
+import com.krisoft.tridjayaelektronik.data.CrmRepository
+import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
+import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
+import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
+import com.krisoft.tridjayaelektronik.domain.indent.ListIndentUseCase
+import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
+import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+data class ActivityUiState(
+    val isLoading: Boolean = true,
+    val userName: String = "",
+    val cabangName: String = "",
+    val tasks: List<DailyTask> = emptyList(),
+    val progress: String = "",
+    val queueCards: List<ActivityCard> = emptyList(),
+    val actions: List<ActivityItem> = emptyList(),
+    /** Dipakai subtitle chip "Buat SPK" — lokal per-device. */
+    val spkToday: Int = 0,
+)
+
+/**
+ * Layar pertama app: mengambil angka untuk kartu yang BOLEH dilihat user saja.
+ *
+ * Dua sifat penting:
+ *  1. **dedup per endpoint** — dua item aki berbagi satu panggilan `akiForms()`;
+ *  2. **gagal per-sumber** — satu endpoint mati hanya membuat kartunya sendiri
+ *     bertanda "—", kartu lain tetap berangka. Tak ada layar error global:
+ *     bagian tugas harian & aksi tak butuh jaringan.
+ */
+@HiltViewModel
+class ActivityViewModel @Inject constructor(
+    private val authRepository: AuthRepository,
+    private val absensiRepository: AbsensiRepository,
+    private val deliveryRepository: DeliveryFlowRepository,
+    private val crmRepository: CrmRepository,
+    private val listIndentUseCase: ListIndentUseCase,
+    private val spkTodayCounter: SpkTodayCounter,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(ActivityUiState())
+    val uiState: StateFlow<ActivityUiState> = _uiState.asStateFlow()
+
+    private var capabilities: Map<String, Boolean>? = null
+    private var lastLoadedAtMs: Long = 0L
+
+    init {
+        refresh(force = true)
+    }
+
+    /**
+     * Tab tetap hidup di `MainScreen`, jadi tanpa jendela cache ini setiap
+     * kembali ke tab Activity akan menembak ulang seluruh endpoint.
+     */
+    fun refresh(force: Boolean) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastLoadedAtMs < CACHE_WINDOW_MS) return
+        lastLoadedAtMs = now
+        viewModelScope.launch { load() }
+    }
+
+    private suspend fun load() {
+        _uiState.value = _uiState.value.copy(isLoading = true)
+        if (capabilities == null) capabilities = authRepository.capabilities()
+
+        val user = authRepository.cachedUser
+        val roles = effectiveRoles(user)
+        val items = visibleActivityItems(roles, capabilities)
+        val todayIso = KlasemenStandings.todayIso()
+
+        val counts = mutableMapOf<ActivitySource, Int?>()
+        val failed = mutableSetOf<ActivitySource>()
+
+        val sources = sourcesToFetch(items)
+        var checkInAt: String? = null
+        var checkOutAt: String? = null
+
+        coroutineScope {
+            val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
+
+            if (ActivitySource.ABSENSI_TODAY in sources) jobs += async {
+                when (val r = absensiRepository.today()) {
+                    is AuthResult.Success -> {
+                        checkInAt = r.data.record?.checkInAt
+                        checkOutAt = r.data.record?.checkOutAt
+                    }
+                    is AuthResult.Failure -> failed += ActivitySource.ABSENSI_TODAY
+                }
+            }
+
+            // Dua item (milik PDI & milik approver) — SATU panggilan.
+            if (ActivitySource.AKI_FORMS_MINE in sources ||
+                ActivitySource.AKI_FORMS_APPROVAL in sources
+            ) jobs += async {
+                when (val r = deliveryRepository.akiForms()) {
+                    is AuthResult.Success -> {
+                        counts[ActivitySource.AKI_FORMS_MINE] =
+                            r.data.count { it.akiBekasStatus == "belum" }
+                        counts[ActivitySource.AKI_FORMS_APPROVAL] =
+                            r.data.count { it.approvalStatus == "pending" }
+                    }
+                    is AuthResult.Failure -> {
+                        failed += ActivitySource.AKI_FORMS_MINE
+                        failed += ActivitySource.AKI_FORMS_APPROVAL
+                    }
+                }
+            }
+
+            fun antrianStatus(source: ActivitySource, status: String) {
+                if (source in sources) jobs += async {
+                    when (val r = deliveryRepository.list(status = status)) {
+                        is AuthResult.Success -> counts[source] = r.data.size
+                        is AuthResult.Failure -> failed += source
+                    }
+                }
+            }
+            antrianStatus(ActivitySource.DLV_PENDING_PDI, DeliveryStatusKey.PENDING_PDI)
+            antrianStatus(ActivitySource.DLV_PENDING_SPK, DeliveryStatusKey.PENDING_SPK)
+            antrianStatus(ActivitySource.DLV_PENDING_NOTE, DeliveryStatusKey.PENDING_DELIVERY_NOTE)
+            antrianStatus(ActivitySource.DLV_PENDING_SCHEDULING, DeliveryStatusKey.PENDING_SCHEDULING)
+
+            if (ActivitySource.DLV_AS_DRIVER in sources) jobs += async {
+                when (val r = deliveryRepository.list(asDriver = true)) {
+                    is AuthResult.Success -> counts[ActivitySource.DLV_AS_DRIVER] = r.data.size
+                    is AuthResult.Failure -> failed += ActivitySource.DLV_AS_DRIVER
+                }
+            }
+
+            if (ActivitySource.DISCOUNT_PENDING in sources) jobs += async {
+                when (val r = deliveryRepository.discounts(status = "pending")) {
+                    is AuthResult.Success -> counts[ActivitySource.DISCOUNT_PENDING] = r.data.size
+                    is AuthResult.Failure -> failed += ActivitySource.DISCOUNT_PENDING
+                }
+            }
+
+            if (ActivitySource.INDENT_PENDING in sources) jobs += async {
+                when (val r = listIndentUseCase(status = "menunggu")) {
+                    is AuthResult.Success -> counts[ActivitySource.INDENT_PENDING] = r.data.count
+                    is AuthResult.Failure -> failed += ActivitySource.INDENT_PENDING
+                }
+            }
+
+            jobs.forEach { it.await() }
+        }
+
+        val leadsToday = if (ActivitySource.LEADS_CACHE in sources) {
+            // `cachedLeads(search)` — kirim "" untuk seluruh cache. Room, bukan
+            // jaringan: seksi tugas harian tetap benar saat offline.
+            leadsCreatedTodayBy(
+                leads = crmRepository.cachedLeads("").map { it.createdAt to it.createdBy },
+                userId = user?.id,
+                todayIso = todayIso,
+            )
+        } else 0
+
+        val tasks = buildDailyTasks(
+            items = items,
+            checkInAt = checkInAt,
+            checkOutAt = checkOutAt,
+            leadsToday = leadsToday,
+        )
+
+        _uiState.value = ActivityUiState(
+            isLoading = false,
+            userName = user?.name.orEmpty(),
+            cabangName = user?.cabangName.orEmpty(),
+            tasks = tasks,
+            progress = dailyProgressLabel(tasks),
+            queueCards = buildQueueCards(items, counts, failed, roles),
+            actions = items.filter { it.kind == ActivityKind.AKSI },
+            spkToday = spkTodayCounter.todayCount(todayIso),
+        )
+    }
+
+    private companion object {
+        const val CACHE_WINDOW_MS = 60_000L
+    }
+}
