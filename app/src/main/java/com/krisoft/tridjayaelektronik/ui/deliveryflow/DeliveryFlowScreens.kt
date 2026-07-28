@@ -469,7 +469,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                 // (mis. driver lihat "Assign Driver"). Backend tetap otoritatif.
                 val access = viewModel.access
                 val isMyDriverJob = viewModel.isAdminViewer ||
-                    (access.driver && job.assignedDriverId == viewModel.currentUserId)
+                    (access.driverAction && job.assignedDriverId == viewModel.currentUserId)
                 // Self-PDI: sales pemilik SPK boleh PDI unitnya sendiri — "bertanggung
                 // jawab penuh". Syaratnya (mirror `submit_pdi` backend 2026-07-27):
                 // toggle PDI Mandiri (`pdiRequired=false`) ATAU metode diambil-sendiri/
@@ -2095,11 +2095,27 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
 
     rejectId?.let { id ->
         var note by remember { mutableStateOf("") }
+        // `decisionNote` WAJIB saat menolak (discounts.rs `reject_request`):
+        // tanpa isi, server membalas 400 "decisionNote wajib diisi saat menolak".
+        // Label sempat menulis "opsional" tanpa `enabled` — tolak dari HP selalu
+        // gagal tanpa penjelasan.
         AlertDialog(
             onDismissRequest = { rejectId = null },
             title = { Text("Tolak diskon?", fontWeight = FontWeight.Bold) },
-            text = { ExpressiveTextField(note, { note = it }, label = "Catatan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth()) },
-            confirmButton = { TextButton(onClick = { viewModel.rejectDiscount(id, note); rejectId = null }) { Text("Tolak") } },
+            text = {
+                ExpressiveTextField(
+                    note, { note = it },
+                    label = "Alasan penolakan (wajib)",
+                    singleLine = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = note.isNotBlank(),
+                    onClick = { viewModel.rejectDiscount(id, note.trim()); rejectId = null }
+                ) { Text("Tolak") }
+            },
             dismissButton = { TextButton(onClick = { rejectId = null }) { Text("Batal") } }
         )
     }

@@ -39,6 +39,15 @@ object SpkAccessPolicy {
     /** Paritas backend `is_manager` (delivery.rs) = manager ATAU owner. */
     fun isManager(roles: Set<String>): Boolean = "manager" in roles || "owner" in roles
 
+    /** Role yang TIDAK boleh jadi aktor tulis SPK — mirror
+     *  `capabilities::SPK_CREATE_BLOCKED_ROLES` (rust-shared). */
+    private val SPK_CREATE_BLOCKED = setOf("manager", "owner", "ai-engineer")
+
+    /** Paritas `capabilities::can_create_spk`: semua role KECUALI manager/owner/
+     *  ai-engineer, dan bukan aktor tanpa role sama sekali. */
+    fun canCreateSpk(roles: Set<String>): Boolean =
+        roles.isNotEmpty() && roles.none { it in SPK_CREATE_BLOCKED }
+
     private fun hasGrant(grants: List<String>, prefix: String) = grants.any { it.contains(prefix) }
 
     /** Boleh menyetujui/menolak form aki (aki.rs `approve_form`/`reject_form`) —
@@ -77,6 +86,16 @@ object SpkAccessPolicy {
             // "Tugas Antar" tak pernah kelihatan buat mereka walau job-nya ada.
             // Ownership tetap dicek backend per-job (assignedDriverId==actor).
             driver = admin || hasRole("driver", "sales", "admin-sales"),
+            // Tombol aksi driver PER-JOB (berangkat/chat/serah terima). Gate
+            // backend `authorize_driver` = (role driver ATAU `can_create_spk`)
+            // DAN job di-assign ke aktor — jadi patokannya kepemilikan, bukan
+            // nama role. [driver] di atas terlalu sempit untuk ini: di produksi
+            // SEMUA staf lapangan ber-role `karyawan` (nol akun ber-role
+            // "sales"), sehingga staf yang mengantar SPK-nya sendiri
+            // (`sales_delivery`) tak pernah dapat tombolnya walau backend
+            // mengizinkan. Aman dilebarkan karena pemanggilnya SELALU
+            // memasangkan ini dengan `assignedDriverId == currentUserId`.
+            driverAction = admin || hasRole("driver") || canCreateSpk(roles),
         )
     }
 }
@@ -99,4 +118,5 @@ data class SpkHubAccess(
     val note: Boolean,
     val jadwal: Boolean,
     val driver: Boolean,
+    val driverAction: Boolean,
 )
