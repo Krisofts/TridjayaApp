@@ -30,7 +30,7 @@ data class ActivityUiState(
     val progress: String = "",
     val queueCards: List<ActivityCard> = emptyList(),
     val actions: List<ActivityItem> = emptyList(),
-    /** Dipakai subtitle chip "Buat SPK" — lokal per-device. */
+    /** Dipakai subtitle ubin "Buat SPK" — lokal per-device. */
     val spkToday: Int = 0,
 )
 
@@ -76,7 +76,7 @@ class ActivityViewModel @Inject constructor(
     init {
         refresh(force = true)
         // I2 audit 2026-07-28: dulu di-await DI DALAM `load()`, memblokir SELURUH
-        // layar (termasuk HARI INI & BUAT BARU yang sengaja tak butuh jaringan)
+        // layar (termasuk HARI INI & PINTASAN yang sengaja tak butuh jaringan)
         // sampai timeout OkHttp saat sinyal jelek. Pola sama `HomeViewModel.init`:
         // coroutine TERPISAH — render duluan dgn `capabilities = null` (gate jatuh
         // ke `allowedRoles`, sudah didukung `gateAllows`), lalu muat ulang PENUH

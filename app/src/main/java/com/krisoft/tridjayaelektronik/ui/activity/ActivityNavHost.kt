@@ -113,6 +113,7 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "raport" -> ROUTE_RAPORT
     "indent" -> ROUTE_INDENT
     "spk_input" -> ROUTE_DLV_CREATE
+    "spk_history" -> ROUTE_DLV_HISTORY
     else -> deliveryStageRoute(navKey)
 }
 

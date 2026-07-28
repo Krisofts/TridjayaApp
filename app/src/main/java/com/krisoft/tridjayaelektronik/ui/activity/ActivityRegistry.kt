@@ -17,7 +17,7 @@ import com.krisoft.tridjayaelektronik.ui.home.gateAllows
 enum class ActivityKind {
     /** Rutinitas harian dengan penanda selesai; reset tiap hari. */
     TUGAS_HARIAN,
-    /** Pintasan membuat sesuatu; tanpa penanda selesai. */
+    /** Pintasan cepat (buat baru / buka daftar); tanpa penanda selesai. */
     AKSI,
     /** Pekerjaan menumpuk milik orang lain; selesai = 0. */
     ANTRIAN,
@@ -170,6 +170,23 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "inventory-service delivery.rs can_create_spk",
         source = ActivitySource.SPK_LOCAL_COUNTER,
         navKey = "spk_input",
+    ),
+    ActivityItem(
+        // Sengaja PERSIS setelah `buat_spk`: seksi PINTASAN dirender dua kolom
+        // menurut urutan daftar ini, jadi pasangan SPK duduk bersebelahan dalam
+        // satu baris. Menyelipkan item lain di antaranya akan memisahkan mereka.
+        id = "daftar_spk",
+        label = "Daftar SPK",
+        subtitle = "Riwayat & status terkini",
+        kind = ActivityKind.AKSI,
+        // Gate BACA (bukan `spk.create`): `list_delivery` meloloskan seluruh aktor
+        // pipeline, termasuk manager/owner yang ditolak `create_delivery`. Sama
+        // dengan entri "Riwayat SPK" di `SpkHubScreen`.
+        capability = "spk.pipeline",
+        allowedRoles = SPK_MENU_ROLES,
+        backendGuard = "inventory-service delivery.rs list_delivery (view=history)",
+        source = ActivitySource.NONE,
+        navKey = "spk_history",
     ),
     ActivityItem(
         id = "ajukan_inden",
@@ -326,13 +343,13 @@ internal fun driverCardVisible(count: Int?, effectiveRoles: Set<String>): Boolea
  * Role yang MENDARAT di tab Ringkasan saat app dibuka, bukan Activity (default
  * untuk semua role lain).
  *
- * HANYA manager & owner. Kedua guard backend yang mengisi seksi "BUAT BARU" di
- * Activity menolak mereka: `can_create_spk` ([SPK_CREATE_ROLES] di atas
- * mengurangi "manager" DAN "owner") dan `require_indent_submitter_role`
- * ([INDENT_SUBMIT_ROLES] memuat "manager" tapi TIDAK "owner"). Jadi Activity
- * manager/owner nyaris kosong: HARI INI cuma absen, BUAT BARU kosong/nyaris
- * kosong, PERLU TINDAKAN paling banter 1-2 kartu approval. Dashboard (tab
- * Ringkasan) sudah lama jadi layar utama kedua role ini.
+ * HANYA manager & owner. Guard backend yang mengisi seksi "PINTASAN" di Activity
+ * menolak mereka: `can_create_spk` ([SPK_CREATE_ROLES] di atas mengurangi
+ * "manager" DAN "owner") dan `require_indent_submitter_role`
+ * ([INDENT_SUBMIT_ROLES] memuat "manager" tapi TIDAK "owner") — yang tersisa
+ * cuma "Daftar SPK" (baca). Jadi Activity manager/owner nyaris kosong: HARI INI
+ * cuma absen, PINTASAN satu ubin, PERLU TINDAKAN paling banter 1-2 kartu
+ * approval. Dashboard (tab Ringkasan) sudah lama jadi layar utama kedua role ini.
  *
  * JANGAN tambah admin/superadmin: mereka lolos `spk.create` PENUH
  * ([SPK_CREATE_ROLES] tak mengurangi mereka) dan hampir semua kartu antrian
