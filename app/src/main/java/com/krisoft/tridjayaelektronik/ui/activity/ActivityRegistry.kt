@@ -89,6 +89,17 @@ internal val PDI_QUEUE_ROLES = setOf("pdi", "admin", "superadmin")
 internal val KASIR_QUEUE_ROLES = setOf("kasir", "admin", "superadmin")
 
 /**
+ * `spk.create` — `can_create_spk` (inventory-service `delivery.rs`, kini
+ * memanggil `tridjaya_shared::capabilities::can_create_spk`). Beda dari
+ * [SPK_MENU_ROLES] (dipakai `spk.pipeline`, gate BACA antrian/riwayat): itu
+ * meloloskan manager/owner, ini menolak keduanya — `create_delivery` (gate
+ * TULIS) menolak mereka juga. C1 audit 2026-07-28: chip "Buat SPK" sempat
+ * memakai `spk.pipeline` padahal menavigasi langsung ke form input, jadi
+ * manager/owner menekannya lalu dijawab 403.
+ */
+internal val SPK_CREATE_ROLES: Set<String> = SPK_MENU_ROLES - "manager" - "owner"
+
+/**
  * Urutan di sini = urutan dasar tampil dalam tiap seksi (kartu ANTRIAN
  * diurutkan ulang menurun berdasarkan angka di `ActivityPlan`).
  */
@@ -143,9 +154,9 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         label = "Buat SPK",
         subtitle = "Input penjualan baru",
         kind = ActivityKind.AKSI,
-        capability = "spk.pipeline",
-        allowedRoles = SPK_MENU_ROLES,
-        backendGuard = "inventory-service delivery.rs is_pipeline_actor",
+        capability = "spk.create",
+        allowedRoles = SPK_CREATE_ROLES,
+        backendGuard = "inventory-service delivery.rs can_create_spk",
         source = ActivitySource.SPK_LOCAL_COUNTER,
         navKey = "spk_input",
     ),
@@ -278,10 +289,24 @@ internal fun sourcesToFetch(items: List<ActivityItem>): Set<ActivitySource> =
     items.map { it.source }.filterNot { it == ActivitySource.NONE }.toSet()
 
 /**
+ * C2 audit 2026-07-28: di `list_delivery` (inventory-service `delivery.rs`)
+ * cabang PERTAMA adalah `is_manager(roles) || is_admin(roles)` — cabang itu
+ * TIDAK PERNAH membaca `query.as_driver`, jadi role ini menerima SELURUH job
+ * perusahaan (terpotong `limit = 200`), bukan job yang ditugaskan ke mereka.
+ * Kartu "Tugas Antar" karena itu tak berarti apa-apa buat mereka: angkanya
+ * bukan tugas miliknya, dan menembak endpointnya cuma menarik 200 baris
+ * percuma di layar pertama. Dipakai [driverCardVisible] DAN `ActivityViewModel`
+ * (skip fetch) — satu konstanta, jangan disalin dua kali.
+ */
+internal val DELIVERY_READ_ALL_ROLES = setOf("manager", "owner", "admin", "superadmin")
+
+/**
  * Kartu "Tugas Antar" sengaja tak punya kunci kemampuan (spec §6): backend
  * meloloskan siapa pun yang di-assign, jadi angka job-lah yang menentukan.
  * Role `driver` tetap melihat kartunya walau kosong — "hari ini bersih" adalah
- * informasi yang berguna baginya.
+ * informasi yang berguna baginya. Role di [DELIVERY_READ_ALL_ROLES] TIDAK
+ * PERNAH melihat kartu ini (lihat doc di sana) — apa pun isi `count`.
  */
 internal fun driverCardVisible(count: Int?, effectiveRoles: Set<String>): Boolean =
-    "driver" in effectiveRoles || (count ?: 0) > 0
+    if (effectiveRoles.any { it in DELIVERY_READ_ALL_ROLES }) false
+    else "driver" in effectiveRoles || (count ?: 0) > 0

@@ -9,6 +9,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,8 +37,10 @@ import java.util.Locale
  * Tak ada layar error global di sini: seksi HARI INI & BUAT BARU tak butuh
  * jaringan (absensi dari cache VM, prospek dari Room, SPK dari SharedPreferences),
  * jadi kegagalan jaringan hanya membuat kartu antrian yang bersangkutan
- * bertanda "—" dan bisa ditap untuk memuat ulang.
+ * bertanda "—" dan bisa ditap untuk memuat ulang. Pull-to-refresh (spec §5)
+ * membuang cache 60 detik dengan `refresh(force = true)`.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityScreen(
     onOpen: (navKey: String) -> Unit,
@@ -70,64 +75,81 @@ fun ActivityScreen(
             }
         }
     ) { contentModifier ->
-        LazyColumn(
+        val pullState = rememberPullToRefreshState()
+        PullToRefreshBox(
+            isRefreshing = state.isLoading,
+            onRefresh = { viewModel.refresh(force = true) },
+            state = pullState,
             modifier = contentModifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomClearance),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    isRefreshing = state.isLoading,
+                    state = pullState,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         ) {
-            item { NotificationPermissionBanner() }
-            item { GreetingRow(state.userName, state.cabangName) }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomClearance),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item { NotificationPermissionBanner() }
+                item { GreetingRow(state.userName, state.cabangName) }
 
-            item { SectionTitle("HARI INI", trailing = state.progress) }
-            items(state.tasks, key = { it.item.id }) { task ->
-                DailyTaskRow(task) { if (!task.item.comingSoon) onOpen(task.item.navKey) }
-            }
-
-            item { SectionTitle("PERLU TINDAKAN") }
-            if (state.isLoading && state.queueCards.isEmpty()) {
-                items(3) {
-                    SkeletonBox(
-                        modifier = Modifier.fillMaxWidth().height(60.dp),
-                        shape = RoundedCornerShape(20.dp)
-                    )
+                item { SectionTitle("HARI INI", trailing = state.progress) }
+                items(state.tasks, key = { it.item.id }) { task ->
+                    DailyTaskRow(task) { if (!task.item.comingSoon) onOpen(task.item.navKey) }
                 }
-            } else {
-                items(state.queueCards, key = { it.item.id }) { card ->
-                    QueueRow(card) {
-                        if (card.failed) viewModel.refresh(force = true) else onOpen(card.item.navKey)
-                    }
-                }
-            }
 
-            item { SectionTitle("BUAT BARU") }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.actions.forEach { action ->
-                        AssistChip(
-                            onClick = { onOpen(action.navKey) },
-                            label = {
-                                val extra = if (action.id == "buat_spk" && state.spkToday > 0) {
-                                    " · ${state.spkToday} hari ini"
-                                } else ""
-                                Text(action.label + extra)
-                            },
-                            leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                item { SectionTitle("PERLU TINDAKAN") }
+                if (state.isLoading && state.queueCards.isEmpty()) {
+                    items(3) {
+                        SkeletonBox(
+                            modifier = Modifier.fillMaxWidth().height(60.dp),
+                            shape = RoundedCornerShape(20.dp)
                         )
                     }
+                } else {
+                    items(state.queueCards, key = { it.item.id }) { card ->
+                        QueueRow(card) {
+                            if (card.failed) viewModel.refresh(force = true) else onOpen(card.item.navKey)
+                        }
+                    }
                 }
-            }
 
-            item {
-                Text(
-                    text = "Semua menu →",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onOpenAllMenus)
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                )
+                item { SectionTitle("BUAT BARU") }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.actions.forEach { action ->
+                            AssistChip(
+                                onClick = { onOpen(action.navKey) },
+                                label = {
+                                    val extra = if (action.id == "buat_spk" && state.spkToday > 0) {
+                                        " · ${state.spkToday} hari ini"
+                                    } else ""
+                                    Text(action.label + extra)
+                                },
+                                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Text(
+                        text = "Semua menu →",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onOpenAllMenus)
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
     }
@@ -135,15 +157,20 @@ fun ActivityScreen(
 
 @Composable
 private fun GreetingRow(name: String, cabang: String) {
-    val jam = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    // Minor (review): dulu `Calendar.getInstance()`/`SimpleDateFormat` dibuat
+    // ulang tiap recomposition (state ini sering berubah tiap tick load) —
+    // `remember` pola sama `GreetingCard` di `HomeScreen.kt`.
+    val cal = remember { Calendar.getInstance() }
+    val jam = remember { cal.get(Calendar.HOUR_OF_DAY) }
     val sapaan = when {
         jam < 11 -> "Selamat pagi"
         jam < 15 -> "Selamat siang"
         jam < 18 -> "Selamat sore"
         else -> "Selamat malam"
     }
-    val tanggal = SimpleDateFormat("EEEE, d MMMM", Locale("id", "ID"))
-        .format(Calendar.getInstance().time)
+    val tanggal = remember {
+        SimpleDateFormat("EEEE, d MMMM", Locale("id", "ID")).format(cal.time)
+    }
     Column(Modifier.padding(vertical = 4.dp)) {
         Text(
             "$sapaan${if (name.isNotBlank()) ", $name" else ""}",

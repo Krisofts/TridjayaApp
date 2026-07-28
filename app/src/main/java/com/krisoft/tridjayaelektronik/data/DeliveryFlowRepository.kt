@@ -226,10 +226,17 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
-    suspend fun discounts(status: String? = "pending"): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>> = try {
+    /**
+     * `data` LENGKAP (`items` + `total`) — BUKAN cuma `items`. Backend
+     * `list_discount_requests` default `limit = 20`; badge yang memakai
+     * `.items.size` diam-diam terpotong 20 walau pengajuan pending lebih
+     * banyak (I2 audit 2026-07-28). Pemanggil yang cuma butuh daftar (bukan
+     * total) baca `.items`.
+     */
+    suspend fun discounts(status: String? = "pending"): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountListData> = try {
         val response = api.discountRequests(status = status)
         val data = response.body()?.data
-        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
         else parseError(response, "Gagal memuat pengajuan diskon")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")

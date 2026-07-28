@@ -60,6 +60,18 @@ class ActivityPlanTest {
     }
 
     @Test
+    fun `manager owner admin tak pernah melihat tugas antar walau count besar`() {
+        // C2 audit 2026-07-28: `list_delivery` cabang `is_manager || is_admin`
+        // mengembalikan SELURUH job perusahaan (mengabaikan asDriver), bukan job
+        // milik mereka — angka besar di sini bukan berarti tugas mereka menumpuk.
+        val items = listOf(item("tugas_antar"))
+        for (role in listOf("manager", "owner", "admin", "superadmin")) {
+            val cards = buildQueueCards(items, mapOf(ActivitySource.DLV_AS_DRIVER to 200), emptySet(), setOf(role))
+            assertTrue("role '$role' semestinya tak melihat kartu tugas antar", cards.isEmpty())
+        }
+    }
+
+    @Test
     fun `tugas antar yang gagal dimuat tetap tampil walau bukan driver`() {
         // Gagal != nol: kalau angkanya tak diketahui, kartu tak boleh hilang
         // diam-diam — user harus bisa melihat "—" dan mencoba lagi.

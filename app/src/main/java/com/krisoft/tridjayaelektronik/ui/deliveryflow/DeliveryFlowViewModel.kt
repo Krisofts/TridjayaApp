@@ -361,7 +361,7 @@ class DeliveryFlowViewModel @Inject constructor(
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             when (val res = repository.discounts(status)) {
-                is AuthResult.Success -> _state.update { it.copy(loading = false, discounts = res.data, error = null) }
+                is AuthResult.Success -> _state.update { it.copy(loading = false, discounts = res.data.items, error = null) }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
             }
         }

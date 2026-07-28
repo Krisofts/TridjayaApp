@@ -111,6 +111,34 @@ class ActivityRegistryTest {
     }
 
     @Test
+    fun `manager dan owner tak melihat chip buat SPK, karyawan melihatnya`() {
+        // C1 audit 2026-07-28: `buat_spk` dulu memakai `spk.pipeline` (manager/
+        // owner = true di situ) padahal endpoint `create_delivery` menolak
+        // keduanya — chip tampil lalu 403. Dicek dua arah: lewat peta kemampuan
+        // server DAN lewat cadangan role offline.
+        val capsManagerOwnerDitolak = mapOf(
+            "spk.pipeline" to true, "spk.create" to false,
+            "absensi.self" to true, "crm.input" to false, "pdi.queue" to false,
+            "kasir.queue" to false, "delivery.control" to false, "aki.approve" to true,
+            "discount.approve" to false, "indent.submit" to false, "indent.approve" to false,
+        )
+        assertFalse("buat_spk" in ids("manager", caps = capsManagerOwnerDitolak))
+        assertFalse("buat_spk" in ids("owner", caps = capsManagerOwnerDitolak))
+        // Cadangan offline (peta kemampuan null) harus sepakat.
+        assertFalse("buat_spk" in ids("manager", caps = null))
+        assertFalse("buat_spk" in ids("owner", caps = null))
+
+        val capsKaryawanBoleh = mapOf(
+            "spk.pipeline" to true, "spk.create" to true,
+            "absensi.self" to true, "crm.input" to true, "pdi.queue" to false,
+            "kasir.queue" to false, "delivery.control" to false, "aki.approve" to false,
+            "discount.approve" to false, "indent.submit" to false, "indent.approve" to false,
+        )
+        assertTrue("buat_spk" in ids("karyawan", caps = capsKaryawanBoleh))
+        assertTrue("buat_spk" in ids("karyawan", caps = null))
+    }
+
+    @Test
     fun `profil belum termuat tidak menampilkan item apa pun`() {
         // Fail-closed, sama dengan registri Akses Cepat: role kosong berarti
         // profil belum termuat — lebih baik layar kosong sesaat daripada
@@ -165,5 +193,17 @@ class ActivityRegistryTest {
     fun `driver selalu melihat kartunya walau kosong`() {
         assertTrue(driverCardVisible(0, setOf("driver")))
         assertTrue(driverCardVisible(null, setOf("driver")))
+    }
+
+    @Test
+    fun `manager owner admin superadmin tak pernah melihat tugas antar`() {
+        // C2 audit 2026-07-28: `list_delivery` cabang is_manager||is_admin
+        // mengabaikan asDriver dan mengembalikan seluruh job perusahaan —
+        // angka besar untuk role ini bukan tugas miliknya.
+        for (role in listOf("manager", "owner", "admin", "superadmin")) {
+            assertFalse(driverCardVisible(200, setOf(role)))
+            assertFalse(driverCardVisible(0, setOf(role)))
+            assertFalse(driverCardVisible(null, setOf(role)))
+        }
     }
 }

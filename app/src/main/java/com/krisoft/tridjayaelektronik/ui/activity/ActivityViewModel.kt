@@ -133,7 +133,13 @@ class ActivityViewModel @Inject constructor(
             antrianStatus(ActivitySource.DLV_PENDING_NOTE, DeliveryStatusKey.PENDING_DELIVERY_NOTE)
             antrianStatus(ActivitySource.DLV_PENDING_SCHEDULING, DeliveryStatusKey.PENDING_SCHEDULING)
 
-            if (ActivitySource.DLV_AS_DRIVER in sources) jobs += async {
+            // C2 audit 2026-07-28: role di DELIVERY_READ_ALL_ROLES mendapat SELURUH
+            // job perusahaan dari `list_delivery` (cabang `is_manager || is_admin`
+            // mengabaikan `asDriver`), bukan job miliknya — kartunya tak pernah
+            // tampil (driverCardVisible), jadi jangan tembak endpointnya sama sekali.
+            if (ActivitySource.DLV_AS_DRIVER in sources &&
+                roles.none { it in DELIVERY_READ_ALL_ROLES }
+            ) jobs += async {
                 when (val r = deliveryRepository.list(asDriver = true)) {
                     is AuthResult.Success -> counts[ActivitySource.DLV_AS_DRIVER] = r.data.size
                     is AuthResult.Failure -> failed += ActivitySource.DLV_AS_DRIVER
@@ -142,7 +148,9 @@ class ActivityViewModel @Inject constructor(
 
             if (ActivitySource.DISCOUNT_PENDING in sources) jobs += async {
                 when (val r = deliveryRepository.discounts(status = "pending")) {
-                    is AuthResult.Success -> counts[ActivitySource.DISCOUNT_PENDING] = r.data.size
+                    // `.total`, BUKAN `.items.size` — backend membatasi `items`
+                    // ke `limit = 20`, badge tak boleh ikut terpotong (I2).
+                    is AuthResult.Success -> counts[ActivitySource.DISCOUNT_PENDING] = r.data.total
                     is AuthResult.Failure -> failed += ActivitySource.DISCOUNT_PENDING
                 }
             }
