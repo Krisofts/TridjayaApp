@@ -70,6 +70,7 @@ const val ROUTE_DLV_SCHEDULE = "home_dlv_schedule"
 const val ROUTE_DLV_DRIVER = "home_dlv_driver"
 private const val ROUTE_DLV_DETAIL = "home_dlv_detail/{id}"
 const val ROUTE_DLV_HISTORY = "home_dlv_history"
+const val ROUTE_DLV_PENDING_PAYMENT = "home_dlv_pending_payment"
 const val ROUTE_SPK_HUB = "home_spk_hub"
 
 private fun dlvDetailRoute(id: String) = "home_dlv_detail/${Uri.encode(id)}"
@@ -114,6 +115,7 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "indent" -> ROUTE_INDENT
     "spk_input" -> ROUTE_DLV_CREATE
     "spk_history" -> ROUTE_DLV_HISTORY
+    "spk_gantung" -> ROUTE_DLV_PENDING_PAYMENT
     else -> deliveryStageRoute(navKey)
 }
 
@@ -335,6 +337,13 @@ fun ActivityNavHost(
         composable(ROUTE_DLV_DRIVER) {
             // Driver: backend meng-scope antrian (assigned + in_transit) berdasarkan role, tanpa filter status.
             DeliveryQueueScreen("Tugas Antar", status = null, reorderable = true, asDriver = true, onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
+        }
+        composable(ROUTE_DLV_PENDING_PAYMENT) {
+            // Server mengirim SEMUA unit terkirim yang belum dikonfirmasi; ambang
+            // "gantung 24 jam" dihitung di kartu Activity, bukan di sini — kasir
+            // tetap perlu bisa menutup yang baru sebelum jatuh tempo.
+            DeliveryQueueScreen("Konfirmasi Pembayaran", status = null, view = "pending_payment", onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
         composable(ROUTE_DLV_HISTORY) {

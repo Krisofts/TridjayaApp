@@ -32,6 +32,7 @@ import com.krisoft.tridjayaelektronik.data.model.ReorderResult
 import com.krisoft.tridjayaelektronik.data.model.RejectAkiBody
 import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
 import com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody
+import com.krisoft.tridjayaelektronik.data.model.SetoranKasirBody
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.StokCabangData
@@ -76,6 +77,10 @@ interface DeliveryFlowApi {
 
     @POST("api/inventory/delivery/{id}/delivery-note")
     suspend fun issueDeliveryNote(@Path("id") id: String, @Body body: DeliveryNoteBody): Response<ApiResponse<DeliveryJobDto>>
+
+    /** Kasir konfirmasi pembayaran diterima (semua jenis bayar, setelah `delivered`). */
+    @POST("api/inventory/delivery/{id}/setoran-kasir")
+    suspend fun setoranKasir(@Path("id") id: String, @Body body: SetoranKasirBody): Response<ApiResponse<DeliveryJobDto>>
 
     @POST("api/inventory/delivery/{id}/assign")
     suspend fun assign(@Path("id") id: String, @Body body: AssignBody): Response<ApiResponse<DeliveryJobDto>>

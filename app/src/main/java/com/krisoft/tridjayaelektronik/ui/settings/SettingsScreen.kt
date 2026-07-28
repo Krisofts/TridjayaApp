@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Store
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.WorkOutline
 import androidx.compose.material.icons.automirrored.rounded.Chat
@@ -189,6 +190,20 @@ fun SettingsScreen(
                                         // akan menyesatkan.
                                         title = { Text("Divisi") },
                                         description = { Text(divisi) }
+                                    )
+                                )
+                            }
+                            // Cabang menentukan data yang terlihat di hampir semua
+                            // layar operasional (antrian PDI/kasir, stok, SPK), jadi
+                            // user perlu bisa memastikannya sendiri tanpa bertanya
+                            // ke admin. Baris disembunyikan kalau kosong — akun lama
+                            // dan role pusat memang tak punya cabang.
+                            user.cabangName.trim().takeIf { it.isNotEmpty() }?.let { cabang ->
+                                add(
+                                    Material3SettingsItem(
+                                        icon = Icons.Rounded.Store,
+                                        title = { Text("Cabang") },
+                                        description = { Text(cabang) }
                                     )
                                 )
                             }

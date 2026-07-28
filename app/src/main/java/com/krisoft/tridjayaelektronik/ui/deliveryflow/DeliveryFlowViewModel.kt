@@ -446,7 +446,7 @@ class DeliveryFlowViewModel @Inject constructor(
      *  Subtitle watermark ikut fallback [watermarked] (nama user saja, kode
      *  SPK belum ada saat ini). */
     suspend fun uploadPoPhoto(file: File): String? {
-        val prepared = watermarked(file, "TRIDJAYA · PRE ORDER") ?: return null
+        val prepared = watermarked(file, "TRIDJAYA · NO PO") ?: return null
         return when (val up = repository.uploadPhoto(prepared.first, "po_${System.currentTimeMillis()}.jpg")) {
             is AuthResult.Success -> up.data
             is AuthResult.Failure -> null
@@ -673,6 +673,24 @@ class DeliveryFlowViewModel @Inject constructor(
                 kasirKonfirmasiPembayaran = kasirKonfirmasiPembayaran,
                 kasirDpDiterima = kasirDpDiterima,
             ),
+        ).mapOk { onDone() }
+    }
+
+    /**
+     * Kasir: konfirmasi uang penjualan sudah diterima (semua jenis pembayaran,
+     * bukan cuma COD). Foto bukti dipakai dari slot `deliverPhoto` yang sama —
+     * job berstatus `delivered` tak pernah bersamaan dengan job in_transit di
+     * layar yang sama, pola persis [selfPickupComplete].
+     */
+    fun setoranKasir(id: String, nominal: Double, onDone: () -> Unit) = action {
+        val bytes = deliverPhotoBytes ?: return@action AuthResult.Failure("validation", "Foto bukti wajib diambil")
+        val photoUrl = when (val up = repository.uploadPhoto(bytes, "setoran_${System.currentTimeMillis()}.jpg")) {
+            is AuthResult.Success -> up.data
+            is AuthResult.Failure -> return@action up
+        }
+        repository.setoranKasir(
+            id,
+            com.krisoft.tridjayaelektronik.data.model.SetoranKasirBody(nominalDiterima = nominal, photoUrl = photoUrl),
         ).mapOk { onDone() }
     }
 

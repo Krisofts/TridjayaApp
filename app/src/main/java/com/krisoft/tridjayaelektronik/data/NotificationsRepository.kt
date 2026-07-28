@@ -47,6 +47,14 @@ class NotificationsRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** Hapus notifikasi yang sudah dibaca saja (yang belum dibaca tetap ada). */
+    suspend fun deleteRead(): AuthResult<Unit> = try {
+        val response = api.deleteNotifications(read = true)
+        if (response.isSuccessful) AuthResult.Success(Unit) else parseError(response, "Gagal menghapus notifikasi")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     private fun <T> parseError(response: Response<*>, fallback: String): AuthResult<T> {
         val raw = response.errorBody()?.string()
         val parsed = raw?.let {
