@@ -89,6 +89,9 @@ fun NotificationCenterScreen(
             if (state.unreadCount > 0) {
                 TextButton(onClick = viewModel::markAllRead) { Text("Tandai semua dibaca") }
             }
+            if (state.items.any { it.isRead }) {
+                TextButton(onClick = viewModel::deleteRead) { Text("Hapus yang dibaca") }
+            }
         }
     ) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()

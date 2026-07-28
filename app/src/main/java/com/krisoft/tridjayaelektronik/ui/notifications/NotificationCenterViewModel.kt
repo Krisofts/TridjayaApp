@@ -75,4 +75,13 @@ class NotificationCenterViewModel @Inject constructor(
         // Gagal → resync dari server (state optimistic di atas mungkin sudah salah).
         viewModelScope.launch { if (repository.markAllRead() is AuthResult.Failure) load() }
     }
+
+    /** Buang yang sudah dibaca (optimistic). `unreadCount` tak disentuh — yang
+     *  tersisa persis yang belum dibaca, jadi angkanya tetap benar. */
+    fun deleteRead() {
+        if (_state.value.items.none { it.isRead }) return
+        _state.update { st -> st.copy(items = st.items.filterNot { it.isRead }) }
+        // Gagal → resync dari server (state optimistic di atas mungkin sudah salah).
+        viewModelScope.launch { if (repository.deleteRead() is AuthResult.Failure) load() }
+    }
 }

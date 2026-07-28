@@ -6,8 +6,10 @@ import com.krisoft.tridjayaelektronik.data.model.NotificationListData
 import com.krisoft.tridjayaelektronik.data.model.UnreadCountData
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.DELETE
 import retrofit2.http.PATCH
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * Notifikasi in-app — semua login, audit-service via gateway `/api/notifications` (android-api.md §7).
@@ -27,4 +29,12 @@ interface NotificationsApi {
 
     @PATCH("api/notifications/read-all")
     suspend fun markAllRead(): Response<ApiResponse<MarkReadData>>
+
+    /**
+     * Hapus notifikasi. `read = true` (satu-satunya pemakaian saat ini) hanya
+     * membuang yang SUDAH dibaca — tanpa param, endpoint yang sama menghapus
+     * SEMUA termasuk yang belum dilihat, jadi param ini tak boleh lupa dikirim.
+     */
+    @DELETE("api/notifications")
+    suspend fun deleteNotifications(@Query("read") read: Boolean = true): Response<ApiResponse<MarkReadData>>
 }

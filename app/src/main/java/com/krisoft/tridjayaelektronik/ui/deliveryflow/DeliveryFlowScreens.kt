@@ -934,9 +934,14 @@ private fun PdiAction(
 /** Konfirmasi SPK kasir (2026-07-26) — backend WAJIB `noTransaksi` non-kosong
  *  sejak migrasi 105 (endpoint dulu tanpa body sama sekali, root cause error
  *  415: `Json` extractor axum menolak request tanpa `Content-Type: application/
- *  json`, yg terjadi kalau body kosong). Kalau job COD (`driverTerimaUang`),
- *  kasir WAJIB konfirmasi sudah cek pembayaran + nominal DP aktual bila mode dp
- *  (mirror web `KasirDashboardPage` modal "Sudah SPK"). */
+ *  json`, yg terjadi kalau body kosong).
+ *
+ *  COD (`driverTerimaUang`): centang konfirmasi pembayaran OPSIONAL — pada COD
+ *  uangnya justru belum ada di kasir, driver baru menagihnya di tempat
+ *  konsumen, jadi mewajibkannya membuat SPK mandek permanen di antrian kasir.
+ *  Uangnya dikonfirmasi belakangan di tab "Setoran Driver". Nominal DP mode
+ *  `dp` TETAP wajib: DP dibayar konsumen di toko, uangnya nyata ada di kasir.
+ *  Mirror web `KasirDashboardPage`. */
 @Composable
 private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
     var noTransaksi by remember { mutableStateOf(job.noTransaksi.orEmpty()) }
@@ -944,7 +949,8 @@ private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel
     var dpDiterima by remember { mutableStateOf("") }
     val isCod = job.driverTerimaUang == true
     val isCodDp = isCod && job.codPaymentMode == "dp"
-    val codValid = !isCod || (konfirmasiBayar && (!isCodDp || (dpDiterima.toDoubleOrNull() ?: 0.0) > 0.0))
+    // Hanya nominal DP yang menahan tombol; centang konfirmasi tidak (lihat dok di atas).
+    val codValid = !isCodDp || (dpDiterima.toDoubleOrNull() ?: 0.0) > 0.0
 
     Text("Konfirmasi SPK (Kasir)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(8.dp))
@@ -957,8 +963,12 @@ private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel
         )
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { konfirmasiBayar = !konfirmasiBayar }) {
             Checkbox(checked = konfirmasiBayar, onCheckedChange = { konfirmasiBayar = it })
-            Text("Sudah cek pembayaran benar", style = MaterialTheme.typography.bodyMedium)
+            Text("Sudah cek pembayaran benar (opsional)", style = MaterialTheme.typography.bodyMedium)
         }
+        Text(
+            "Uang yang ditagih driver dikonfirmasi nanti di tab Setoran Driver, setelah barang diantar.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (isCodDp) {
             Spacer(Modifier.height(6.dp))
             MoneyTextField(dpDiterima, { dpDiterima = it }, label = "DP diterima kasir (wajib) *", modifier = Modifier.fillMaxWidth())
