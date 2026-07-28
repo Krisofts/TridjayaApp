@@ -79,6 +79,33 @@ class AuthRepository @Inject constructor(
         }
     }
 
+    /**
+     * Perbarui field profil milik sendiri (`PUT /auth/profile`). Backend
+     * `UpdateProfileRequest` menerima `name`/`whatsapp`/`email`, semuanya
+     * opsional — kirim hanya yang diubah.
+     *
+     * CATATAN KEAMANAN: `whatsapp` adalah kanal OTP & reset password. Mengubahnya
+     * dari sesi yang sudah login berarti sesi yang dicuri bisa mengalihkan reset
+     * password ke nomor lain. Endpoint-nya memang sudah mengizinkan ini sejak
+     * sebelum app mobile memakainya (web juga bisa), jadi bukan celah baru — tapi
+     * kalau kelak perlu diperketat, tempatnya di auth-service, bukan di sini.
+     */
+    suspend fun updateProfile(fields: Map<String, String>): AuthResult<UserDto> {
+        return try {
+            val response = api.updateProfile(fields)
+            if (response.isSuccessful) {
+                val user = response.body()?.data
+                    ?: return AuthResult.Failure("unknown_error", "Response kosong dari server")
+                tokenStore.updateProfile(user)
+                AuthResult.Success(user)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+        }
+    }
+
     suspend fun logout() {
         try {
             api.logout(LogoutRequest(tokenStore.refreshToken ?: ""))

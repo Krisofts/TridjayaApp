@@ -26,6 +26,13 @@ import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.WorkOutline
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -88,6 +95,8 @@ fun SettingsScreen(
     }
 
     var showChangePassword by remember { mutableStateOf(false) }
+    var showEditWhatsapp by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
     if (showChangePassword) {
         ChangePasswordScreen(
             forced = false,
@@ -95,6 +104,38 @@ fun SettingsScreen(
             onBack = { showChangePassword = false }
         )
         return
+    }
+
+    if (showEditWhatsapp) {
+        EditWhatsappDialog(
+            current = state.user?.whatsapp.orEmpty(),
+            saving = state.savingWhatsapp,
+            error = state.whatsappError,
+            onDismiss = { showEditWhatsapp = false; viewModel.clearWhatsappError() },
+            onSave = { nomor -> viewModel.saveWhatsapp(nomor) { showEditWhatsapp = false } }
+        )
+    }
+
+    if (showLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirm = false },
+            icon = { Icon(Icons.Rounded.Logout, contentDescription = null) },
+            title = { Text("Keluar dari akun?", fontWeight = FontWeight.Bold) },
+            text = {
+                // Konsekuensi disebut apa adanya: logout membersihkan seluruh cache
+                // lokal (stok, lead, dashboard) — di sinyal tipis, memuatnya lagi
+                // setelah login bisa lama.
+                Text("Sesi di perangkat ini diakhiri dan data yang tersimpan offline dihapus. Kamu perlu login lagi untuk memakai aplikasi.")
+            },
+            confirmButton = {
+                TextButton(onClick = { showLogoutConfirm = false; viewModel.logout() }) {
+                    Text("Keluar", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirm = false }) { Text("Batal") }
+            }
+        )
     }
 
     TridjayaCollapsibleHeader(title = "Pengaturan", onBack = onBack) { contentModifier ->
@@ -132,15 +173,36 @@ fun SettingsScreen(
                             add(
                                 Material3SettingsItem(
                                     icon = Icons.Rounded.WorkOutline,
+                                    // SEMUA role yang dipegang, bukan cuma role utama: backend
+                                    // menilai akses dari seluruh role efektif, jadi user
+                                    // multi-role perlu bisa melihat keduanya.
                                     title = { Text("Role") },
-                                    description = { Text(user.role) }
+                                    description = { Text(rolesHeldLabel(user.role, user.roles)) }
                                 )
                             )
-                            if (user.whatsapp.isNotBlank()) add(
+                            divisiLabel(user.divisi)?.let { divisi ->
+                                add(
+                                    Material3SettingsItem(
+                                        icon = Icons.Rounded.Groups,
+                                        // Dipisah dari Role: sebagian divisi menyetir akses
+                                        // operasional, sebagian murni label — menggabungkannya
+                                        // akan menyesatkan.
+                                        title = { Text("Divisi") },
+                                        description = { Text(divisi) }
+                                    )
+                                )
+                            }
+                            add(
                                 Material3SettingsItem(
                                     icon = Icons.AutoMirrored.Rounded.Chat,
                                     title = { Text("WhatsApp") },
-                                    description = { Text(user.whatsapp) }
+                                    description = {
+                                        Text(user.whatsapp.ifBlank { "Belum diisi — ketuk untuk mengisi" })
+                                    },
+                                    trailingContent = {
+                                        Icon(Icons.Rounded.Edit, contentDescription = "Ubah nomor WhatsApp")
+                                    },
+                                    onClick = { showEditWhatsapp = true }
                                 )
                             )
                             if (user.email.isNotBlank()) add(
@@ -235,7 +297,7 @@ fun SettingsScreen(
                                     iconTint = MaterialTheme.colorScheme.onErrorContainer,
                                     title = { Text("Keluar") },
                                     description = { Text("Akhiri sesi di perangkat ini") },
-                                    onClick = viewModel::logout
+                                    onClick = { showLogoutConfirm = true }
                                 )
                             )
                         )
@@ -264,7 +326,7 @@ fun SettingsScreen(
                                     iconBackgroundTint = MaterialTheme.colorScheme.errorContainer,
                                     iconTint = MaterialTheme.colorScheme.onErrorContainer,
                                     title = { Text("Keluar") },
-                                    onClick = viewModel::logout
+                                    onClick = { showLogoutConfirm = true }
                                 )
                             )
                         )
@@ -311,4 +373,60 @@ private fun ProfileHeader(name: String, role: String) {
             )
         }
     }
+}
+
+/**
+ * Dialog ubah nomor WhatsApp milik sendiri.
+ *
+ * Nomor ini juga kanal OTP & reset password (`auth_reset` di auth-service),
+ * jadi teksnya menyebut konsekuensi itu — user berhak tahu bahwa mengubahnya
+ * memindahkan ke mana tautan reset password dikirim.
+ */
+@Composable
+private fun EditWhatsappDialog(
+    current: String,
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var nomor by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        icon = { Icon(Icons.AutoMirrored.Rounded.Chat, contentDescription = null) },
+        title = { Text("Nomor WhatsApp", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = nomor,
+                    onValueChange = { nomor = it },
+                    singleLine = true,
+                    enabled = !saving,
+                    label = { Text("Nomor") },
+                    placeholder = { Text("08123456789") },
+                    isError = error != null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Dipakai untuk notifikasi dan tautan reset password. Pastikan nomornya aktif di WhatsApp.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !saving && nomor.isNotBlank(), onClick = { onSave(nomor) }) {
+                Text(if (saving) "Menyimpan…" else "Simpan")
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !saving, onClick = onDismiss) { Text("Batal") }
+        }
+    )
 }

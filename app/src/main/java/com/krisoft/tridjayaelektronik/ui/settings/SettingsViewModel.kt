@@ -31,7 +31,11 @@ data class SettingsUiState(
     /** Preferensi WA alur SPK: true = user matikan WA (dapat push app saja). */
     val spkWaOptout: Boolean = false,
     /** true selagi menyimpan toggle WA (cegah tap ganda). */
-    val savingWaPref: Boolean = false
+    val savingWaPref: Boolean = false,
+    /** true selagi menyimpan nomor WhatsApp baru (cegah kirim ganda). */
+    val savingWhatsapp: Boolean = false,
+    /** Pesan gagal simpan nomor WhatsApp; null = tak ada. */
+    val whatsappError: String? = null
 )
 
 /**
@@ -61,7 +65,8 @@ class SettingsViewModel @Inject constructor(
     private val getProfileUseCase: GetProfileUseCase,
     private val logoutUseCase: LogoutUseCase,
     private val updateManager: UpdateManager,
-    private val deliveryFlowRepository: DeliveryFlowRepository
+    private val deliveryFlowRepository: DeliveryFlowRepository,
+    private val authRepository: com.krisoft.tridjayaelektronik.data.AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -153,6 +158,37 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Simpan nomor WhatsApp baru milik sendiri. [onDone] dipanggil hanya bila
+     * server menerima — pemanggil menutup dialognya di situ.
+     *
+     * Nomor dinormalisasi & divalidasi dulu ([normalizeWhatsapp]); yang tak
+     * masuk akal ditolak di klien supaya tak menghabiskan satu round-trip.
+     */
+    fun saveWhatsapp(raw: String, onDone: () -> Unit) {
+        val nomor = normalizeWhatsapp(raw)
+        if (nomor == null) {
+            _uiState.update { it.copy(whatsappError = "Nomor tidak valid. Contoh: 08123456789 atau +628123456789") }
+            return
+        }
+        if (_uiState.value.savingWhatsapp) return
+        _uiState.update { it.copy(savingWhatsapp = true, whatsappError = null) }
+        viewModelScope.launch {
+            when (val res = authRepository.updateProfile(mapOf("whatsapp" to nomor))) {
+                is AuthResult.Success -> {
+                    _uiState.update { it.copy(savingWhatsapp = false, user = res.data, whatsappError = null) }
+                    onDone()
+                }
+                is AuthResult.Failure ->
+                    _uiState.update { it.copy(savingWhatsapp = false, whatsappError = res.message) }
+            }
+        }
+    }
+
+    fun clearWhatsappError() {
+        _uiState.update { it.copy(whatsappError = null) }
     }
 
     fun logout() {
