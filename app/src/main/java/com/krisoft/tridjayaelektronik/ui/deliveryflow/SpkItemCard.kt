@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.krisoft.tridjayaelektronik.data.model.BrokerOption
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.MoneyTextField
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -114,10 +115,10 @@ fun SpkItemCard(
                     onSerialFocus()
                 }
                 Spacer(Modifier.height(10.dp))
-                ExpressiveTextField(item.hargaOtr, { onUpdate(item.copy(hargaOtr = it.filter { c -> c.isDigit() })) }, label = if (item.isCredit) "Harga OTR *" else "Harga Jual *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                MoneyTextField(item.hargaOtr, { onUpdate(item.copy(hargaOtr = it)) }, modifier = Modifier.fillMaxWidth(), label = if (item.isCredit) "Harga OTR *" else "Harga Jual *")
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ExpressiveTextField(item.diskon, { onUpdate(item.copy(diskon = it.filter { c -> c.isDigit() })) }, label = "Diskon", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                    MoneyTextField(item.diskon, { onUpdate(item.copy(diskon = it)) }, modifier = Modifier.weight(1f), label = "Diskon")
                     ExpressiveTextField(item.alasanDiskon, { onUpdate(item.copy(alasanDiskon = it)) }, label = if ((item.diskon.toLongOrNull() ?: 0L) > 0) "Alasan diskon *" else "Alasan diskon", modifier = Modifier.weight(1f))
                 }
 
@@ -168,7 +169,7 @@ fun SpkItemCard(
                     // butuh bukti PO), tetap opsional (koreksi 2026-07-26 — sebelumnya
                     // tampil unconditional buat cash & kredit).
                     Spacer(Modifier.height(10.dp))
-                    ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "Pre Order ID (opsional)", modifier = Modifier.fillMaxWidth())
+                    ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "No PO (opsional)", modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     PoPhotoField(poPhotoUrl = item.poPhotoUrl, onUploaded = { url -> onUpdate(item.copy(poPhotoUrl = url)) }, uploadPoPhoto = uploadPoPhoto)
                     Spacer(Modifier.height(10.dp))
@@ -179,12 +180,12 @@ fun SpkItemCard(
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ExpressiveTextField(item.dpNet, { onUpdate(item.copy(dpNet = it.filter { c -> c.isDigit() })) }, label = "DP Net", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
-                        ExpressiveTextField(item.pembayaran1, { onUpdate(item.copy(pembayaran1 = it.filter { c -> c.isDigit() })) }, label = "Pembayaran 1", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                        MoneyTextField(item.dpNet, { onUpdate(item.copy(dpNet = it)) }, modifier = Modifier.weight(1f), label = "DP Net")
+                        MoneyTextField(item.pembayaran1, { onUpdate(item.copy(pembayaran1 = it)) }, modifier = Modifier.weight(1f), label = "Pembayaran 1")
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ExpressiveTextField(item.angsuran, { onUpdate(item.copy(angsuran = it.filter { c -> c.isDigit() })) }, label = "Angsuran", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                        MoneyTextField(item.angsuran, { onUpdate(item.copy(angsuran = it)) }, modifier = Modifier.weight(1f), label = "Angsuran")
                         ExpressiveTextField(item.tenor, { onUpdate(item.copy(tenor = it.filter { c -> c.isDigit() })) }, label = "Tenor (bln)", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
                     }
                 }
@@ -221,7 +222,7 @@ fun SpkItemCard(
                         }
                         if (item.codPaymentMode == "dp") {
                             Spacer(Modifier.height(6.dp))
-                            ExpressiveTextField(item.codDpAmount, { onUpdate(item.copy(codDpAmount = it.filter { c -> c.isDigit() })) }, label = "Jumlah DP *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                            MoneyTextField(item.codDpAmount, { onUpdate(item.copy(codDpAmount = it)) }, modifier = Modifier.fillMaxWidth(), label = "Jumlah DP *")
                             Spacer(Modifier.height(4.dp))
                             val otr = item.hargaOtr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
                             val dp = item.codDpAmount.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
@@ -253,7 +254,7 @@ fun SpkItemCard(
                 }
                 Spacer(Modifier.height(10.dp))
                 if (!item.isKbk) {
-                    ExpressiveTextField(item.komisiSales, { onUpdate(item.copy(komisiSales = it.filter { c -> c.isDigit() })) }, label = "Komisi Sales", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+                    MoneyTextField(item.komisiSales, { onUpdate(item.copy(komisiSales = it)) }, modifier = Modifier.fillMaxWidth(), label = "Komisi Sales")
                 } else {
                     if (item.kbkBrokerKode.isBlank()) {
                         ExpressiveTextField(brokerSearch, onBrokerSearch, label = "Cari broker KBK (min. 2 karakter) *", modifier = Modifier.fillMaxWidth())
@@ -283,7 +284,7 @@ fun SpkItemCard(
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ExpressiveTextField(item.komisiKbk, { onUpdate(item.copy(komisiKbk = it.filter { c -> c.isDigit() })) }, label = "Komisi KBK", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
+                        MoneyTextField(item.komisiKbk, { onUpdate(item.copy(komisiKbk = it)) }, modifier = Modifier.weight(1f), label = "Komisi KBK")
                         ExpressiveTextField(item.noHpKbk, { onUpdate(item.copy(noHpKbk = it)) }, label = "No. HP KBK", keyboardType = KeyboardType.Phone, modifier = Modifier.weight(1f))
                     }
                 }

@@ -446,7 +446,7 @@ class DeliveryFlowViewModel @Inject constructor(
      *  Subtitle watermark ikut fallback [watermarked] (nama user saja, kode
      *  SPK belum ada saat ini). */
     suspend fun uploadPoPhoto(file: File): String? {
-        val prepared = watermarked(file, "TRIDJAYA · PRE ORDER") ?: return null
+        val prepared = watermarked(file, "TRIDJAYA · NO PO") ?: return null
         return when (val up = repository.uploadPhoto(prepared.first, "po_${System.currentTimeMillis()}.jpg")) {
             is AuthResult.Success -> up.data
             is AuthResult.Failure -> null

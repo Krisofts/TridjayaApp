@@ -96,6 +96,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.MoneyTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import java.io.File
 import kotlinx.coroutines.delay
@@ -314,7 +315,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         InfoLine("Alamat", job.customerAddress)
                         InfoLine("NIK", job.customerNik)
                         InfoLine("Serial", job.serialNumber)
-                        InfoLine("Pre Order ID", job.preOrderId)
+                        InfoLine("No PO", job.preOrderId)
                         Spacer(Modifier.height(8.dp))
                         Text("Cabang", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         InfoLine("Cabang Stok", job.dealerName)
@@ -960,7 +961,7 @@ private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel
         }
         if (isCodDp) {
             Spacer(Modifier.height(6.dp))
-            ExpressiveTextField(dpDiterima, { dpDiterima = it.filter { c -> c.isDigit() } }, label = "DP diterima kasir (wajib) *", keyboardType = KeyboardType.Number, modifier = Modifier.fillMaxWidth())
+            MoneyTextField(dpDiterima, { dpDiterima = it }, label = "DP diterima kasir (wajib) *", modifier = Modifier.fillMaxWidth())
         }
     }
     Spacer(Modifier.height(14.dp))
