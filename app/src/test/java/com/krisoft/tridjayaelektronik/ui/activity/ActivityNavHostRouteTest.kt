@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,5 +35,25 @@ class ActivityNavHostRouteTest {
                 routeForNavKey(item.navKey)
             )
         }
+    }
+
+    /**
+     * "panduan_alur" TIDAK ada di `ACTIVITY_ITEMS` (tombol kecil di baris
+     * PINTASAN, bukan kartu), jadi iterasi di atas tak menjaganya. Kunci ini
+     * ditulis literal di `ActivityScreen.onOpen("panduan_alur")` — satu salah
+     * ketik di salah satu sisi = tombol bisu tanpa error kompilasi.
+     */
+    @Test
+    fun `navKey tombol panduan alur dikenali peta route`() {
+        assertNotNull(
+            "navKey 'panduan_alur' tak dikenali routeForNavKey — tombol di baris PINTASAN jadi bisu",
+            routeForNavKey("panduan_alur")
+        )
+    }
+
+    @Test
+    fun `navKey yang tak dikenal tetap null`() {
+        assertNull(routeForNavKey("panduan"))
+        assertNull(routeForNavKey(""))
     }
 }

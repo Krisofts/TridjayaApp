@@ -27,6 +27,7 @@ import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.PetugasDirektoriDto
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderResult
 import com.krisoft.tridjayaelektronik.data.model.RejectAkiBody
@@ -63,6 +64,18 @@ interface DeliveryFlowApi {
 
     @GET("api/inventory/delivery/context")
     suspend fun context(): Response<ApiResponse<DeliveryContextDto>>
+
+    /**
+     * Direktori petugas + panduan alur (WP7). Route STATIS — di backend ia
+     * sengaja didaftarkan sebelum `/{id}`, jadi jangan mengubah urutannya jadi
+     * segmen dinamis di sini juga.
+     *
+     * Tanpa parameter `kodeDealer`: server memaksa peran cabang ke cabangnya
+     * sendiri dan hanya menghormati parameter itu untuk manager/owner/admin —
+     * app selalu ingin cabang si pemanggil, jadi tak ada gunanya mengirimnya.
+     */
+    @GET("api/inventory/delivery/petugas")
+    suspend fun petugas(): Response<ApiResponse<PetugasDirektoriDto>>
 
     @GET("api/inventory/delivery/{id}")
     suspend fun detail(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>

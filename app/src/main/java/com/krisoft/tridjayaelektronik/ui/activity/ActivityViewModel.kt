@@ -34,6 +34,8 @@ data class ActivityUiState(
     val actions: List<ActivityItem> = emptyList(),
     /** Dipakai subtitle ubin "Buat SPK" — lokal per-device. */
     val spkToday: Int = 0,
+    /** Tombol "Panduan Alur" di baris PINTASAN — lihat [panduanAlurVisible]. */
+    val panduanVisible: Boolean = false,
 )
 
 /**
@@ -300,6 +302,7 @@ class ActivityViewModel @Inject constructor(
             queueCards = buildQueueCards(items, counts, failed, roles),
             actions = items.filter { it.kind == ActivityKind.AKSI },
             spkToday = spkTodayCounter.todayCount(todayIso),
+            panduanVisible = panduanAlurVisible(roles, capabilities),
         )
     }
 

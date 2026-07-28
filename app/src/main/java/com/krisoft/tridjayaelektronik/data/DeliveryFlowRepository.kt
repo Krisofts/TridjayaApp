@@ -11,7 +11,10 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryCreateResult
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.PetugasDirektoriDto
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
+import com.krisoft.tridjayaelektronik.data.local.DashboardCacheDao
+import com.krisoft.tridjayaelektronik.data.local.DashboardCacheEntity
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -25,10 +28,15 @@ import javax.inject.Singleton
  * Alur pengiriman SPK → antar, langsung ke backend `inventory-service` via [DeliveryFlowApi].
  * Tanpa cache lokal — data harus real-time (antrian per-tahap berpindah cepat, RBAC di server).
  * Setiap aksi tahap mengembalikan [DeliveryJobDto] terbaru dari server.
+ *
+ * SATU pengecualian: [petugas] (direktori + panduan alur) disalin ke
+ * [DashboardCacheDao] karena isinya nyaris statis dan justru paling dibutuhkan
+ * saat sinyal hilang di lapangan. Jangan jadikan ini preseden untuk antrian.
  */
 @Singleton
 class DeliveryFlowRepository @Inject constructor(
-    private val api: DeliveryFlowApi
+    private val api: DeliveryFlowApi,
+    private val cacheDao: DashboardCacheDao,
 ) {
     private val errorJson = Json { ignoreUnknownKeys = true }
 
@@ -49,6 +57,38 @@ class DeliveryFlowRepository @Inject constructor(
     }
 
     suspend fun detail(id: String): AuthResult<DeliveryJobDto> = call("Gagal memuat detail") { api.detail(id) }
+
+    /**
+     * Direktori petugas + panduan alur. Sukses = salinannya ditulis ke cache;
+     * kegagalan TIDAK menyentuh cache (salinan lama tetap dipakai [cachedPetugas]).
+     */
+    suspend fun petugas(): AuthResult<PetugasDirektoriDto> = try {
+        val response = api.petugas()
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) {
+            runCatching {
+                cacheDao.upsert(
+                    DashboardCacheEntity(
+                        key = DashboardCacheEntity.KEY_DELIVERY_PETUGAS,
+                        jsonPayload = errorJson.encodeToString(PetugasDirektoriDto.serializer(), data),
+                        cachedAtMillis = System.currentTimeMillis(),
+                    )
+                )
+            }
+            AuthResult.Success(data)
+        } else parseError(response, "Gagal memuat direktori petugas")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Salinan terakhir yang pernah sukses, atau null kalau layar ini belum pernah dibuka online. */
+    suspend fun cachedPetugas(): PetugasDirektoriDto? {
+        val row = runCatching { cacheDao.get(DashboardCacheEntity.KEY_DELIVERY_PETUGAS) }.getOrNull()
+            ?: return null
+        return runCatching {
+            errorJson.decodeFromString(PetugasDirektoriDto.serializer(), row.jsonPayload)
+        }.getOrNull()
+    }
 
     suspend fun context(): AuthResult<DeliveryContextDto> = try {
         val response = api.context()

@@ -183,7 +183,16 @@ fun ActivityScreen(
                 }
 
                 if (state.isLoading || state.actions.isNotEmpty()) {
-                    item { SectionTitle("PINTASAN") }
+                    item {
+                        SectionTitle(
+                            "PINTASAN",
+                            // Gate mencerminkan `is_pipeline_actor` di backend
+                            // (lihat `panduanAlurVisible`) — jangan tampilkan
+                            // tombol yang endpointnya menjawab 403.
+                            onInfo = if (state.panduanVisible) ({ onOpen("panduan_alur") }) else null,
+                            infoLabel = "Panduan alur & direktori petugas",
+                        )
+                    }
                     // Dua ubin per baris, BUKAN satu kartu penuh per baris: pasangan
                     // "Buat SPK" + "Daftar SPK" cuma butuh setengah lebar masing-masing,
                     // dan menumpuknya mendorong seksi PERLU TINDAKAN keluar layar.
@@ -255,19 +264,41 @@ private fun GreetingRow(name: String, cabang: String) {
     }
 }
 
+/**
+ * [onInfo] non-null menambahkan tombol kecil DI SEBELAH label (bukan di ujung
+ * kanan, yang sudah milik [trailing]). Sengaja `IconButton` berukuran default:
+ * ikonnya kecil, tapi area sentuhnya tetap 48dp sesuai pedoman aksesibilitas.
+ */
 @Composable
-private fun SectionTitle(text: String, trailing: String = "") {
+private fun SectionTitle(
+    text: String,
+    trailing: String = "",
+    onInfo: (() -> Unit)? = null,
+    infoLabel: String = "",
+) {
     Row(
         Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (onInfo != null) {
+                IconButton(onClick = onInfo) {
+                    Icon(
+                        Icons.Rounded.HelpOutline,
+                        contentDescription = infoLabel,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
         if (trailing.isNotBlank()) {
             Text(
                 trailing,

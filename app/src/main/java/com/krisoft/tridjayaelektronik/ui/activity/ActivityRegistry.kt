@@ -324,6 +324,19 @@ internal fun visibleActivityItems(
     gateAllows(it.capability, it.allowedRoles, effectiveRoles, capabilities)
 }
 
+/**
+ * Tombol "Panduan Alur" di baris PINTASAN. BUKAN item registri (tak punya
+ * angka/tugas), tapi gate-nya tetap harus mencerminkan backend: endpoint
+ * `GET /inventory/delivery/petugas` (inventory-service `delivery/petugas.rs`)
+ * ber-guard `is_pipeline_actor` — sama persis dengan `spk.pipeline` /
+ * [SPK_MENU_ROLES]. Tanpa gate ini `ai-engineer` melihat tombol yang dijawab
+ * 403 (kelas bug yang sudah berulang, lihat CLAUDE.md).
+ */
+internal fun panduanAlurVisible(
+    effectiveRoles: Set<String>,
+    capabilities: Map<String, Boolean>? = null,
+): Boolean = gateAllows("spk.pipeline", SPK_MENU_ROLES, effectiveRoles, capabilities)
+
 /** Sumber unik yang perlu diambil untuk sekumpulan item — dasar dedup fan-out. */
 internal fun sourcesToFetch(items: List<ActivityItem>): Set<ActivitySource> =
     items.map { it.source }.filterNot { it == ActivitySource.NONE }.toSet()

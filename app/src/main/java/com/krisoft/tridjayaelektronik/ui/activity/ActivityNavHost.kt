@@ -58,6 +58,7 @@ private const val ROUTE_HARGA_GS = "home_harga_gs"
 private const val ROUTE_SERIAL_INPUT = "home_serial_input"
 private const val ROUTE_DEADSTOCK = "home_deadstock"
 private const val ROUTE_MUTASI_HISTORI = "home_mutasi_histori"
+private const val ROUTE_PANDUAN_ALUR = "home_panduan_alur"
 // Public (bukan private lagi) — MainActivity deep-link tap-notif buka langsung
 // halaman tahap terkait (akses cepat, route dari payload FCM delivery_notif).
 const val ROUTE_DLV_CREATE = "home_dlv_create"
@@ -111,6 +112,9 @@ private fun deliveryStageRoute(key: String): String? = when (key) {
  */
 internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "absen" -> ROUTE_ABSEN
+    // Bukan item registri (tombol kecil di baris "PINTASAN"), tapi tetap lewat
+    // peta ini supaya kontraknya diuji sama seperti navKey lain.
+    "panduan_alur" -> ROUTE_PANDUAN_ALUR
     "raport" -> ROUTE_RAPORT
     "indent" -> ROUTE_INDENT
     "spk_input" -> ROUTE_DLV_CREATE
@@ -286,6 +290,9 @@ fun ActivityNavHost(
         }
         composable(ROUTE_MUTASI_HISTORI) {
             MutasiHistoriScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_PANDUAN_ALUR) {
+            PanduanAlurScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_SPK_HUB) {
             SpkHubScreen(onBack = { navController.popBackStack() }, onNavigate = { key ->

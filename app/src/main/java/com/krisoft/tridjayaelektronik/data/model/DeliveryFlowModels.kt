@@ -632,3 +632,46 @@ data class RejectAkiBody(val reason: String)
  *  → user matikan WA (dapat notif app push saja, anti-double). Default false = WA tetap ON. */
 @Serializable
 data class WaPrefDto(val spkWaOptout: Boolean = false)
+
+// ---------------------------------------------------------------------------
+// Direktori petugas + panduan alur (`GET /inventory/delivery/petugas`, WP7).
+// Muatan server SENGAJA minimal (nama + WA saja, tanpa NIK/email/jabatan) —
+// jangan menambah field di sini tanpa backend yang benar-benar mengirimnya.
+// ---------------------------------------------------------------------------
+
+/** Satu orang di direktori. `whatsapp` null = tetap ditampilkan, tapi tak bisa dihubungi. */
+@Serializable
+data class PetugasDto(val nama: String = "", val whatsapp: String? = null)
+
+/**
+ * Satu kelompok tugas. Server SELALU mengirim enam kelompok berurutan
+ * (sales, pdi, kasir, delivery-control, driver, kepala-cabang) termasuk yang
+ * kosong — klien tak perlu bercabang untuk kelompok yang tak ada.
+ *
+ * [lintasCabang] true = orangnya melayani semua cabang (saat ini
+ * delivery-control). Tampilkan keterangannya dari flag ini, JANGAN hardcode
+ * [kunci] — kelompok lintas-cabang bisa bertambah di server.
+ */
+@Serializable
+data class PetugasGroupDto(
+    val kunci: String = "",
+    val label: String = "",
+    val lintasCabang: Boolean = false,
+    val petugas: List<PetugasDto> = emptyList(),
+)
+
+/** Satu tahap alur. Kalimatnya datang dari server supaya koreksi teks tak menuntut rilis APK. */
+@Serializable
+data class TahapAlurDto(
+    val status: String = "",
+    val aktor: String = "",
+    val keterangan: String = "",
+)
+
+@Serializable
+data class PetugasDirektoriDto(
+    val kodeDealer: String? = null,
+    val dealerName: String? = null,
+    val divisi: List<PetugasGroupDto> = emptyList(),
+    val tahapan: List<TahapAlurDto> = emptyList(),
+)
