@@ -713,11 +713,21 @@ class DeliveryFlowViewModel @Inject constructor(
             }
         }
         // GPS best-effort (pola sama absensi): null bila izin ditolak/gagal fix — JANGAN blokir serah terima.
-        val loc = LocationProvider.current(appContext)
+        //
+        // PAKAI ULANG fix yang sudah dipanaskan `refreshGps()` saat layar detail
+        // dibuka; minta baru HANYA kalau memang belum ada. Dulu selalu meminta
+        // ulang di sini, jadi driver menunggu fix kedua tepat saat menekan kirim
+        // — keluhan "geotag lama" 2026-07-28. Bonus kebenaran: koordinat yang
+        // dikirim kini SAMA dengan yang tercetak di watermark foto (keduanya
+        // dari `gpsLat`/`gpsLng`); sebelumnya dua fix berbeda bisa berselisih.
+        val warm = _state.value
+        val lat = warm.gpsLat
+        val lng = warm.gpsLng
+        val loc = if (lat != null && lng != null) null else LocationProvider.current(appContext)
         repository.deliver(
             id,
             DeliverBody(
-                photoUrl = photoUrl, lat = loc?.latitude, lng = loc?.longitude, reviewRating = rating,
+                photoUrl = photoUrl, lat = lat ?: loc?.latitude, lng = lng ?: loc?.longitude, reviewRating = rating,
                 reviewComment = comment.trim().ifBlank { null },
                 checklist = checklist.ifEmpty { null }, cashPhotoUrl = cashUrl
             )
