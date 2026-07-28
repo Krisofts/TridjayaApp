@@ -207,7 +207,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // Banner izin notifikasi kini di ActivityScreen (layar pertama app,
-                        // Task B6) — dicabut dari sini supaya tak dobel di tab Ringkasan.
+                        // Task B6) — dicabut dari sini supaya tak dobel di tab Operasional.
                         item { GreetingCard(userName = state.user?.name.orEmpty()) }
                         // Every section renders as a full-width titled card (same style as the rankings),
                         // in the user's chosen order from the Tune sheet.

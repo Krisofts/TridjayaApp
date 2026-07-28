@@ -11,13 +11,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 /**
  * Single source of truth for every app destination. [bottomNavItems] is what
  * actually shows on the bottom bar. Layar pertama app kini Activity ("hari ini
- * aku harus ngapain?"), dashboard lama pindah ke tab Ringkasan. SETTINGS &
+ * aku harus ngapain?"), dashboard lama pindah ke tab Operasional. SETTINGS &
  * LEADS tetap ada sebagai destination tapi dibuka dari Activity (gear /
  * kartu "Input prospek") daripada menempati slot bottom nav sendiri.
  */
 enum class AppDestination(val route: String, val label: String, val icon: ImageVector) {
     ACTIVITY("activity", "Activity", Icons.Rounded.ChecklistRtl),
-    SUMMARY("summary", "Ringkasan", Icons.Rounded.Insights),
+    SUMMARY("summary", "Operasional", Icons.Rounded.Insights),
     INVENTORY("inventory", "Cari", Icons.Rounded.Search),
     // LEADS & SETTINGS tetap destination yang sah — dibuka dari Activity
     // (kartu "Input prospek" / gear), hanya tak menempati slot bottom nav.

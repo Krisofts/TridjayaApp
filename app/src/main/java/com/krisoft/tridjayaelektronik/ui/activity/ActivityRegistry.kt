@@ -352,7 +352,7 @@ internal fun driverCardVisible(count: Int?, effectiveRoles: Set<String>): Boolea
     else "driver" in effectiveRoles || (count ?: 0) > 0
 
 /**
- * Role yang MENDARAT di tab Ringkasan saat app dibuka, bukan Activity (default
+ * Role yang MENDARAT di tab Operasional saat app dibuka, bukan Activity (default
  * untuk semua role lain).
  *
  * HANYA manager & owner. Guard backend yang mengisi seksi "PINTASAN" di Activity
@@ -361,14 +361,14 @@ internal fun driverCardVisible(count: Int?, effectiveRoles: Set<String>): Boolea
  * ([INDENT_SUBMIT_ROLES] memuat "manager" tapi TIDAK "owner") — yang tersisa
  * cuma "Daftar SPK" (baca). Jadi Activity manager/owner nyaris kosong: HARI INI
  * cuma absen, PINTASAN satu ubin, PERLU TINDAKAN paling banter 1-2 kartu
- * approval. Dashboard (tab Ringkasan) sudah lama jadi layar utama kedua role ini.
+ * approval. Dashboard (tab Operasional) sudah lama jadi layar utama kedua role ini.
  *
  * JANGAN tambah admin/superadmin: mereka lolos `spk.create` PENUH
  * ([SPK_CREATE_ROLES] tak mengurangi mereka) dan hampir semua kartu antrian
  * ([PDI_QUEUE_ROLES], [KASIR_QUEUE_ROLES], [DELIVERY_CONTROL_ROLES], plus
  * ketiga approval [AKI_APPROVE_ROLES]/[DISCOUNT_APPROVE_ROLES]/
  * [INDENT_APPROVE_ROLES] lewat page-grant) — Activity mereka justru padat,
- * mendaratkan mereka di Ringkasan malah menyembunyikan layar paling berguna
+ * mendaratkan mereka di Operasional malah menyembunyikan layar paling berguna
  * buat mereka.
  */
 internal val SUMMARY_LANDING_ROLES: Set<String> = setOf("manager", "owner")

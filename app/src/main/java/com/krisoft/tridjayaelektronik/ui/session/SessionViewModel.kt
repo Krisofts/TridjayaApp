@@ -34,7 +34,7 @@ class SessionViewModel @Inject constructor(
     val mustChangePassword: StateFlow<Boolean> = observeMustChangePasswordUseCase()
 
     /** Profil dari cache sesi (sinkron, tanpa network) — dipakai `MainScreen` memilih tab
-     *  awal (Activity vs Ringkasan) dari role efektif saat komposisi pertama. */
+     *  awal (Activity vs Operasional) dari role efektif saat komposisi pertama. */
     val cachedUser get() = authRepository.cachedUser
 
     init {

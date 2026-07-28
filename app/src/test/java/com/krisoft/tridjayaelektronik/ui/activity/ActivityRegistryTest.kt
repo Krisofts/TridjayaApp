@@ -228,10 +228,10 @@ class ActivityRegistryTest {
         }
     }
 
-    // ── Tab awal saat app dibuka (manager/owner → Ringkasan) ────────────────
+    // ── Tab awal saat app dibuka (manager/owner → Operasional) ──────────────
 
     @Test
-    fun `manager dan owner mendarat di Ringkasan`() {
+    fun `manager dan owner mendarat di Operasional`() {
         assertTrue(landsOnSummary(setOf("manager")))
         assertTrue(landsOnSummary(setOf("owner")))
         // Multi-role: cukup salah satu ada di daftar.

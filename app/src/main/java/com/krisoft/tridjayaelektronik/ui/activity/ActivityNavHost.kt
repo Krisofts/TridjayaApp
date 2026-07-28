@@ -83,7 +83,7 @@ private fun salesTransactionsRoute(kodePegawai: String, salesName: String) =
 
 /**
  * Kunci tahap delivery → route child — bagian yang SAMA dipakai [routeForNavKey],
- * `onSpkMenu` (tab Ringkasan), dan `onOpenDelivery` (deep-link notifikasi).
+ * `onSpkMenu` (tab Operasional), dan `onOpenDelivery` (deep-link notifikasi).
  * Minor 1 audit final-fix-2: dulu tersalin 3× di file ini (drift risk — satu
  * diperbarui, dua lainnya lupa). Tiap pemanggil menambah kunci sendiri
  * (`hub`/`input`/`history`) dan fallback berbeda DI ATAS fungsi ini —
@@ -121,12 +121,12 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
 
 /**
  * SATU tabel route dipakai DUA tab: tab Activity memulai di
- * [ACTIVITY_ROUTE_ROOT], tab Ringkasan di [HOME_ROUTE_DASHBOARD]. Masing-masing
+ * [ACTIVITY_ROUTE_ROOT], tab Operasional di [HOME_ROUTE_DASHBOARD]. Masing-masing
  * tab punya `NavHostController` sendiri, jadi keduanya berdiri sendiri.
  *
  * Sengaja tidak memecah jadi dua file: route anak (`home_dlv_*`, `home_opname`,
  * `home_spk_hub`, …) dipakai dari kedua sisi (kartu Activity, grid Akses Cepat
- * di Ringkasan, dan deep-link push FCM). Memecahnya berarti memindahkan route —
+ * di Operasional, dan deep-link push FCM). Memecahnya berarti memindahkan route —
  * hal yang justru dilarang Global Constraints (nama route anak tak boleh berubah).
  */
 @Composable
@@ -138,7 +138,7 @@ fun ActivityNavHost(
     onQuickAccessLeads: () -> Unit = {},
     // Sisa I1: dinaikkan MainScreen tiap tab terpilih berubah JADI Activity (lihat
     // `activityTabSelectedTrigger` di MainActivity.kt) — diteruskan apa adanya ke
-    // ActivityScreen, cuma dipakai di root Activity (bukan tab Ringkasan yang juga
+    // ActivityScreen, cuma dipakai di root Activity (bukan tab Operasional yang juga
     // memakai NavHost ini dgn startDestination beda).
     activityTabSelectedSignal: Int = 0,
     navController: NavHostController = rememberNavController()

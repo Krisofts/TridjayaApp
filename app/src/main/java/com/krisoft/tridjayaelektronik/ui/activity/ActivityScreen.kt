@@ -54,7 +54,7 @@ fun ActivityScreen(
     onOpenNotifications: () -> Unit,
     onOpenAllMenus: () -> Unit,
     // Sisa I1 audit merge-gate: dinaikkan MainScreen tiap tab BERUBAH JADI Activity murni
-    // (Activity↔Ringkasan tanpa apa pun lainnya) — kasus yang dulu tak memicu apa pun karena
+    // (Activity↔Operasional tanpa apa pun lainnya) — kasus yang dulu tak memicu apa pun karena
     // kedua tab tetap ter-compose (`MainScreen` menjaganya hidup, cuma alpha yang berubah,
     // lihat MainActivity.kt). Nilai awal 0 SENGAJA tak memicu apa pun (guard `> 0` di bawah)
     // supaya komposisi pertama layar ini tak fetch dobel dgn `LaunchedEffect(Unit)` di bawah.
@@ -99,7 +99,7 @@ fun ActivityScreen(
         activityLifecycle.addObserver(observer)
         onDispose { activityLifecycle.removeObserver(observer) }
     }
-    // Sisa I1: tukar tab murni Activity↔Ringkasan tak memicu ON_RESUME (Activity tak pernah
+    // Sisa I1: tukar tab murni Activity↔Operasional tak memicu ON_RESUME (Activity tak pernah
     // di-pause, cuma tabnya disembunyikan) — `tabSelectedSignal` menutup celah itu. `force =
     // false` (bukan true) SENGAJA: bolak-balik tab cepat memakai cache 60 detik yang sama
     // dengan ON_RESUME, bukan memicu badai fetch/fan-out tiap tap. Guard `> 0` mencegah efek

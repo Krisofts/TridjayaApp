@@ -421,10 +421,10 @@ private fun MainScreen(
     // InventoryNavHost for why the actual navigate() call lives there, not here.
     var inventoryOpenListTrigger by remember { mutableStateOf(0) }
 
-    // Sisa temuan I1 (merge-gate): tab Activity/Ringkasan sama-sama tetap ter-compose
+    // Sisa temuan I1 (merge-gate): tab Activity/Operasional sama-sama tetap ter-compose
     // (lihat `visitedDestinations` di bawah) — tukar tab murni TIDAK memicu lifecycle
     // maupun komposisi ulang apa pun, jadi angka/centang di Activity bisa basi kalau
-    // ditinggal ke Ringkasan lalu balik lagi. Pola sama `inventoryOpenListTrigger`:
+    // ditinggal ke Operasional lalu balik lagi. Pola sama `inventoryOpenListTrigger`:
     // counter dinaikkan di sini (bukan di ActivityScreen) lalu dikonsumsi lewat
     // `LaunchedEffect(signal)` di ujung rantai. `previousSelected` dipakai supaya
     // counter HANYA naik saat tab BERUBAH MENJADI Activity (bukan tiap recomposition,
@@ -612,7 +612,7 @@ private fun MainScreen(
                 }
             }
 
-            // Rhythm layout: floating pill (Activity + Ringkasan) + separate search FAB, overlaying
+            // Rhythm layout: floating pill (Activity + Operasional) + separate search FAB, overlaying
             // the content — the content scrolls behind it instead of being pushed above a bar.
             // (Scrollable screens add ~100dp bottom clearance so nothing hides permanently.)
             // Slides away on detail/sub-screens.

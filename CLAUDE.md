@@ -19,7 +19,7 @@ re-derive architecture decisions or repeat mistakes already fixed once.
   profile fields (migrated off the deprecated EncryptedSharedPreferences — see auth section)
 - Navigation Compose — one root `NavHost` (login ↔ main) + one nested `NavHost` per bottom-nav
   tab (`ActivityNavHost` — shared route table, mounted twice with a different `startDestination`
-  for the Activity and Ringkasan tabs; `InventoryNavHost`, `LeadsNavHost`)
+  for the Activity and Operasional tabs; `InventoryNavHost`, `LeadsNavHost`)
 - minSdk 24, targetSdk/compileSdk 35, Compose BOM 2024.10.01
 
 ## Package layout
@@ -41,8 +41,8 @@ data/
 di/AppModule.kt            Hilt providers: Room DB, DAOs, TokenStore, repositories
 ui/
   activity/     Activity — layar pertama app (tugas harian + antrian ber-gate), ActivityNavHost
-                (tabel route dipakai juga oleh tab Ringkasan, lihat catatan arsitektur di bawah)
-  home/         Dashboard lama (KPI, branch/sales rankings) — kini tab kedua "Ringkasan"
+                (tabel route dipakai juga oleh tab Operasional, lihat catatan arsitektur di bawah)
+  home/         Dashboard lama (KPI, branch/sales rankings) — kini tab kedua "Operasional"
   inventory/    Product list (search/filter/sort/paging), ProductDetailScreen (flyer generator)
   leads/        CRM: list/search, add, detail (stage move, won/lost/reopen)
   login/, settings/
@@ -84,7 +84,7 @@ di repo **tridjaya** — backend, bukan repo ini —, branch `feat/activity-home
 tab pertama menjawab "hari ini aku harus
 ngapain?": tugas harian (absen, prospek), antrian milik role user (PDI/kasir/surat jalan/
 approval), dan pintasan "Buat Baru" (`ActivityScreen.kt` + `ActivityViewModel.kt`). Dashboard
-lama (KPI/Target/Ranking) pindah utuh ke tab kedua "Ringkasan" — **satu tabel route**
+lama (KPI/Target/Ranking) pindah utuh ke tab kedua "Operasional" — **satu tabel route**
 (`ActivityNavHost.kt`, route anak `home_*` tak berubah) dipakai KEDUA tab lewat parameter
 `startDestination` (`ACTIVITY_ROUTE_ROOT` vs `HOME_ROUTE_DASHBOARD`), masing-masing dengan
 `NavHostController` sendiri, supaya deep-link push FCM yang sudah ada tetap jalan tanpa
