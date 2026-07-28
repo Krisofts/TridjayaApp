@@ -130,6 +130,11 @@ fun ActivityNavHost(
     onOpenSummaryTab: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
+    // Sisa I1: dinaikkan MainScreen tiap tab terpilih berubah JADI Activity (lihat
+    // `activityTabSelectedTrigger` di MainActivity.kt) — diteruskan apa adanya ke
+    // ActivityScreen, cuma dipakai di root Activity (bukan tab Ringkasan yang juga
+    // memakai NavHost ini dgn startDestination beda).
+    activityTabSelectedSignal: Int = 0,
     navController: NavHostController = rememberNavController()
 ) {
     NavHost(
@@ -155,6 +160,7 @@ fun ActivityNavHost(
                 onSettingsClick = onSettingsClick,
                 onOpenNotifications = { navController.navigate(ROUTE_NOTIFICATIONS) { launchSingleTop = true } },
                 onOpenAllMenus = onOpenSummaryTab,
+                tabSelectedSignal = activityTabSelectedSignal,
                 onOpen = { navKey ->
                     // "crm" sengaja tak masuk `routeForNavKey`: dibuka lewat callback
                     // pindah-tab (sama dgn kartu "Input prospek"), bukan route di

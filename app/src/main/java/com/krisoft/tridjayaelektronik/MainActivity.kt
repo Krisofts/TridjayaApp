@@ -331,6 +331,7 @@ private fun DestinationContent(
     onQuickAccessLeads: () -> Unit,
     onOpenSummaryTab: () -> Unit,
     inventoryOpenListSignal: Int,
+    activityTabSelectedSignal: Int,
     activityNav: NavHostController,
     summaryNav: NavHostController,
     inventoryNav: NavHostController,
@@ -343,6 +344,7 @@ private fun DestinationContent(
             onOpenSummaryTab = onOpenSummaryTab,
             onQuickAccessInventory = onQuickAccessInventory,
             onQuickAccessLeads = onQuickAccessLeads,
+            activityTabSelectedSignal = activityTabSelectedSignal,
             navController = activityNav
         )
         AppDestination.SUMMARY -> ActivityNavHost(
@@ -401,6 +403,29 @@ private fun MainScreen(
     // Bumped by Home's "Akses Cepat" Inventory tile — see the LaunchedEffect inside
     // InventoryNavHost for why the actual navigate() call lives there, not here.
     var inventoryOpenListTrigger by remember { mutableStateOf(0) }
+
+    // Sisa temuan I1 (merge-gate): tab Activity/Ringkasan sama-sama tetap ter-compose
+    // (lihat `visitedDestinations` di bawah) — tukar tab murni TIDAK memicu lifecycle
+    // maupun komposisi ulang apa pun, jadi angka/centang di Activity bisa basi kalau
+    // ditinggal ke Ringkasan lalu balik lagi. Pola sama `inventoryOpenListTrigger`:
+    // counter dinaikkan di sini (bukan di ActivityScreen) lalu dikonsumsi lewat
+    // `LaunchedEffect(signal)` di ujung rantai. `previousSelected` dipakai supaya
+    // counter HANYA naik saat tab BERUBAH MENJADI Activity (bukan tiap recomposition,
+    // dan bukan saat tab lain dipilih) — nilai awal `null` sengaja tak dianggap
+    // "berubah" walau `selected` awal memang ACTIVITY, jadi mount pertama tak ikut
+    // menaikkan counter (ActivityScreen sendiri sudah punya `LaunchedEffect(Unit)`
+    // untuk itu → tanpa guard ini keduanya akan fetch dobel di layar pertama).
+    var activityTabSelectedTrigger by remember { mutableStateOf(0) }
+    var previousSelectedForActivitySignal by remember { mutableStateOf<AppDestination?>(null) }
+    LaunchedEffect(selected) {
+        if (selected == AppDestination.ACTIVITY &&
+            previousSelectedForActivitySignal != null &&
+            previousSelectedForActivitySignal != AppDestination.ACTIVITY
+        ) {
+            activityTabSelectedTrigger++
+        }
+        previousSelectedForActivitySignal = selected
+    }
 
     // Hoisted so we can watch each tab's inner route and hide the floating nav on detail screens.
     val activityNav = rememberNavController()
@@ -559,6 +584,7 @@ private fun MainScreen(
                                 onQuickAccessLeads = onQuickAccessLeads,
                                 onOpenSummaryTab = onOpenSummaryTab,
                                 inventoryOpenListSignal = inventoryOpenListTrigger,
+                                activityTabSelectedSignal = activityTabSelectedTrigger,
                                 activityNav = activityNav,
                                 summaryNav = summaryNav,
                                 inventoryNav = inventoryNav,
