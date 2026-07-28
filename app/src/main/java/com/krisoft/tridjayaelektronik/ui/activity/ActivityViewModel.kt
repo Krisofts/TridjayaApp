@@ -58,6 +58,19 @@ class ActivityViewModel @Inject constructor(
     private var capabilities: Map<String, Boolean>? = null
     private var lastLoadedAtMs: Long = 0L
 
+    /**
+     * F2 audit final-fix-3 (2026-07-28): penghitung generasi — `init` memicu DUA
+     * `load()` fan-out (refresh(force=true) awal + susulan setelah peta capabilities
+     * tiba), tanpa pengait urutan sama sekali. Kalau fan-out pertama kebetulan
+     * SELESAI belakangan, penulisan `_uiState.value = ActivityUiState(...)` PENUH
+     * (bukan `.copy()`) bisa mundur ke versi `capabilities = null`. Generation
+     * counter dipilih ketimbang `Job.cancel()`: `load()` selalu jalan sampai akhir
+     * (repository balikin `AuthResult`, tak pernah throw) jadi tak ada risiko
+     * `isLoading` nyangkut `true` akibat dibatalkan di tengah — panggilan
+     * TERAKHIR (generasi tertinggi) selalu yang menang, apa pun urutan selesainya.
+     */
+    private var loadGeneration: Long = 0L
+
     init {
         refresh(force = true)
         // I2 audit 2026-07-28: dulu di-await DI DALAM `load()`, memblokir SELURUH
@@ -89,6 +102,7 @@ class ActivityViewModel @Inject constructor(
     }
 
     private suspend fun load() {
+        val myGeneration = ++loadGeneration
         _uiState.value = _uiState.value.copy(isLoading = true)
 
         val user = authRepository.cachedUser
@@ -198,6 +212,10 @@ class ActivityViewModel @Inject constructor(
             // "belum absen" → user yang sudah check-in didorong absen lagi.
             absensiFailed = ActivitySource.ABSENSI_TODAY in failed,
         )
+
+        // Ada load() yang lebih baru sudah dipanggil sejak kita mulai (atau sedang
+        // menulis state akhirnya) — jangan timpa dgn hasil yang sudah basi.
+        if (myGeneration != loadGeneration) return
 
         _uiState.value = ActivityUiState(
             isLoading = false,

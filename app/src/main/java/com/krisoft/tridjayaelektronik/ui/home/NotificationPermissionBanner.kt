@@ -44,8 +44,10 @@ import androidx.lifecycle.LifecycleOwner
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 
 /** Telusuri rantai ContextWrapper untuk menemukan Activity (LifecycleOwner) pembungkus — dipakai
- *  agar banner meng-observe lifecycle Activity, bukan NavBackStackEntry (lihat komentar di observer). */
-private tailrec fun Context.findLifecycle(): Lifecycle? = when (this) {
+ *  agar banner (dan `ActivityScreen`, lihat F1 audit final-fix-3) meng-observe lifecycle Activity,
+ *  bukan NavBackStackEntry (lihat komentar di observer). `internal` supaya bisa dipakai ulang lintas
+ *  package tanpa menyalin isinya. */
+internal tailrec fun Context.findLifecycle(): Lifecycle? = when (this) {
     is LifecycleOwner -> this.lifecycle
     is ContextWrapper -> this.baseContext.findLifecycle()
     else -> null

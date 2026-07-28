@@ -20,11 +20,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.ui.home.NotificationPermissionBanner
+import com.krisoft.tridjayaelektronik.ui.home.findLifecycle
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
@@ -77,13 +78,24 @@ fun ActivityScreen(
     // cache 60 detik (`ActivityViewModel.CACHE_WINDOW_MS`) akhirnya berguna
     // (mencegah badai request saat bolak-balik cepat), bukan mati tak terpakai
     // seperti sebelumnya. Pola sama `DeliveryFlowScreens.kt` (`GpsStatusRow`).
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    //
+    // F1 audit final-fix-3 (2026-07-28): WAJIB lifecycle ACTIVITY, BUKAN
+    // `LocalLifecycleOwner.current` — ActivityScreen duduk di posisi komposisi
+    // yang persis sama dengan bug yang sudah terdokumentasi di
+    // `NotificationPermissionBanner.findLifecycle()`: di dalam NavHost + tab
+    // kept-alive, LocalLifecycleOwner di sini = NavBackStackEntry yang bisa
+    // mandek di STARTED dan tak pernah kirim ON_RESUME lagi → observer diam
+    // permanen (absen/PDI/kasir yang baru selesai tak lagi memicu refresh).
+    // Reuse helper yang sama, jangan duplikasi.
+    val context = LocalContext.current
+    val activityLifecycle = remember(context) { context.findLifecycle() }
+    DisposableEffect(activityLifecycle) {
+        if (activityLifecycle == null) return@DisposableEffect onDispose {}
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh(force = false)
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        activityLifecycle.addObserver(observer)
+        onDispose { activityLifecycle.removeObserver(observer) }
     }
     // Sisa I1: tukar tab murni Activity↔Ringkasan tak memicu ON_RESUME (Activity tak pernah
     // di-pause, cuma tabnya disembunyikan) — `tabSelectedSignal` menutup celah itu. `force =
