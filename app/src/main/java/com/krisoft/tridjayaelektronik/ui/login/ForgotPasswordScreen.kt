@@ -25,8 +25,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 
 /**
- * Requests a password-reset email. The server always answers 200 (no account enumeration), so on
- * success we simply confirm and offer to continue to the reset screen where the emailed code goes.
+ * Requests a password reset by identifier (email/NIK/phone). The server always answers 200 (no
+ * account enumeration) and sends the reset link via WhatsApp, so on success we simply confirm and
+ * offer to continue to the reset screen where the code goes.
  */
 @Composable
 fun ForgotPasswordScreen(
@@ -44,7 +45,7 @@ fun ForgotPasswordScreen(
                 .padding(20.dp)
         ) {
             Text(
-                text = "Masukkan email akunmu. Kami kirim tautan/kode untuk mereset password.",
+                text = "Masukkan email, NIK, atau nomor HP akunmu. Kami kirim tautan reset ke WhatsApp terdaftar.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -54,7 +55,7 @@ fun ForgotPasswordScreen(
                 Column(Modifier.padding(20.dp)) {
                     if (state.sent) {
                         Text(
-                            text = "Jika email terdaftar, tautan reset sudah dikirim. Cek kotak masuk (dan spam).",
+                            text = "Jika akun terdaftar, tautan reset sudah dikirim ke WhatsApp terdaftar.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(Modifier.height(16.dp))
@@ -64,10 +65,10 @@ fun ForgotPasswordScreen(
                         ) { Text("Saya sudah punya kode") }
                     } else {
                         ExpressiveTextField(
-                            value = state.email,
-                            onValueChange = viewModel::onEmailChange,
-                            label = "Email",
-                            keyboardType = KeyboardType.Email,
+                            value = state.identifier,
+                            onValueChange = viewModel::onIdentifierChange,
+                            label = "Email / NIK / No. HP",
+                            keyboardType = KeyboardType.Text,
                             isError = state.errorMessage != null,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -91,7 +92,7 @@ fun ForgotPasswordScreen(
                         }
                         Spacer(Modifier.height(4.dp))
                         TextButton(onClick = onHaveCode, modifier = Modifier.fillMaxWidth()) {
-                            Text("Sudah punya kode dari email?")
+                            Text("Sudah punya kode dari WhatsApp?")
                         }
                     }
                 }

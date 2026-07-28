@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
+import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
 import com.krisoft.tridjayaelektronik.data.model.UserDto
 import com.krisoft.tridjayaelektronik.data.update.UpdateManager
 import com.krisoft.tridjayaelektronik.data.update.UpdateStatus
@@ -24,14 +25,19 @@ data class SettingsUiState(
     /** Non-null while an update-available dialog should be shown (from a manual "Cek Pembaruan"). */
     val updateAvailable: UpdateStatus.Available? = null,
     /** Transient toast text (e.g. "sudah versi terbaru"), consumed once shown. */
-    val updateMessage: String? = null
+    val updateMessage: String? = null,
+    /** Preferensi WA alur SPK: true = user matikan WA (dapat push app saja). */
+    val spkWaOptout: Boolean = false,
+    /** true selagi menyimpan toggle WA (cegah tap ganda). */
+    val savingWaPref: Boolean = false
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val getProfileUseCase: GetProfileUseCase,
     private val logoutUseCase: LogoutUseCase,
-    private val updateManager: UpdateManager
+    private val updateManager: UpdateManager,
+    private val deliveryFlowRepository: DeliveryFlowRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -42,6 +48,26 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadProfile()
+        loadWaPref()
+    }
+
+    private fun loadWaPref() {
+        viewModelScope.launch {
+            val pref = deliveryFlowRepository.getWaPref()
+            _uiState.update { it.copy(spkWaOptout = pref.spkWaOptout) }
+        }
+    }
+
+    /** Toggle "Terima pesan WhatsApp (alur SPK)". `receive=true` = mau terima WA → optout=false. */
+    fun setReceiveWa(receive: Boolean) {
+        val optout = !receive
+        // Optimistik: UI langsung berubah; rollback bila server gagal.
+        val prev = _uiState.value.spkWaOptout
+        _uiState.update { it.copy(spkWaOptout = optout, savingWaPref = true) }
+        viewModelScope.launch {
+            val ok = deliveryFlowRepository.setWaPref(optout)
+            _uiState.update { it.copy(savingWaPref = false, spkWaOptout = if (ok) optout else prev) }
+        }
     }
 
     fun checkUpdate() {

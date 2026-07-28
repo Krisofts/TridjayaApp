@@ -506,7 +506,13 @@ private fun SelfieBox(state: AttendanceUiState, onTakeSelfie: () -> Unit) {
         val selfie = state.selfie
         if (selfie != null) {
             Box(contentAlignment = Alignment.BottomEnd) {
-                Image(bitmap = selfie.asImageBitmap(), contentDescription = "Selfie absen", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                // alignment=BottomCenter: watermark ada di bar bawah gambar (PhotoWatermark.drawWatermark);
+                // default Crop (Center) motong tepi atas+bawah foto portrait, bar watermark ikut hilang.
+                Image(
+                    bitmap = selfie.asImageBitmap(), contentDescription = "Selfie absen",
+                    contentScale = ContentScale.Crop, alignment = Alignment.BottomCenter,
+                    modifier = Modifier.fillMaxSize()
+                )
                 Surface(color = Color.Black.copy(alpha = 0.45f), shape = RoundedCornerShape(topStart = 12.dp)) {
                     Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))

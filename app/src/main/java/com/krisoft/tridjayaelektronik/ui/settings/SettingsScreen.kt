@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -169,6 +170,27 @@ fun SettingsScreen(
                                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null)
                                     },
                                     onClick = { showTheme = true }
+                                )
+                            )
+                        )
+
+                        Material3SettingsGroup(
+                            title = "Notifikasi",
+                            items = listOf(
+                                Material3SettingsItem(
+                                    icon = Icons.AutoMirrored.Rounded.Chat,
+                                    title = { Text("Terima pesan WhatsApp") },
+                                    description = {
+                                        Text("Notifikasi alur SPK/diskon lewat WhatsApp. Matikan agar cukup lewat notifikasi aplikasi (anti-double).")
+                                    },
+                                    trailingContent = {
+                                        Switch(
+                                            checked = !state.spkWaOptout,
+                                            onCheckedChange = { viewModel.setReceiveWa(it) },
+                                            enabled = !state.savingWaPref
+                                        )
+                                    },
+                                    onClick = { if (!state.savingWaPref) viewModel.setReceiveWa(state.spkWaOptout) }
                                 )
                             )
                         )

@@ -25,7 +25,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 
-/** Completes a password reset with the code from the email + a new password. */
+/** Completes a password reset with the code from WhatsApp + a new password. */
 @Composable
 fun ResetPasswordScreen(
     onBack: () -> Unit,
@@ -44,7 +44,7 @@ fun ResetPasswordScreen(
                 .padding(20.dp)
         ) {
             Text(
-                text = "Tempel kode reset dari email, lalu buat password baru.",
+                text = "Tempel kode reset dari WhatsApp, lalu buat password baru.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

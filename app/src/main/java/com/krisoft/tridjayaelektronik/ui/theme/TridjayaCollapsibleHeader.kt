@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -132,6 +133,12 @@ fun TridjayaCollapsibleHeader(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                // Edge-to-edge (decorFitsSystemWindows=false) → window tak resize saat keyboard
+                // muncul; tanpa imePadding, field di bawah tertutup keyboard. imePadding=0 saat
+                // keyboard tertutup (tak berefek), menyusut ke atas keyboard saat terbuka →
+                // field ter-fokus otomatis di-scroll ke area terlihat. Fix untuk SEMUA form yang
+                // pakai header ini.
+                .imePadding()
                 .graphicsLayer {
                     alpha = contentAlpha
                     translationY = contentOffset

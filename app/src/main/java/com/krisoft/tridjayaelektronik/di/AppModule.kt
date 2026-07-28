@@ -13,12 +13,16 @@ import com.krisoft.tridjayaelektronik.data.local.OpnameCountDao
 import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
 import com.krisoft.tridjayaelektronik.data.remote.AuthApi
 import com.krisoft.tridjayaelektronik.data.remote.AbsensiApi
+import com.krisoft.tridjayaelektronik.data.remote.DeadstockApi
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import com.krisoft.tridjayaelektronik.data.remote.CrmApi
 import com.krisoft.tridjayaelektronik.data.remote.DeviceApi
+import com.krisoft.tridjayaelektronik.data.remote.ErpPriceChangesApi
 import com.krisoft.tridjayaelektronik.data.remote.OffApi
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import com.krisoft.tridjayaelektronik.data.remote.NetworkModule
+import com.krisoft.tridjayaelektronik.data.remote.NotificationsApi
+import com.krisoft.tridjayaelektronik.data.remote.PayrollApi
 import com.krisoft.tridjayaelektronik.data.remote.SalesApi
 import dagger.Module
 import dagger.Provides
@@ -87,6 +91,26 @@ object AppModule {
     @Singleton
     fun provideDeliveryFlowApi(tokenStore: TokenStore): DeliveryFlowApi =
         NetworkModule.createDeliveryFlowApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideNotificationsApi(tokenStore: TokenStore): NotificationsApi =
+        NetworkModule.createNotificationsApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun providePayrollApi(tokenStore: TokenStore): PayrollApi =
+        NetworkModule.createPayrollApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideErpPriceChangesApi(tokenStore: TokenStore): ErpPriceChangesApi =
+        NetworkModule.createErpPriceChangesApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideDeadstockApi(tokenStore: TokenStore): DeadstockApi =
+        NetworkModule.createDeadstockApi(tokenStore)
 
     /** v11 → v12: kolom aging stok (umurHari + kondisi) di branch_stock. Migrasi ADDITIVE —
      *  jangan destruktif, supaya antrean offline (pending leads, hitungan opname) tidak terhapus
