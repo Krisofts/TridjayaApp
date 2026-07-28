@@ -25,14 +25,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.FactCheck
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -51,19 +52,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.export.OpnamePdfExporter
-import com.krisoft.tridjayaelektronik.data.local.OpnameCountEntity
+import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.BarcodeScanButton
 import com.krisoft.tridjayaelektronik.data.model.OpnameItemDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
-import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveInlineError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
@@ -80,9 +80,10 @@ private fun formatRupiah(value: Double): String {
 
 /**
  * One opname session. Counting is BLIND (system stock is never shown while counting — matches
- * the physical-count discipline and the backend's own coverage endpoint) and LOCAL-FIRST:
- * inputs accumulate into Room; "Selesaikan" pushes the whole buffer as one batch, and only a
- * completed session reveals selisih units + value from the server.
+ * the physical-count discipline and the backend's own coverage endpoint) and per-UNIT: satu
+ * baris per serial number, bukan angka jumlah. Tiap scan disimpan ke Room lalu LANGSUNG
+ * dikirim (duplikat cuma bisa divonis server); tanpa sinyal ia diantre dan bisa dikirim ulang.
+ * Selisih unit + nilainya baru terungkap dari server setelah sesi ditutup.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,17 +97,19 @@ fun OpnameDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var search by remember { mutableStateOf("") }
-    var countingItem by remember { mutableStateOf<OpnameStockItemDto?>(null) }
+    var scanSheetOpen by remember { mutableStateOf(false) }
     var confirmAction by remember { mutableStateOf<String?>(null) } // "complete" | "cancel"
     var isExportingPdf by remember { mutableStateOf(false) }
 
     LaunchedEffect(sessionId) { viewModel.load(sessionId) }
 
     val detail = state.detail
-    val localByCode = remember(state.localCounts) {
-        state.localCounts.associateBy { it.kodeBarang.uppercase() }
+    // Jumlah unit per SKU: dipakai penanda "sudah dihitung" di hasil pencarian.
+    val unitsByCode = remember(state.units) {
+        state.units.groupBy { it.kodeBarang.uppercase() }
     }
-    val searchResults = remember(state.stock, search, localByCode) {
+    val pendingCount = remember(state.units) { state.units.count { it.syncedAtMillis == null } }
+    val searchResults = remember(state.stock, search, unitsByCode) {
         val term = search.trim()
         if (term.isBlank()) emptyList()
         else state.stock.asSequence()
@@ -116,7 +119,7 @@ fun OpnameDetailScreen(
             }
             // Already-counted items sink to the bottom so the next uncounted item is always
             // the first thing under the search box.
-            .sortedBy { localByCode.containsKey(it.kodeBarang.uppercase()) }
+            .sortedBy { unitsByCode.containsKey(it.kodeBarang.uppercase()) }
             .take(20)
             .toList()
     }
@@ -133,7 +136,7 @@ fun OpnameDetailScreen(
                     scope.launch {
                         runCatching {
                             val uri = withContext(Dispatchers.IO) {
-                                OpnamePdfExporter.export(context, current, state.localCounts)
+                                OpnamePdfExporter.export(context, current, state.units)
                             }
                             sharePdf(context, uri)
                         }
@@ -174,9 +177,7 @@ fun OpnameDetailScreen(
                 val completed = detail.status == "completed"
                 // remember — jangan jumlahkan ulang ratusan baris setiap ketikan di kolom cari
                 // (recomposition scope layar ini ikut ter-trigger oleh perubahan `search`).
-                val totalUnit = remember(state.localCounts) {
-                    state.localCounts.sumOf { it.stokFisikLayak + it.stokFisikTidakLayak }
-                }
+                val totalUnit = state.units.size
                 val selisihUnit = remember(detail.items) { detail.items.sumOf { it.selisih } }
                 val selisihNilai = remember(detail.items) {
                     detail.items.sumOf { (it.harga ?: 0.0) * it.selisih }
@@ -247,7 +248,8 @@ fun OpnameDetailScreen(
                                     // Live counting progress: total coverage, REMAINING types
                                     // (drops with every input), and inputted units.
                                     val totalJenis = state.stock.size
-                                    val sisaJenis = (totalJenis - state.localCounts.size).coerceAtLeast(0)
+                                    val jenisTerhitung = unitsByCode.size
+                                    val sisaJenis = (totalJenis - jenisTerhitung).coerceAtLeast(0)
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         OpnameStat(
                                             "Sisa Jenis",
@@ -256,7 +258,7 @@ fun OpnameDetailScreen(
                                         )
                                         OpnameStat(
                                             "Dihitung",
-                                            if (totalJenis > 0) "${state.localCounts.size}/$totalJenis" else "${state.localCounts.size}"
+                                            if (totalJenis > 0) "$jenisTerhitung/$totalJenis" else "$jenisTerhitung"
                                         )
                                         OpnameStat("Unit Diinput", "$totalUnit")
                                     }
@@ -290,10 +292,24 @@ fun OpnameDetailScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Hitungan disimpan di HP dulu — dikirim ke server saat sesi diselesaikan",
+                                    text = "Scan serial tiap unit. Tersimpan di HP lalu langsung dikirim; tanpa sinyal akan diantre.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (pendingCount > 0) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "$pendingCount unit menunggu terkirim",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        TextButton(onClick = { viewModel.retryPending() }) {
+                                            Text("Kirim ulang")
+                                        }
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 ExpressiveTextField(
                                     value = search,
@@ -306,8 +322,11 @@ fun OpnameDetailScreen(
                         items(searchResults, key = { "stock_${it.kodeBarang}" }) { stockItem ->
                             StockSearchRow(
                                 item = stockItem,
-                                counted = localByCode[stockItem.kodeBarang.uppercase()],
-                                onClick = { countingItem = stockItem }
+                                unitCount = unitsByCode[stockItem.kodeBarang.uppercase()]?.size ?: 0,
+                                onClick = {
+                                    viewModel.selectItem(stockItem)
+                                    scanSheetOpen = true
+                                }
                             )
                         }
                         if (search.isNotBlank() && searchResults.isEmpty()) {
@@ -324,34 +343,28 @@ fun OpnameDetailScreen(
 
                     item(key = "items_header") {
                         Text(
-                            text = if (completed) "Hasil Opname (${detail.items.size})" else "Hasil Hitungan (${state.localCounts.size})",
+                            text = if (completed) "Hasil Opname (${detail.items.size})" else "Unit Terscan (${state.units.size})",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
                         )
                     }
                     if (!completed) {
-                        // Draft: blind count — only names + the quantities the counter entered.
-                        if (state.localCounts.isEmpty()) {
+                        // Draft: blind count — hanya serial yang benar-benar discan petugas.
+                        if (state.units.isEmpty()) {
                             item(key = "items_empty") {
                                 Text(
-                                    text = "Belum ada barang yang dihitung",
+                                    text = "Belum ada unit yang discan",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         } else {
-                            items(state.localCounts, key = { "local_${it.kodeBarang}" }) { count ->
-                                LocalCountRow(
-                                    count = count,
-                                    onClick = if (state.canManage) {
-                                        {
-                                            countingItem = OpnameStockItemDto(
-                                                kodeBarang = count.kodeBarang,
-                                                namaBarang = count.namaBarang,
-                                                merk = count.merk
-                                            )
-                                        }
+                            items(state.units, key = { "unit_${it.serialNumber}" }) { unit ->
+                                ScannedUnitRow(
+                                    unit = unit,
+                                    onDelete = if (state.canManage) {
+                                        { viewModel.deleteUnit(unit) }
                                     } else null
                                 )
                             }
@@ -367,7 +380,7 @@ fun OpnameDetailScreen(
                             Column(modifier = Modifier.padding(top = 20.dp)) {
                                 ExpressiveFilledButton(
                                     onClick = { confirmAction = "complete" },
-                                    enabled = !state.isMutatingStatus && state.localCounts.isNotEmpty(),
+                                    enabled = !state.isMutatingStatus && state.units.isNotEmpty(),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     if (state.isMutatingStatus) {
@@ -399,22 +412,21 @@ fun OpnameDetailScreen(
         }
     }
 
-    countingItem?.let { item ->
-        CountInputSheet(
-            item = item,
-            existing = localByCode[item.kodeBarang.uppercase()],
+    val selected = state.selectedItem
+    if (scanSheetOpen && selected != null) {
+        ScanUnitSheet(
+            item = selected,
+            units = unitsByCode[selected.kodeBarang.uppercase()].orEmpty(),
             isSaving = state.isSaving,
             saveError = state.saveError,
+            scanMessage = state.scanMessage,
             onDismiss = {
-                countingItem = null
-                viewModel.clearSaveError()
+                scanSheetOpen = false
+                viewModel.selectItem(null)
+                search = ""
             },
-            onSubmit = { layak, tidakLayak, keterangan ->
-                viewModel.saveCount(item, layak, tidakLayak, keterangan) {
-                    countingItem = null
-                    search = ""
-                }
-            }
+            onScan = { serial, tidakLayak -> viewModel.scan(serial, tidakLayak) },
+            onDelete = { unit -> viewModel.deleteUnit(unit) }
         )
     }
 
@@ -426,9 +438,9 @@ fun OpnameDetailScreen(
             text = {
                 Text(
                     if (isComplete) {
-                        "Seluruh hitungan di HP (${state.localCounts.size} jenis barang) akan dikirim ke server sekaligus. Setelah selesai, hitungan tidak bisa diubah lagi dan selisih vs stok sistem dihitung."
+                        "Sisa antrean (${state.units.count { it.syncedAtMillis == null }} unit) akan dikirim dulu, lalu sesi ditutup. Setelah selesai, hitungan tidak bisa diubah lagi dan selisih vs stok sistem dihitung."
                     } else {
-                        "Sesi yang dibatalkan tidak bisa dilanjutkan lagi. Hitungan lokal di HP juga akan dihapus."
+                        "Sesi yang dibatalkan tidak bisa dilanjutkan lagi. Unit yang tersimpan di HP juga akan dihapus."
                     }
                 )
             },
@@ -486,7 +498,7 @@ private fun OpnameStat(label: String, value: String, highlight: Boolean = false)
 @Composable
 private fun StockSearchRow(
     item: OpnameStockItemDto,
-    counted: OpnameCountEntity?,
+    unitCount: Int,
     onClick: () -> Unit
 ) {
     ClayCard(
@@ -513,10 +525,10 @@ private fun StockSearchRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (counted != null) {
+            if (unitCount > 0) {
                 Surface(color = Color(0xFF12B76A).copy(alpha = 0.14f), shape = RoundedCornerShape(8.dp)) {
                     Text(
-                        text = "✓ ${counted.stokFisikLayak + counted.stokFisikTidakLayak}",
+                        text = "✓ $unitCount",
                         color = Color(0xFF12B76A),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
@@ -535,50 +547,55 @@ private fun StockSearchRow(
     }
 }
 
-/** Draft row: name + entered quantities ONLY — no system stock, no selisih (blind count). */
+/**
+ * Baris unit terscan: serial + kondisi + penanda temuan/antrean. Sengaja tanpa stok
+ * sistem — penghitung tak boleh melihat angka pembanding (blind count).
+ */
 @Composable
-private fun LocalCountRow(count: OpnameCountEntity, onClick: (() -> Unit)?) {
-    ClayCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-    ) {
+private fun ScannedUnitRow(unit: OpnameUnitEntity, onDelete: (() -> Unit)?) {
+    ClayCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = count.namaBarang ?: count.kodeBarang,
+                    text = unit.serialNumber,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${count.kodeBarang} · layak ${count.stokFisikLayak} · tidak layak ${count.stokFisikTidakLayak}",
+                    text = buildString {
+                        append(unit.kodeBarang)
+                        append(" \u00b7 ")
+                        append(if (unit.kondisi == "layak") "layak" else "tidak layak")
+                        unit.temuan?.let {
+                            append(" \u00b7 ")
+                            append(temuanLabel(it))
+                        }
+                        if (unit.syncedAtMillis == null) append(" \u00b7 menunggu kirim")
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (unit.temuan != null || unit.syncedAtMillis == null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
-                if (!count.keterangan.isNullOrBlank()) {
-                    Text(
-                        text = count.keterangan,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
+            }
+            if (onDelete != null) {
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Rounded.Delete,
+                        contentDescription = "Hapus unit ${unit.serialNumber}",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp)) {
-                Text(
-                    text = "${count.stokFisikLayak + count.stokFisikTidakLayak}",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                )
             }
         }
     }
@@ -644,112 +661,78 @@ private fun CompletedItemRow(item: OpnameItemDto) {
     }
 }
 
-/** Count input — quantities entered here are ADDED to any earlier count of the same SKU. */
+/**
+ * Panel scan: satu barang, banyak unit. Tombol scan memakai Google code scanner yang
+ * sudah dipakai PDI/SPK (tanpa izin kamera); ketik manual tetap tersedia untuk barcode
+ * yang rusak.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CountInputSheet(
+private fun ScanUnitSheet(
     item: OpnameStockItemDto,
-    existing: OpnameCountEntity?,
+    units: List<OpnameUnitEntity>,
     isSaving: Boolean,
     saveError: String?,
+    scanMessage: String?,
     onDismiss: () -> Unit,
-    onSubmit: (layak: Long, tidakLayak: Long, keterangan: String) -> Unit
+    onScan: (serial: String, tidakLayak: Boolean) -> Unit,
+    onDelete: (OpnameUnitEntity) -> Unit
 ) {
-    var layakText by remember(item.kodeBarang) { mutableStateOf("") }
-    var tidakLayakText by remember(item.kodeBarang) { mutableStateOf("") }
-    var keterangan by remember(item.kodeBarang) { mutableStateOf("") }
-    var inputError by remember { mutableStateOf<String?>(null) }
+    var manual by remember { mutableStateOf("") }
+    var tidakLayak by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp)
+                // Ketik manual dipakai justru saat barcode rusak — tanpa ini keyboard
+                // menutupi kolom serial dan tombolnya.
                 .imePadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Box(modifier = Modifier.padding(10.dp)) {
-                        Icon(
-                            Icons.Rounded.FactCheck,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = item.namaBarang ?: item.kodeBarang,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = item.kodeBarang,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (existing != null) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Sudah terhitung ${existing.stokFisikLayak + existing.stokFisikTidakLayak} unit — input di bawah akan DITAMBAHKAN ke jumlah itu",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExpressiveTextField(
-                    value = layakText,
-                    onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) layakText = it },
-                    label = "Fisik Layak",
-                    placeholder = "0",
-                    keyboardType = KeyboardType.Number,
-                    modifier = Modifier.weight(1f)
-                )
-                ExpressiveTextField(
-                    value = tidakLayakText,
-                    onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) tidakLayakText = it },
-                    label = "Tidak Layak",
-                    placeholder = "0",
-                    keyboardType = KeyboardType.Number,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            ExpressiveTextField(
-                value = keterangan,
-                onValueChange = { keterangan = it },
-                label = "Keterangan (opsional)",
-                modifier = Modifier.fillMaxWidth()
+            Text(
+                text = item.namaBarang ?: item.kodeBarang,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = listOfNotNull(item.kodeBarang, item.merk?.takeIf { it.isNotBlank() })
+                    .joinToString(" \u00b7 "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            (inputError ?: saveError)?.let { ExpressiveFormError(message = it) }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ExpressiveTextField(
+                    value = manual,
+                    onValueChange = { manual = it },
+                    placeholder = "Ketik serial number...",
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                BarcodeScanButton(contentDescription = "Scan serial unit") { hasil ->
+                    onScan(hasil, tidakLayak)
+                }
+            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = tidakLayak, onCheckedChange = { tidakLayak = it })
+                Text(
+                    text = "Unit berikutnya TIDAK layak",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
             ExpressiveFilledButton(
                 onClick = {
-                    // Blank field = 0 — the counter only fills whichever bucket has units.
-                    val layak = layakText.toLongOrNull() ?: 0L
-                    val tidakLayak = tidakLayakText.toLongOrNull() ?: 0L
-                    if (layak == 0L && tidakLayak == 0L) {
-                        inputError = "Isi minimal salah satu jumlah (layak atau tidak layak)"
-                    } else {
-                        inputError = null
-                        onSubmit(layak, tidakLayak, keterangan)
-                    }
+                    onScan(manual, tidakLayak)
+                    manual = ""
                 },
-                enabled = !isSaving,
+                enabled = !isSaving && manual.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isSaving) {
@@ -761,9 +744,40 @@ private fun CountInputSheet(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Menyimpan...")
                 } else {
-                    Text(if (existing != null) "Tambahkan Hitungan" else "Simpan Hitungan")
+                    Text("Tambah Unit")
                 }
+            }
+
+            if (saveError != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                ExpressiveInlineError(message = saveError)
+            } else if (scanMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = scanMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "${units.size} unit terscan untuk barang ini",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            units.take(30).forEach { unit ->
+                ScannedUnitRow(unit = unit, onDelete = { onDelete(unit) })
+            }
+            if (units.size > 30) {
+                Text(
+                    text = "...dan ${units.size - 30} unit lainnya",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
+

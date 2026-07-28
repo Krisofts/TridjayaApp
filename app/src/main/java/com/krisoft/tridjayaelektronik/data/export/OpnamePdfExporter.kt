@@ -7,7 +7,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import androidx.core.content.FileProvider
-import com.krisoft.tridjayaelektronik.data.local.OpnameCountEntity
+import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import java.io.File
 import java.text.SimpleDateFormat
@@ -28,7 +28,7 @@ object OpnamePdfExporter {
     private const val MARGIN = 36f
     private const val ROW_HEIGHT = 16f
 
-    fun export(context: Context, detail: OpnameDetailDto, localCounts: List<OpnameCountEntity>): Uri {
+    fun export(context: Context, detail: OpnameDetailDto, units: List<OpnameUnitEntity>): Uri {
         val document = PdfDocument()
         val titlePaint = Paint().apply {
             textSize = 15f
@@ -61,9 +61,8 @@ object OpnamePdfExporter {
                 Triple("No", MARGIN, false),
                 Triple("Kode", MARGIN + 22f, false),
                 Triple("Nama Barang", MARGIN + 82f, false),
-                Triple("Layak", 420f, true),
-                Triple("Tidak Layak", 486f, true),
-                Triple("Total", PAGE_WIDTH - MARGIN, true)
+                Triple("Serial Number", 400f, false),
+                Triple("Kondisi", PAGE_WIDTH - MARGIN, true)
             )
         }
         val nameWidth = (if (completed) 388f - 46f else 420f - 46f) - (MARGIN + 82f)
@@ -177,27 +176,28 @@ object OpnamePdfExporter {
                 boldPaint
             )
         } else {
-            var totalLayak = 0L
-            var totalTidakLayak = 0L
-            localCounts.forEachIndexed { index, count ->
-                totalLayak += count.stokFisikLayak
-                totalTidakLayak += count.stokFisikTidakLayak
-                drawCells(
-                    listOf(
-                        "${index + 1}",
-                        count.kodeBarang,
-                        count.namaBarang ?: "-",
-                        "${count.stokFisikLayak}",
-                        "${count.stokFisikTidakLayak}",
-                        "${count.stokFisikLayak + count.stokFisikTidakLayak}"
-                    ),
-                    textPaint
-                )
-            }
+            // Draft: satu baris per UNIT FISIK (serial), bukan angka jumlah — daftar ini
+            // yang bisa dicocokkan ulang ke barang di gudang.
+            var tidakLayak = 0
+            units.sortedWith(compareBy({ it.kodeBarang }, { it.serialNumber }))
+                .forEachIndexed { index, unit ->
+                    if (unit.kondisi != "layak") tidakLayak += 1
+                    drawCells(
+                        listOf(
+                            "${index + 1}",
+                            unit.kodeBarang,
+                            unit.namaBarang ?: "-",
+                            unit.serialNumber,
+                            if (unit.kondisi == "layak") "Layak" else "Tidak layak"
+                        ),
+                        textPaint
+                    )
+                }
             ensureSpace(ROW_HEIGHT * 2)
             canvas.drawLine(MARGIN, y - 10f, PAGE_WIDTH - MARGIN, y - 10f, linePaint)
+            val jenis = units.map { it.kodeBarang.uppercase() }.distinct().size
             drawCells(
-                listOf("", "", "TOTAL (${localCounts.size} jenis)", "$totalLayak", "$totalTidakLayak", "${totalLayak + totalTidakLayak}"),
+                listOf("", "", "TOTAL ($jenis jenis)", "${units.size} unit", "$tidakLayak tidak layak"),
                 boldPaint
             )
         }

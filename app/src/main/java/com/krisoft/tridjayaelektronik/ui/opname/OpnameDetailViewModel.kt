@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.OpnameRepository
-import com.krisoft.tridjayaelektronik.data.local.OpnameCountEntity
+import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
+import com.krisoft.tridjayaelektronik.data.KONDISI_TIDAK_LAYAK
+import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,8 +23,12 @@ data class OpnameDetailUiState(
     val isLoading: Boolean = true,
     val detail: OpnameDetailDto? = null,
     val stock: List<OpnameStockItemDto> = emptyList(),
-    /** Local (Room-buffered) counts of this draft session — the source of truth until finish. */
-    val localCounts: List<OpnameCountEntity> = emptyList(),
+    /** Unit terscan sesi ini (buffer Room; baris tanpa syncedAtMillis masih diantre). */
+    val units: List<OpnameUnitEntity> = emptyList(),
+    /** Barang yang sedang dihitung — semua scan berikutnya masuk ke barang ini. */
+    val selectedItem: OpnameStockItemDto? = null,
+    /** Pesan hasil scan terakhir (tersimpan / diantre / ditolak). */
+    val scanMessage: String? = null,
     val errorMessage: String? = null,
     /** Draft session owned by the current user → counting/complete/cancel controls show. */
     val canManage: Boolean = false,
@@ -42,11 +48,11 @@ class OpnameDetailViewModel @Inject constructor(
     val uiState: StateFlow<OpnameDetailUiState> = _uiState.asStateFlow()
 
     private var sessionId: String = ""
-    private var countsJob: Job? = null
+    private var unitsJob: Job? = null
 
     fun load(id: String) {
         sessionId = id
-        observeLocalCounts(id)
+        observeUnits(id)
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         viewModelScope.launch {
             when (val result = repository.detail(id)) {
@@ -67,11 +73,11 @@ class OpnameDetailViewModel @Inject constructor(
         }
     }
 
-    private fun observeLocalCounts(id: String) {
-        countsJob?.cancel()
-        countsJob = viewModelScope.launch {
-            repository.observeCounts(id).collect { counts ->
-                _uiState.update { it.copy(localCounts = counts) }
+    private fun observeUnits(id: String) {
+        unitsJob?.cancel()
+        unitsJob = viewModelScope.launch {
+            repository.observeUnits(id).collect { units ->
+                _uiState.update { it.copy(units = units) }
             }
         }
     }
@@ -84,26 +90,99 @@ class OpnameDetailViewModel @Inject constructor(
         }
     }
 
-    /** Local-only save (Room). Re-inputs of the same SKU accumulate — no network here. */
-    fun saveCount(item: OpnameStockItemDto, layak: Long, tidakLayak: Long, keterangan: String, onSaved: () -> Unit) {
+    fun selectItem(item: OpnameStockItemDto?) {
+        _uiState.update { it.copy(selectedItem = item, saveError = null, scanMessage = null) }
+    }
+
+    /**
+     * Catat satu unit hasil scan/ketik. Tersimpan lokal dulu lalu dikirim; hasilnya
+     * dilaporkan apa adanya supaya petugas tahu bedanya "tersimpan", "menunggu jaringan",
+     * dan "ditolak".
+     */
+    fun scan(serialNumber: String, tidakLayak: Boolean = false) {
+        val item = _uiState.value.selectedItem ?: return
+        _uiState.update { it.copy(isSaving = true, saveError = null, scanMessage = null) }
+        viewModelScope.launch {
+            val result = runCatching {
+                repository.scanUnit(
+                    sessionId = sessionId,
+                    kodeBarang = item.kodeBarang,
+                    namaBarang = item.namaBarang,
+                    serialNumberRaw = serialNumber,
+                    kondisi = if (tidakLayak) KONDISI_TIDAK_LAYAK else KONDISI_LAYAK
+                )
+            }.getOrElse { error ->
+                _uiState.update {
+                    it.copy(isSaving = false, saveError = error.message ?: "Gagal menyimpan unit")
+                }
+                return@launch
+            }
+            _uiState.update { state ->
+                when (result) {
+                    is OpnameRepository.ScanResult.Accepted -> state.copy(
+                        isSaving = false,
+                        scanMessage = if (result.temuan != null) {
+                            "${result.serialNumber} tersimpan — ${temuanLabel(result.temuan)}"
+                        } else {
+                            "${result.serialNumber} tersimpan"
+                        }
+                    )
+                    is OpnameRepository.ScanResult.Queued -> state.copy(
+                        isSaving = false,
+                        scanMessage = "${result.serialNumber} tersimpan offline, menunggu jaringan"
+                    )
+                    is OpnameRepository.ScanResult.Rejected -> state.copy(
+                        isSaving = false,
+                        saveError = "${result.serialNumber}: ${result.reason}"
+                    )
+                }
+            }
+            // Angka pada header berasal dari server; segarkan setelah unit bertambah.
+            refreshDetail()
+        }
+    }
+
+    fun deleteUnit(unit: OpnameUnitEntity) {
         _uiState.update { it.copy(isSaving = true, saveError = null) }
         viewModelScope.launch {
-            runCatching {
-                repository.addCount(sessionId, item, layak, tidakLayak, keterangan)
-            }.onSuccess {
-                _uiState.update { it.copy(isSaving = false) }
-                onSaved()
-            }.onFailure { error ->
-                _uiState.update { it.copy(isSaving = false, saveError = error.message ?: "Gagal menyimpan hitungan") }
+            when (val result = repository.deleteUnit(sessionId, unit)) {
+                is AuthResult.Success -> {
+                    _uiState.update { it.copy(isSaving = false, scanMessage = "${unit.serialNumber} dihapus") }
+                    refreshDetail()
+                }
+                is AuthResult.Failure -> _uiState.update {
+                    it.copy(isSaving = false, saveError = result.message)
+                }
             }
         }
+    }
+
+    /** Kirim ulang antrean yang tertinggal saat sinyal hilang. */
+    fun retryPending() {
+        viewModelScope.launch {
+            when (val pushed = repository.pushPending(sessionId)) {
+                is AuthResult.Success -> {
+                    _uiState.update { it.copy(scanMessage = "Antrean terkirim") }
+                    refreshDetail()
+                }
+                is AuthResult.Failure -> _uiState.update { it.copy(saveError = pushed.message) }
+            }
+        }
+    }
+
+    private suspend fun refreshDetail() {
+        (repository.detail(sessionId) as? AuthResult.Success)?.let { applyDetail(it.data) }
     }
 
     fun clearSaveError() {
         _uiState.update { it.copy(saveError = null) }
     }
 
-    /** Push the whole local buffer as one batch, then complete the session. */
+    fun clearScanMessage() {
+        _uiState.update { it.copy(scanMessage = null) }
+    }
+
+    /** Kirim sisa antrean dulu, baru tutup sesi. */
     fun complete() = mutateStatus { repository.finalize(sessionId) }
 
     fun cancel() = mutateStatus { repository.cancel(sessionId) }
@@ -122,4 +201,12 @@ class OpnameDetailViewModel @Inject constructor(
             }
         }
     }
+}
+
+/** Label temuan dalam Bahasa Indonesia; nilai tak dikenal ditampilkan apa adanya. */
+fun temuanLabel(temuan: String): String = when (temuan) {
+    "tidak_terdaftar" -> "belum terdaftar di registry"
+    "cabang_lain" -> "terdaftar di cabang lain"
+    "sudah_terjual" -> "tercatat sudah terjual"
+    else -> temuan
 }
