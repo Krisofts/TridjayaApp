@@ -13,6 +13,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.domain.indent.ListIndentUseCase
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
+import com.krisoft.tridjayaelektronik.ui.raport.matchJobdeskPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -133,6 +134,8 @@ class ActivityViewModel @Inject constructor(
         val sources = sourcesToFetch(items)
         var checkInAt: String? = null
         var checkOutAt: String? = null
+        /** `null` = penyebut jobdesk tak diketahui — lihat `raportJobdeskDetail`. */
+        var raportExpected: Int? = null
 
         coroutineScope {
             val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
@@ -213,10 +216,27 @@ class ActivityViewModel @Inject constructor(
                 }
             }
 
-            if (ActivitySource.RAPORT_TODAY in sources) jobs += async {
-                when (val r = raportRepository.raportOfDay(todayIso, user?.id)) {
-                    is AuthResult.Success -> counts[ActivitySource.RAPORT_TODAY] = r.data.size
-                    is AuthResult.Failure -> failed += ActivitySource.RAPORT_TODAY
+            if (ActivitySource.RAPORT_TODAY in sources) {
+                jobs += async {
+                    when (val r = raportRepository.raportOfDay(todayIso, user?.id)) {
+                        is AuthResult.Success -> counts[ActivitySource.RAPORT_TODAY] = r.data.size
+                        is AuthResult.Failure -> failed += ActivitySource.RAPORT_TODAY
+                    }
+                }
+                // Penyebut "x/y jobdesk". Panggilan TERPISAH dari yang di atas dan
+                // sengaja TIDAK menandai RAPORT_TODAY gagal saat ia sendiri gagal:
+                // jumlah yang sudah terkirim tetap benar, cuma penyebutnya yang tak
+                // diketahui — dan kartu bertanda "gagal muat" gara-gara master
+                // jobdesk tak terambil justru menyembunyikan angka yang valid.
+                // `matchJobdeskPosition` dipakai ulang apa adanya (BUKAN matcher
+                // baru) supaya penyebut di kartu ini identik dengan daftar jobdesk
+                // yang user lihat begitu kartunya dibuka.
+                jobs += async {
+                    val r = raportRepository.jobdeskPositions()
+                    if (r is AuthResult.Success) {
+                        raportExpected = matchJobdeskPosition(user?.divisi.orEmpty(), r.data)
+                            ?.jobdesks?.size
+                    }
                 }
             }
 
@@ -250,6 +270,7 @@ class ActivityViewModel @Inject constructor(
             absensiFailed = ActivitySource.ABSENSI_TODAY in failed,
             raportToday = counts[ActivitySource.RAPORT_TODAY] ?: 0,
             raportFailed = ActivitySource.RAPORT_TODAY in failed,
+            raportExpected = raportExpected,
         )
 
         // Ada load() yang lebih baru sudah dipanggil sejak kita mulai (atau sedang

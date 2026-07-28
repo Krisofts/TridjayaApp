@@ -134,6 +134,52 @@ class ActivityPlanTest {
     }
 
     @Test
+    fun `penyebut jobdesk tak diketahui tidak pernah dirender sebagai pecahan`() {
+        // Q5: mayoritas karyawan aktif divisinya tak ada di master jobdesk →
+        // `matchJobdeskPosition` balikin null. "0/0" akan memvonis mereka belum
+        // mengerjakan sesuatu yang memang tak bisa dihitung.
+        val items = listOf(item("raport"))
+        for (expected in listOf(null, 0)) {
+            val belum = buildDailyTasks(items, null, null, leadsToday = 0, raportExpected = expected)
+            assertEquals("belum", belum.single().detail)
+            assertFalse(belum.single().done)
+
+            val ada = buildDailyTasks(
+                items, null, null, leadsToday = 0, raportToday = 3, raportExpected = expected
+            )
+            assertEquals("3 jobdesk terkirim", ada.single().detail)
+            assertTrue(ada.single().done)
+        }
+    }
+
+    @Test
+    fun `penyebut jobdesk diketahui tampil sebagai x per y`() {
+        val items = listOf(item("raport"))
+        val sebagian = buildDailyTasks(
+            items, null, null, leadsToday = 0, raportToday = 3, raportExpected = 7
+        )
+        assertEquals("3/7 jobdesk", sebagian.single().detail)
+        // Centang TETAP "ada minimal satu jobdesk terkirim" — bukan "3 == 7".
+        assertTrue(sebagian.single().done)
+
+        val kosong = buildDailyTasks(items, null, null, leadsToday = 0, raportExpected = 7)
+        assertEquals("0/7 jobdesk", kosong.single().detail)
+        assertFalse(kosong.single().done)
+    }
+
+    @Test
+    fun `penyebut jobdesk tak menutupi kegagalan memuat raport`() {
+        // Penyebut datang dari panggilan LAIN (master jobdesk) — kalau raport hari
+        // ini sendiri gagal dimuat, angka pembilangnya tak bisa dipercaya.
+        val tasks = buildDailyTasks(
+            listOf(item("raport")), null, null, leadsToday = 0,
+            raportFailed = true, raportExpected = 7,
+        )
+        assertEquals("gagal muat", tasks.single().detail)
+        assertTrue(tasks.single().loadFailed)
+    }
+
+    @Test
     fun `raport gagal dimuat tampil gagal muat dan tak menghukum progres`() {
         val items = listOf(item("raport"))
         val tasks = buildDailyTasks(items, null, null, leadsToday = 0, raportFailed = true)

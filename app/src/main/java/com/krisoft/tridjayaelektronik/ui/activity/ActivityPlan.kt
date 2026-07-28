@@ -71,6 +71,13 @@ internal fun buildDailyTasks(
     raportToday: Int = 0,
     /** true = panggilan raport hari ini gagal — sama alasannya dgn [absensiFailed]. */
     raportFailed: Boolean = false,
+    /**
+     * Jumlah jobdesk yang SEHARUSNYA diisi user hari ini (dari master jobdesk
+     * yang cocok dengan `divisi`-nya). `null` = TIDAK DIKETAHUI — lihat
+     * [raportJobdeskDetail] kenapa itu bukan kasus pinggiran dan kenapa 0 tak
+     * boleh dipakai sebagai sentinel.
+     */
+    raportExpected: Int? = null,
 ): List<DailyTask> = items
     .filter { it.kind == ActivityKind.TUGAS_HARIAN }
     // Absen pulang tak relevan sebelum check-in — menampilkannya sejak pagi
@@ -97,15 +104,35 @@ internal fun buildDailyTasks(
                 DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
             item.id == "raport" -> DailyTask(
                 item,
-                // "Selesai" = sudah mengirim minimal satu jobdesk. Jumlah jobdesk
-                // yang SEHARUSNYA diisi cuma diketahui setelah master jobdesk
-                // dimuat (layar raport), dan layar ini sengaja tak menembaknya.
+                // "Selesai" TETAP = sudah mengirim minimal satu jobdesk, SENGAJA
+                // tidak dinaikkan jadi "semua jobdesk terisi" walau penyebutnya
+                // kini kadang diketahui: penyebut itu hanya ada untuk sebagian
+                // karyawan, jadi menaikkannya membuat centang (dan penyebut
+                // [dailyProgressLabel]) berarti dua hal berbeda tergantung apakah
+                // divisi orangnya kebetulan ada di master jobdesk.
                 raportToday > 0,
-                if (raportToday > 0) "$raportToday jobdesk terkirim" else "belum",
+                raportJobdeskDetail(raportToday, raportExpected),
             )
             else -> DailyTask(item, done = false, detail = if (item.comingSoon) "SEGERA" else "belum")
         }
     }
+
+/**
+ * Teks kanan kartu "Input Aktivitas": "3/7 jobdesk" kalau penyebutnya benar-
+ * benar diketahui, teks lama kalau tidak.
+ *
+ * [expected] `null` (master jobdesk gagal dimuat, atau divisi user tak cocok
+ * satu pun posisi) DAN 0 sama-sama berarti TIDAK DIKETAHUI. Ini bukan kasus
+ * pinggiran: mayoritas karyawan aktif divisinya memang tak ada di master
+ * jobdesk (`matchJobdeskPosition` balikin `null`), jadi merendernya sebagai
+ * "0/0" akan memvonis mereka belum mengerjakan sesuatu yang tak pernah bisa
+ * dihitung. Karena itu penyebutnya `Int?`, bukan `Int` ber-sentinel 0.
+ */
+internal fun raportJobdeskDetail(terkirim: Int, expected: Int?): String = when {
+    expected != null && expected > 0 -> "$terkirim/$expected jobdesk"
+    terkirim > 0 -> "$terkirim jobdesk terkirim"
+    else -> "belum"
+}
 
 /**
  * `n/total` — item `comingSoon` (belum bisa dikerjakan) DAN [DailyTask.loadFailed]
