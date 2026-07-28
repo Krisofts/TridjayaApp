@@ -231,4 +231,27 @@ class ActivityRegistryTest {
     fun `profil belum termuat tetap mendarat di Activity`() {
         assertFalse(landsOnSummary(emptySet()))
     }
+
+    // ── Pindahan dari QuickAccessRegistryTest ────────────────────────────────
+    // Tile CRM & Absen dicabut dari grid Akses Cepat (2026-07-28) karena sudah
+    // jadi kartu di sini. Penjaganya ikut pindah — insiden CRM-403 2026-07-27
+    // (manager/kepala-cabang/owner melihat menu CRM lalu dijawab 403) tak boleh
+    // kehilangan test-nya cuma karena menunya berpindah layar.
+
+    @Test
+    fun `prospek hanya untuk yang benar-benar dilayani crm-service`() {
+        assertTrue("prospek" in ids("karyawan"))
+        assertTrue("prospek" in ids("crm-manager"))
+        assertFalse("prospek" in ids("manager"))
+        assertFalse("prospek" in ids("kepala-cabang"))
+        assertFalse("prospek" in ids("owner"))
+    }
+
+    @Test
+    fun `absen untuk staf, bukan crm-manager`() {
+        assertTrue("absen_masuk" in ids("karyawan"))
+        assertTrue("absen_masuk" in ids("kepala-cabang"))
+        // STAFF_ROLES kinerja-service tak memuat crm-manager → absen 403.
+        assertFalse("absen_masuk" in ids("crm-manager"))
+    }
 }

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -193,7 +194,10 @@ fun ActivityScreen(
                                         } else ""
                                         Text(action.label + extra)
                                     },
-                                    leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                                    leadingIcon = {
+                                val (icon, tint) = activityVisual(action.id)
+                                Icon(icon, contentDescription = null, tint = tint)
+                            },
                                 )
                             }
                         }
@@ -271,6 +275,43 @@ private fun SectionTitle(text: String, trailing: String = "") {
     }
 }
 
+/**
+ * Ikon + warna per item Activity. Warnanya SENGAJA sama dengan tile lama di
+ * grid Akses Cepat dan entri hub SPK — orang sudah mengenali "PDI ungu, kasir
+ * biru, driver hijau", jadi memindahkannya ke layar baru tak memaksa mereka
+ * belajar ulang.
+ *
+ * Dipisah dari registri supaya `ActivityRegistry.kt` tetap data murni (bisa
+ * diuji tanpa Compose).
+ */
+@Composable
+private fun activityVisual(id: String): Pair<ImageVector, Color> = when (id) {
+    "absen_masuk", "absen_pulang" -> Icons.Rounded.Fingerprint to Color(0xFF0E9384)
+    "prospek" -> Icons.Rounded.Groups to MaterialTheme.colorScheme.tertiary
+    "raport" -> Icons.Rounded.Assignment to Color(0xFF667085)
+    "buat_spk" -> Icons.Rounded.Description to Color(0xFF1E63E9)
+    "ajukan_inden", "approval_inden" -> Icons.Rounded.PlaylistAddCheck to MaterialTheme.colorScheme.secondary
+    "antrian_pdi" -> Icons.Rounded.FactCheck to Color(0xFF6941C6)
+    "aki_saya", "aki_approval" -> Icons.Rounded.BatteryChargingFull to Color(0xFF9C27B0)
+    "antrian_kasir" -> Icons.Rounded.PointOfSale to Color(0xFF0086C9)
+    "surat_jalan" -> Icons.Rounded.Receipt to Color(0xFF0E9384)
+    "penjadwalan" -> Icons.Rounded.CalendarToday to Color(0xFF1565C0)
+    "tugas_antar" -> Icons.Rounded.LocalShipping to Color(0xFF12B76A)
+    "approval_diskon" -> Icons.Rounded.Discount to Color(0xFFB5670C)
+    else -> Icons.Rounded.Bolt to MaterialTheme.colorScheme.primary
+}
+
+/** Ikon dalam lingkaran bertint — bentuk yang sama dipakai tile Akses Cepat. */
+@Composable
+private fun ActivityIcon(id: String) {
+    val (icon, tint) = activityVisual(id)
+    Surface(shape = CircleShape, color = tint.copy(alpha = 0.14f)) {
+        Box(Modifier.padding(9.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
 @Composable
 private fun DailyTaskRow(task: DailyTask, onClick: () -> Unit) {
     // Item "SEGERA" tetap tampil supaya rutinitas yang akan datang terlihat,
@@ -286,11 +327,7 @@ private fun DailyTaskRow(task: DailyTask, onClick: () -> Unit) {
             Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                if (task.done) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                contentDescription = null,
-                tint = if (task.done) Color(0xFF12B76A) else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            ActivityIcon(task.item.id)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(task.item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -305,6 +342,15 @@ private fun DailyTaskRow(task: DailyTask, onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // Centang pindah ke kanan: ikon kiri kini identitas menu, penanda
+            // selesai tak boleh merebut tempatnya.
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                if (task.done) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                contentDescription = if (task.done) "sudah" else "belum",
+                tint = if (task.done) Color(0xFF12B76A) else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(20.dp),
             )
         }
     }
@@ -325,6 +371,8 @@ private fun QueueRow(card: ActivityCard, onClick: () -> Unit) {
             Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            ActivityIcon(card.item.id)
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(card.item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(

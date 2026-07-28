@@ -168,22 +168,22 @@ class QuickAccessRegistryTest {
     fun `role produksi hanya melihat menu yang backend-nya melayani mereka`() {
         val karyawanSales = setOf("karyawan", "sales")
         val terlihat = visibleQuickAccessMenus(karyawanSales).map { it.id }
-        assertTrue("crm" in terlihat)
-        assertTrue("absen" in terlihat)
-        assertTrue("spk" in terlihat)
-        assertFalse("indent" in terlihat)      // INDENT_READ_ROLES tak memuat karyawan
+        assertTrue("gaji" in terlihat)          // STAFF_ROLES
+        assertTrue("klasemen" in terlihat)      // MOBILE_LEADERBOARD_ROLES
+        assertTrue("harga_gs" in terlihat)      // require_price_changes_reader memuat karyawan
         assertFalse("serial_input" in terlihat) // hanya admin-stok
+        assertFalse("opname" in terlihat)       // has_admin/has_manager tak memuat karyawan
 
         val crmManager = setOf("crm-manager")
         val terlihatCrm = visibleQuickAccessMenus(crmManager).map { it.id }
-        assertTrue("crm" in terlihatCrm)
-        assertFalse("absen" in terlihatCrm)     // bukan STAFF_ROLES
+        assertFalse("gaji" in terlihatCrm)      // bukan STAFF_ROLES
         assertFalse("klasemen" in terlihatCrm)  // bukan MOBILE_LEADERBOARD_ROLES
 
-        val aiEngineer = setOf("ai-engineer")
-        val terlihatAi = visibleQuickAccessMenus(aiEngineer).map { it.id }
-        assertFalse("spk" in terlihatAi)        // is_pipeline_actor menolak
-        assertFalse("crm" in terlihatAi)
+        val adminStok = setOf("karyawan", "admin-stok")
+        val terlihatStok = visibleQuickAccessMenus(adminStok).map { it.id }
+        assertTrue("serial_input" in terlihatStok)
+        assertTrue("opname" in terlihatStok)
+        assertTrue("deadstock" in terlihatStok)
     }
 }
 
@@ -197,31 +197,31 @@ class CapabilityDrivenMenuTest {
     fun `kemampuan server menang atas daftar role lokal`() {
         // Server bilang boleh walau role lokal tak memuatnya (mis. backend
         // melebarkan aksesnya tanpa rilis app baru) → menu muncul.
-        val caps = mapOf("indent.view" to true)
-        assertTrue(visibleQuickAccessMenus(setOf("karyawan"), caps).any { it.id == "indent" })
+        val caps = mapOf("opname.view" to true)
+        assertTrue(visibleQuickAccessMenus(setOf("karyawan"), caps).any { it.id == "opname" })
 
         // Sebaliknya: role lokal mengira boleh, server bilang tidak → sembunyi.
         // Inilah yang mencegah menu-tampil-lalu-403 muncul lagi.
-        val capsTolak = mapOf("crm.input" to false)
-        assertFalse(visibleQuickAccessMenus(setOf("karyawan"), capsTolak).any { it.id == "crm" })
+        val capsTolak = mapOf("payroll.self" to false)
+        assertFalse(visibleQuickAccessMenus(setOf("karyawan"), capsTolak).any { it.id == "gaji" })
     }
 
     @Test
     fun `kunci absen di peta server dianggap tidak boleh`() {
         // Peta ada tapi kuncinya tak disebut = server tak memberi kemampuan itu.
-        val caps = mapOf("absensi.self" to true)
+        val caps = mapOf("payroll.self" to true)
         val ids = visibleQuickAccessMenus(setOf("karyawan"), caps).map { it.id }
-        assertTrue("absen" in ids)
-        assertFalse("crm" in ids)
+        assertTrue("gaji" in ids)
+        assertFalse("klasemen" in ids)
     }
 
     @Test
     fun `tanpa peta server jatuh ke daftar role lokal`() {
         // Offline / server lama: app tetap berguna, memakai cadangan.
         val ids = visibleQuickAccessMenus(setOf("karyawan"), null).map { it.id }
-        assertTrue("crm" in ids)
-        assertTrue("absen" in ids)
-        assertFalse("indent" in ids)
+        assertTrue("gaji" in ids)
+        assertTrue("klasemen" in ids)
+        assertFalse("serial_input" in ids)
     }
 
     @Test
@@ -229,7 +229,7 @@ class CapabilityDrivenMenuTest {
         // Inventory memang tak ber-gate di backend → `capability = null`.
         val inventory = QUICK_ACCESS_MENUS.first { it.id == "inventory" }
         assertTrue(inventory.capability == null)
-        assertTrue(inventory.visibleFor(setOf("karyawan"), mapOf("crm.input" to false)))
+        assertTrue(inventory.visibleFor(setOf("karyawan"), mapOf("payroll.self" to false)))
     }
 
     @Test

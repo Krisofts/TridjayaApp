@@ -101,14 +101,12 @@ internal val SPK_MENU_ROLES: Set<String> = KNOWN_ROLES - "ai-engineer"
  * meniru guard itu. Kalau backend tak mengecek role sama sekali, tulis
  * [ALL_LOGGED_IN] dan sebutkan itu di `backendGuard`.
  */
+// Absen, CRM, SPK, Antrian PDI, dan Indent SENGAJA tak ada di sini sejak
+// 2026-07-28: kelimanya sudah jadi kartu di layar Activity (tab pertama), dan
+// menampilkannya di dua tempat membuat user ragu mana yang "benar". Grid ini
+// menyisakan menu yang TIDAK diwakili Activity. Gate-nya tidak hilang — pindah
+// ke `ui/activity/ActivityRegistry.kt` beserta test dua-arahnya.
 internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
-    QuickAccessMenu(
-        id = "absen",
-        capability = "absensi.self",
-        label = "Absen",
-        allowedRoles = STAFF_MENU_ROLES,
-        backendGuard = "kinerja-service absensi.rs STAFF_ROLES",
-    ),
     QuickAccessMenu(
         id = "gaji",
         capability = "payroll.self",
@@ -117,39 +115,11 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
         backendGuard = "kinerja-service payroll VIEW_OWN_ROLES (= STAFF_ROLES)",
     ),
     QuickAccessMenu(
-        id = "spk",
-        capability = "spk.pipeline",
-        label = "SPK",
-        allowedRoles = SPK_MENU_ROLES,
-        backendGuard = "inventory-service delivery.rs is_pipeline_actor (tolak ai-engineer murni)",
-    ),
-    QuickAccessMenu(
-        id = "pdi_queue",
-        capability = "pdi.queue",
-        label = "Antrian PDI",
-        allowedRoles = setOf("pdi", "admin", "superadmin"),
-        backendGuard = "inventory-service delivery.rs submit_pdi (ROLE_PDI/admin)",
-    ),
-    QuickAccessMenu(
         id = "inventory",
         capability = null,
         label = "Inventory",
         allowedRoles = ALL_LOGGED_IN,
         backendGuard = "gateway grup protected — stok cabang tanpa gate role tambahan",
-    ),
-    QuickAccessMenu(
-        id = "crm",
-        capability = "crm.input",
-        label = "CRM",
-        allowedRoles = CRM_MENU_ROLES,
-        backendGuard = "crm-service http.rs CRM_FULL + karyawan_scope",
-    ),
-    QuickAccessMenu(
-        id = "indent",
-        capability = "indent.view",
-        label = "Indent",
-        allowedRoles = INDENT_MENU_ROLES,
-        backendGuard = "gateway INDENT_READ_ROLES",
     ),
     QuickAccessMenu(
         id = "klasemen",
