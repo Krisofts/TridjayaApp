@@ -63,11 +63,17 @@ fun TridjayaFloatingNav(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Pill stretches to fill the row up to the search FAB; its items spread evenly.
+        // Pill stretches to fill the row up to the search FAB. Sisa ruang diberikan
+        // ke item TERPILIH saja — item lain hanya ikon 24dp, jadi membaginya rata
+        // (`weight(1f)` untuk semua, versi sebelum 2026-07-29) membuang separuh pil
+        // pada ikon dan memotong label yang panjang: lebar teks tersisa cuma
+        // `(lebarLayar − 128) / 2 − 64` dp ≈ 68dp di HP 393dp, sedangkan
+        // "Operasional" butuh ±82dp → tampil "Operasiona…". Ini juga perilaku asli
+        // Rhythm (item terpilih melebar sesuai isi).
         FloatingNavigationBar(modifier = Modifier.weight(1f)) {
             pillItems.forEach { item ->
                 FloatingNavigationBarItem(
-                    modifier = Modifier.weight(1f),
+                    modifier = if (item.selected) Modifier.weight(1f) else Modifier,
                     selected = item.selected,
                     onClick = item.onClick,
                     icon = {
