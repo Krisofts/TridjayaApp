@@ -34,6 +34,28 @@ data class SettingsUiState(
     val savingWaPref: Boolean = false
 )
 
+/**
+ * Pesan toast untuk hasil "Cek Pembaruan" — `null` berarti tak ada toast
+ * (dialog pembaruan yang tampil).
+ *
+ * **Kenapa dipisah begini.** Dulu `checkUpdate()` memakai satu cabang `else`
+ * yang menyapu [UpdateStatus.UpToDate] DAN [UpdateStatus.Unknown] jadi pesan
+ * yang sama: "Aplikasi sudah versi terbaru". Padahal `Unknown` berarti
+ * pemeriksaannya GAGAL — `UpdateManager.check()` mengembalikannya saat respons
+ * tidak sukses (401/403/5xx) atau melempar (offline, timeout, TLS, gagal
+ * parse). Akibatnya user yang permintaannya gagal diberi tahu bahwa ia sudah
+ * paling baru, padahal pembaruan ada dan ia tak akan pernah tahu — persis
+ * laporan dari lapangan di v2.25 (versionCode 36) saat server sudah 39.
+ *
+ * Fungsi murni supaya bisa diuji tanpa Hilt/coroutines-test (repo ini hanya
+ * punya JUnit4).
+ */
+internal fun updateCheckMessage(status: UpdateStatus): String? = when (status) {
+    is UpdateStatus.Available -> null
+    UpdateStatus.UpToDate -> "Aplikasi sudah versi terbaru"
+    UpdateStatus.Unknown -> "Gagal memeriksa pembaruan. Periksa koneksi lalu coba lagi."
+}
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val getProfileUseCase: GetProfileUseCase,
@@ -75,9 +97,13 @@ class SettingsViewModel @Inject constructor(
     fun checkUpdate() {
         _uiState.update { it.copy(checkingUpdate = true, updateAvailable = null, updateDownload = UpdateDownloadState.Idle, updateMessage = null) }
         viewModelScope.launch {
-            when (val status = updateManager.check()) {
-                is UpdateStatus.Available -> _uiState.update { it.copy(checkingUpdate = false, updateAvailable = status) }
-                else -> _uiState.update { it.copy(checkingUpdate = false, updateMessage = "Aplikasi sudah versi terbaru") }
+            val status = updateManager.check()
+            _uiState.update {
+                it.copy(
+                    checkingUpdate = false,
+                    updateAvailable = status as? UpdateStatus.Available,
+                    updateMessage = updateCheckMessage(status),
+                )
             }
         }
     }
