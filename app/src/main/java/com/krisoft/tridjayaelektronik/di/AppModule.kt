@@ -9,7 +9,7 @@ import com.krisoft.tridjayaelektronik.data.local.AppDatabase
 import com.krisoft.tridjayaelektronik.data.local.BranchStockDao
 import com.krisoft.tridjayaelektronik.data.local.DashboardCacheDao
 import com.krisoft.tridjayaelektronik.data.local.LeadDao
-import com.krisoft.tridjayaelektronik.data.local.OpnameCountDao
+import com.krisoft.tridjayaelektronik.data.local.OpnameUnitDao
 import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
 import com.krisoft.tridjayaelektronik.data.remote.ApkApi
 import com.krisoft.tridjayaelektronik.data.remote.AuthApi
@@ -134,11 +134,31 @@ object AppModule {
         }
     }
 
+    /** v13 → v14: opname pindah dari JUMLAH per SKU (`opname_counts`) ke satu baris per UNIT
+     *  fisik (`opname_units`). Ditulis eksplisit dan BUKAN dibiarkan jatuh ke
+     *  `fallbackToDestructiveMigration()`, karena wipe DB ikut membuang antrean prospek offline
+     *  (`LeadEntity.pendingSync`) yang belum pernah sampai ke server — alasan yang sama dengan
+     *  MIGRATION_11_12 di atas. Isi `opname_counts` sendiri sengaja dibuang: endpoint qty
+     *  (`/opname/{id}/items`) sudah dihapus backend, jadi angka yang tersisa di sana tak punya
+     *  tujuan kirim lagi. */
+    private val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS `opname_counts`")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `opname_units` (" +
+                    "`sessionId` TEXT NOT NULL, `serialNumber` TEXT NOT NULL, " +
+                    "`kodeBarang` TEXT NOT NULL, `namaBarang` TEXT, `kondisi` TEXT NOT NULL, " +
+                    "`keterangan` TEXT, `temuan` TEXT, `updatedAtMillis` INTEGER NOT NULL, " +
+                    "`syncedAtMillis` INTEGER, PRIMARY KEY(`sessionId`, `serialNumber`))"
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "tridjaya.db")
-            .addMigrations(MIGRATION_11_12)
+            .addMigrations(MIGRATION_11_12, MIGRATION_13_14)
             // Local cache only (server is the source of truth) — safe to wipe on schema bumps
             // that don't have an explicit migration above.
             .fallbackToDestructiveMigration()
@@ -157,5 +177,5 @@ object AppModule {
     fun provideLeadDao(database: AppDatabase): LeadDao = database.leadDao()
 
     @Provides
-    fun provideOpnameCountDao(database: AppDatabase): OpnameCountDao = database.opnameCountDao()
+    fun provideOpnameUnitDao(database: AppDatabase): OpnameUnitDao = database.opnameUnitDao()
 }
