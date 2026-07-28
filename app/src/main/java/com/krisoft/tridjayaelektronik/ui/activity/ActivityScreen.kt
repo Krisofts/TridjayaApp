@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -39,7 +40,7 @@ import java.util.Locale
 /**
  * Layar pertama app — menjawab satu pertanyaan: "hari ini aku harus ngapain?".
  *
- * Tak ada layar error global di sini: seksi HARI INI & BUAT BARU tak butuh
+ * Tak ada layar error global di sini: seksi HARI INI & PINTASAN tak butuh
  * jaringan (absensi dari cache VM, prospek dari Room, SPK dari SharedPreferences),
  * jadi kegagalan jaringan hanya membuat kartu antrian yang bersangkutan
  * bertanda "—" dan bisa ditap untuk memuat ulang. Pull-to-refresh (spec §5)
@@ -159,7 +160,7 @@ fun ActivityScreen(
                 }
 
                 // I4 audit 2026-07-28: judul seksi tanpa isi menggantung permanen buat
-                // sebagian persona (mis. manager/owner tak pernah punya BUAT BARU).
+                // sebagian persona (mis. crm-manager tak punya satu pun kartu antrian).
                 // Sembunyikan HANYA saat benar-benar kosong DAN sudah selesai memuat —
                 // render pertama & skeleton tetap butuh judulnya supaya tak melompat
                 // begitu data datang.
@@ -182,24 +183,27 @@ fun ActivityScreen(
                 }
 
                 if (state.isLoading || state.actions.isNotEmpty()) {
-                    item { SectionTitle("BUAT BARU") }
-                    item {
+                    item { SectionTitle("PINTASAN") }
+                    // Dua ubin per baris, BUKAN satu kartu penuh per baris: pasangan
+                    // "Buat SPK" + "Daftar SPK" cuma butuh setengah lebar masing-masing,
+                    // dan menumpuknya mendorong seksi PERLU TINDAKAN keluar layar.
+                    // Bentuk ubinnya sengaja sama dengan kartu di atasnya (ClayCard +
+                    // ikon bertint) — AssistChip yang dipakai sebelumnya terbaca seperti
+                    // filter, bukan tombol menu.
+                    items(state.actions.chunked(2), key = { it.first().id }) { pasangan ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            state.actions.forEach { action ->
-                                AssistChip(
-                                    onClick = { onOpen(action.navKey) },
-                                    label = {
-                                        val extra = if (action.id == "buat_spk" && state.spkToday > 0) {
-                                            " · ${state.spkToday} hari ini"
-                                        } else ""
-                                        Text(action.label + extra)
-                                    },
-                                    leadingIcon = {
-                                val (icon, tint) = activityVisual(action.id)
-                                Icon(icon, contentDescription = null, tint = tint)
-                            },
-                                )
+                            pasangan.forEach { action ->
+                                ActionTile(
+                                    item = action,
+                                    detail = if (action.id == "buat_spk" && state.spkToday > 0) {
+                                        "${state.spkToday} SPK hari ini"
+                                    } else action.subtitle,
+                                    modifier = Modifier.weight(1f),
+                                ) { onOpen(action.navKey) }
                             }
+                            // Jumlah ganjil: ubin terakhir tetap setengah lebar, tak
+                            // melar jadi kartu penuh (bikin baris terakhir beda bentuk).
+                            if (pasangan.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
@@ -290,6 +294,8 @@ private fun activityVisual(id: String): Pair<ImageVector, Color> = when (id) {
     "prospek" -> Icons.Rounded.Groups to MaterialTheme.colorScheme.tertiary
     "raport" -> Icons.Rounded.Assignment to Color(0xFF667085)
     "buat_spk" -> Icons.Rounded.Description to Color(0xFF1E63E9)
+    // Warna & ikon sama dgn entri "Riwayat SPK" di SpkHubScreen — layar tujuannya sama.
+    "daftar_spk" -> Icons.Rounded.History to Color(0xFF667085)
     "ajukan_inden", "approval_inden" -> Icons.Rounded.PlaylistAddCheck to MaterialTheme.colorScheme.secondary
     "antrian_pdi" -> Icons.Rounded.FactCheck to Color(0xFF6941C6)
     "aki_saya", "aki_approval" -> Icons.Rounded.BatteryChargingFull to Color(0xFF9C27B0)
@@ -308,6 +314,44 @@ private fun ActivityIcon(id: String) {
     Surface(shape = CircleShape, color = tint.copy(alpha = 0.14f)) {
         Box(Modifier.padding(9.dp), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/**
+ * Ubin seksi PINTASAN — separuh lebar layar, jadi teksnya dikunci satu baris
+ * (label & subtitle) supaya dua ubin bersebelahan selalu setinggi persis sama.
+ */
+@Composable
+private fun ActionTile(
+    item: ActivityItem,
+    detail: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    ClayCard(modifier = modifier.clickable(onClick = onClick)) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ActivityIcon(item.id)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    item.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

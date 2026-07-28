@@ -139,6 +139,27 @@ class ActivityRegistryTest {
     }
 
     @Test
+    fun `pasangan ubin SPK berdampingan dan daftar SPK terbuka untuk manager`() {
+        // Seksi PINTASAN dirender dua kolom menurut urutan ACTIVITY_ITEMS —
+        // menyelipkan item AKSI lain di antara keduanya memisahkan pasangan ini
+        // ke dua baris, persis pemborosan tempat yang dibuang di sini.
+        val aksi = ACTIVITY_ITEMS.filter { it.kind == ActivityKind.AKSI }.map { it.id }
+        assertEquals(aksi.indexOf("buat_spk") + 1, aksi.indexOf("daftar_spk"))
+
+        // "Daftar SPK" memakai gate BACA, jadi manager/owner (ditolak `spk.create`)
+        // tetap punya jalan ke riwayat SPK dari layar pertama.
+        val caps = mapOf(
+            "spk.pipeline" to true, "spk.create" to false,
+            "absensi.self" to true, "crm.input" to false, "pdi.queue" to false,
+            "kasir.queue" to false, "delivery.control" to false, "aki.approve" to true,
+            "discount.approve" to false, "indent.submit" to false, "indent.approve" to false,
+        )
+        assertTrue("daftar_spk" in ids("manager", caps = caps))
+        assertTrue("daftar_spk" in ids("owner", caps = caps))
+        assertTrue("daftar_spk" in ids("karyawan", caps = null))
+    }
+
+    @Test
     fun `profil belum termuat tidak menampilkan item apa pun`() {
         // Fail-closed, sama dengan registri Akses Cepat: role kosong berarti
         // profil belum termuat — lebih baik layar kosong sesaat daripada
