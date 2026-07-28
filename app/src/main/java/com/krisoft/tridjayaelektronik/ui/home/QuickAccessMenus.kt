@@ -42,15 +42,34 @@ internal data class QuickAccessMenu(
      * cadangan saat peta itu belum ada. Kunci yang absen di peta server
      * dianggap `false` — server yang tahu daftar role sebenarnya, bukan app.
      */
-    fun visibleFor(effectiveRoles: Set<String>, capabilities: Map<String, Boolean>?): Boolean {
-        capability?.let { key ->
-            capabilities?.let { caps -> return caps[key] == true }
-        }
-        return when {
-            effectiveRoles.isEmpty() -> false // profil belum termuat → jangan tebak, sembunyikan
-            allowedRoles == ALL_LOGGED_IN -> true
-            else -> effectiveRoles.any { it in allowedRoles }
-        }
+    fun visibleFor(effectiveRoles: Set<String>, capabilities: Map<String, Boolean>?): Boolean =
+        gateAllows(capability, allowedRoles, effectiveRoles, capabilities)
+}
+
+/**
+ * Satu-satunya tempat semantik gate menu ditulis — dipakai registri Akses Cepat
+ * DAN registri Activity supaya keduanya tak bisa menyimpang.
+ *
+ * - Peta kemampuan ADA  → server yang memutuskan; kunci yang **absen dianggap
+ *   tidak boleh** (fail-closed). Ini disengaja: kalau suatu kunci nanti dicabut
+ *   untuk menyempitkan akses, klien tak boleh diam-diam kembali ke daftar role
+ *   lokal yang basi.
+ * - Peta kemampuan `null` (offline / panggilan gagal) → cadangan [allowedRoles].
+ * - Role kosong (profil belum termuat) → sembunyikan, jangan menebak.
+ */
+internal fun gateAllows(
+    capability: String?,
+    allowedRoles: Set<String>,
+    effectiveRoles: Set<String>,
+    capabilities: Map<String, Boolean>?,
+): Boolean {
+    capability?.let { key ->
+        capabilities?.let { caps -> return caps[key] == true }
+    }
+    return when {
+        effectiveRoles.isEmpty() -> false
+        allowedRoles == ALL_LOGGED_IN -> true
+        else -> effectiveRoles.any { it in allowedRoles }
     }
 }
 
