@@ -1631,6 +1631,36 @@ fun CreateSpkScreen(
                                     Column(Modifier.fillMaxWidth().padding(12.dp)) {
                                         Text(row.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text("${row.kode} · ${row.kategori} · ${row.merk}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        // Stok + harga langsung di opsi hasil cari (paritas web
+                                        // `renderStockRow`): sales tak perlu memilih dulu baru tahu
+                                        // barangnya ada berapa. `stok` null = server tak mengirim
+                                        // kolomnya -> "-", BUKAN 0 (0 itu pernyataan "habis").
+                                        Spacer(Modifier.height(4.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            val stok = row.stok
+                                            val stokWarna = when {
+                                                stok == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                stok > 0 -> Color(0xFF12B76A)
+                                                else -> MaterialTheme.colorScheme.error
+                                            }
+                                            Surface(color = stokWarna.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+                                                Text(
+                                                    "Stok: ${stok?.toString() ?: "-"}",
+                                                    color = stokWarna,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                )
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                rupiah(row.harga),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
                                     }
                                 }
                             }
