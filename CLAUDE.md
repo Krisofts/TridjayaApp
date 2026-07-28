@@ -18,7 +18,8 @@ re-derive architecture decisions or repeat mistakes already fixed once.
 - Encrypted **DataStore** (`TokenStore`, Android Keystore AES-GCM) for JWT tokens + cached user
   profile fields (migrated off the deprecated EncryptedSharedPreferences — see auth section)
 - Navigation Compose — one root `NavHost` (login ↔ main) + one nested `NavHost` per bottom-nav
-  tab (`HomeNavHost`, `InventoryNavHost`, `LeadsNavHost`)
+  tab (`ActivityNavHost` — shared route table, mounted twice with a different `startDestination`
+  for the Activity and Ringkasan tabs; `InventoryNavHost`, `LeadsNavHost`)
 - minSdk 24, targetSdk/compileSdk 35, Compose BOM 2024.10.01
 
 ## Package layout
@@ -39,13 +40,15 @@ data/
   export/                  CSV export, flyer PNG export + WhatsApp/generic share intents
 di/AppModule.kt            Hilt providers: Room DB, DAOs, TokenStore, repositories
 ui/
-  home/         Home dashboard (KPI, branch/sales rankings), RankingListScreen ("lihat semua")
+  activity/     Activity — layar pertama app (tugas harian + antrian ber-gate), ActivityNavHost
+                (tabel route dipakai juga oleh tab Ringkasan, lihat catatan arsitektur di bawah)
+  home/         Dashboard lama (KPI, branch/sales rankings) — kini tab kedua "Ringkasan"
   inventory/    Product list (search/filter/sort/paging), ProductDetailScreen (flyer generator)
   leads/        CRM: list/search, add, detail (stage move, won/lost/reopen)
   login/, settings/
   navigation/   AppDestination enum — single source of truth for bottom-nav tabs
   theme/        TridjayaAppTheme, ClayCard, TridjayaBottomNav, TridjayaHeader, custom icons
-MainActivity.kt             hosts both NavHosts + the keep-all-tabs-alive bottom nav container
+MainActivity.kt             hosts every tab's NavHost + the keep-all-tabs-alive bottom nav container
 ```
 
 ## Architecture decisions worth knowing before you touch things
@@ -74,6 +77,23 @@ visited tab* once and keeps it alive for the session (visibility-toggled via alp
 selected tab's NavHost. This was a deliberate fix — a naive `when(selected) { ... }` switch
 was previously destroying each tab's ViewModels and forcing a full reload on every tab switch.
 Don't revert to that pattern.
+
+**Layar pertama app = `ui/activity/` (Activity), bukan dashboard lama.** Sejak redesain
+2026-07-28 (spec `docs/superpowers/specs/2026-07-28-mobile-activity-home-redesign-design.md`
+di repo **tridjaya** — backend, bukan repo ini —, branch `feat/activity-home-redesign` di sini),
+tab pertama menjawab "hari ini aku harus
+ngapain?": tugas harian (absen, prospek), antrian milik role user (PDI/kasir/surat jalan/
+approval), dan pintasan "Buat Baru" (`ActivityScreen.kt` + `ActivityViewModel.kt`). Dashboard
+lama (KPI/Target/Ranking) pindah utuh ke tab kedua "Ringkasan" — **satu tabel route**
+(`ActivityNavHost.kt`, route anak `home_*` tak berubah) dipakai KEDUA tab lewat parameter
+`startDestination` (`ACTIVITY_ROUTE_ROOT` vs `HOME_ROUTE_DASHBOARD`), masing-masing dengan
+`NavHostController` sendiri, supaya deep-link push FCM yang sudah ada tetap jalan tanpa
+disentuh. Siapa-melihat-apa di Activity diatur **registri ber-gate** `ActivityRegistry.kt`
+(`ACTIVITY_ITEMS`, pola sama `ui/home/QuickAccessMenus.kt`) — setiap item WAJIB menyatakan
+`capability` (kunci `GET /api/me/capabilities`) + `allowedRoles` cadangan offline +
+`backendGuard` (rujukan guard backend asli). `navKey` di registri diterjemahkan jadi route lewat
+`routeForNavKey` (fungsi murni, diuji `ActivityNavHostRouteTest`) — kontrak stringly-typed tanpa
+pemeriksa kompiler, jangan menambah item baru tanpa menambah kasusnya di sana juga.
 
 **Token refresh is synchronized + proactive.** `NetworkModule.kt` has one `TokenRefresher`
 (`synchronized`) shared by two callers: `AuthHeaderInterceptor` refreshes **proactively** when the
@@ -287,9 +307,9 @@ Done in a dedicated "is this ready to ship?" pass; don't regress these:
 
 - No Android Studio GUI available in this environment — everything via Gradle CLI.
 - `gradlew` invoked directly via
-  `"C:\Program Files\Android\Android Studio\jbr\bin\java.exe" -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain <task>`
-  (bypasses `gradlew.bat`/shell script quoting issues), with `JAVA_HOME` pointed at Android
-  Studio's bundled JBR.
+  `"C:\laragon\jdk17\bin\java.exe" -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain <task>`
+  (bypasses `gradlew.bat`/shell script quoting issues). The Android Studio JBR path this doc
+  pointed at previously doesn't exist on this machine — use the Laragon JDK 17 above.
 - Builds are slow (1-3+ min for debug, much longer for release/R8) — always run via
   `run_in_background: true` and poll with `ScheduleWakeup`, don't block synchronously.
 - `adb.exe` lives at `C:\Users\adm_c\AppData\Local\Android\Sdk\platform-tools\adb.exe` (not on
@@ -428,8 +448,10 @@ need to be wired in fresh.
 ## Known gaps / natural next steps
 
 - No product photos (see flyer section above) — needs a backend image URL field first
-- **No automated tests exist** (`app/src/test/` and `app/src/androidTest/` don't even have the
-  default template files) — the single highest-value next investment for this project's health
+- **Automated tests exist but are JVM-unit-only.** `app/src/test/` has a real suite (pure-logic
+  tests for delivery flow models, branch regions, indent decisions, menu access gates, the
+  Activity registry/plan/nav-key mapping — run via `:app:testDebugUnitTest`); `app/src/androidTest/`
+  still has no instrumented Compose UI tests. That remains the next investment.
 - No CI/CD pipeline — builds and releases are manual
 - Debug builds have no signing story beyond the Android SDK default debug key; only one release
   keystore exists and it's local-only (not backed up anywhere but the user's own storage)

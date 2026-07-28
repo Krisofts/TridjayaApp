@@ -1,4 +1,4 @@
-package com.krisoft.tridjayaelektronik.ui.home
+package com.krisoft.tridjayaelektronik.ui.activity
 
 import android.net.Uri
 import androidx.compose.animation.core.EaseInOutQuart
@@ -32,7 +32,17 @@ import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
 import com.krisoft.tridjayaelektronik.ui.priceerp.ErpPriceChangesScreen
 import com.krisoft.tridjayaelektronik.ui.serials.SerialInputScreen
+// Berikut masih tinggal di package ui.home (hanya HomeNavHost yang pindah ke
+// ui.activity) — perlu diimpor eksplisit karena tak lagi satu paket.
+import com.krisoft.tridjayaelektronik.ui.home.HomeScreen
+import com.krisoft.tridjayaelektronik.ui.home.HomeViewModel
+import com.krisoft.tridjayaelektronik.ui.home.RankingKind
+import com.krisoft.tridjayaelektronik.ui.home.RankingListScreen
+import com.krisoft.tridjayaelektronik.ui.home.TransactionListScreen
 
+// Root Activity — layar pertama app (Task B6). Tabel route di bawah dipakai
+// DUA tab: lihat dok [ActivityNavHost].
+const val ACTIVITY_ROUTE_ROOT = "activity_root"
 const val HOME_ROUTE_DASHBOARD = "home_dashboard"
 private const val ROUTE_NOTIFICATIONS = "home_notifications"
 private const val ROUTE_RANKING = "home_ranking/{kind}"
@@ -68,16 +78,51 @@ private fun branchTransactionsRoute(kodeDealer: String, branchName: String) =
 private fun salesTransactionsRoute(kodePegawai: String, salesName: String) =
     "home_ranking_transactions/${RankingKind.SALES.name}/${Uri.encode(kodePegawai)}?name=${Uri.encode(salesName)}"
 
+/**
+ * Peta `navKey` (kontrak `ActivityRegistry.ACTIVITY_ITEMS`) → route child di
+ * tabel ini. Fungsi MURNI (tanpa Compose) supaya bisa diuji JUnit biasa —
+ * `navKey` adalah kontrak stringly-typed tanpa pemeriksa kompiler, jadi satu
+ * salah ketik di sini berarti kartu yang diam tak melakukan apa-apa. `null`
+ * berarti `navKey` tak dikenal (typo) — KECUALI `"crm"`, yang sengaja tak masuk
+ * peta ini karena dibuka lewat callback pindah-tab, bukan navigasi di tabel
+ * route ini (lihat pemanggil di [ActivityNavHost]). Diuji di `ActivityNavHostRouteTest`.
+ */
+internal fun routeForNavKey(navKey: String): String? = when (navKey) {
+    "absen" -> ROUTE_ABSEN
+    "indent" -> ROUTE_INDENT
+    "spk_input" -> ROUTE_DLV_CREATE
+    "pdi" -> ROUTE_DLV_PDI
+    "aki" -> ROUTE_DLV_AKI
+    "kasir" -> ROUTE_DLV_KASIR
+    "note" -> ROUTE_DLV_NOTE
+    "jadwal" -> ROUTE_DLV_SCHEDULE
+    "driver" -> ROUTE_DLV_DRIVER
+    "diskon" -> ROUTE_DLV_DISKON
+    else -> null
+}
+
+/**
+ * SATU tabel route dipakai DUA tab: tab Activity memulai di
+ * [ACTIVITY_ROUTE_ROOT], tab Ringkasan di [HOME_ROUTE_DASHBOARD]. Masing-masing
+ * tab punya `NavHostController` sendiri, jadi keduanya berdiri sendiri.
+ *
+ * Sengaja tidak memecah jadi dua file: route anak (`home_dlv_*`, `home_opname`,
+ * `home_spk_hub`, …) dipakai dari kedua sisi (kartu Activity, grid Akses Cepat
+ * di Ringkasan, dan deep-link push FCM). Memecahnya berarti memindahkan route —
+ * hal yang justru dilarang Global Constraints (nama route anak tak boleh berubah).
+ */
 @Composable
-fun HomeNavHost(
+fun ActivityNavHost(
+    startDestination: String = ACTIVITY_ROUTE_ROOT,
     onSettingsClick: () -> Unit = {},
+    onOpenSummaryTab: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
     navController: NavHostController = rememberNavController()
 ) {
     NavHost(
         navController = navController,
-        startDestination = HOME_ROUTE_DASHBOARD,
+        startDestination = startDestination,
         enterTransition = {
             fadeIn(tween(300)) + slideInVertically(
                 initialOffsetY = { it / 4 },
@@ -93,6 +138,25 @@ fun HomeNavHost(
             )
         }
     ) {
+        composable(ACTIVITY_ROUTE_ROOT) {
+            ActivityScreen(
+                onSettingsClick = onSettingsClick,
+                onOpenNotifications = { navController.navigate(ROUTE_NOTIFICATIONS) { launchSingleTop = true } },
+                onOpenAllMenus = onOpenSummaryTab,
+                onOpen = { navKey ->
+                    // "crm" sengaja tak masuk `routeForNavKey`: dibuka lewat callback
+                    // pindah-tab (sama dgn kartu "Input prospek"), bukan route di
+                    // tabel ini.
+                    if (navKey == "crm") {
+                        onQuickAccessLeads()
+                    } else {
+                        routeForNavKey(navKey)?.let { route ->
+                            navController.navigate(route) { launchSingleTop = true }
+                        }
+                    }
+                },
+            )
+        }
         composable(HOME_ROUTE_DASHBOARD) { entry ->
             val viewModel: HomeViewModel = hiltViewModel(entry)
             HomeScreen(

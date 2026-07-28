@@ -38,16 +38,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.krisoft.tridjayaelektronik.push.FcmService
 import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_SPK_HUB
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_DISKON
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_PDI
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_AKI
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_KASIR
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_NOTE
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_SCHEDULE
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_DRIVER
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_HISTORY
-import com.krisoft.tridjayaelektronik.ui.home.ROUTE_DLV_CREATE
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_SPK_HUB
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_DISKON
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_PDI
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_AKI
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_KASIR
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_NOTE
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_SCHEDULE
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_DRIVER
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_HISTORY
+import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_CREATE
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -72,8 +72,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.krisoft.tridjayaelektronik.data.ThemePreferences
-import com.krisoft.tridjayaelektronik.ui.home.HOME_ROUTE_DASHBOARD
-import com.krisoft.tridjayaelektronik.ui.home.HomeNavHost
+import com.krisoft.tridjayaelektronik.ui.activity.ACTIVITY_ROUTE_ROOT
+import com.krisoft.tridjayaelektronik.ui.activity.ActivityNavHost
+import com.krisoft.tridjayaelektronik.ui.activity.HOME_ROUTE_DASHBOARD
 import com.krisoft.tridjayaelektronik.ui.inventory.InventoryNavHost
 import com.krisoft.tridjayaelektronik.ui.inventory.SEARCH_ROUTE_ROOT
 import com.krisoft.tridjayaelektronik.ui.leads.LEADS_ROUTE_LIST
@@ -328,17 +329,28 @@ private fun DestinationContent(
     onCloseSearch: () -> Unit,
     onQuickAccessInventory: () -> Unit,
     onQuickAccessLeads: () -> Unit,
+    onOpenSummaryTab: () -> Unit,
     inventoryOpenListSignal: Int,
-    homeNav: NavHostController,
+    activityNav: NavHostController,
+    summaryNav: NavHostController,
     inventoryNav: NavHostController,
     leadsNav: NavHostController
 ) {
     when (destination) {
-        AppDestination.HOME -> HomeNavHost(
+        AppDestination.ACTIVITY -> ActivityNavHost(
+            startDestination = ACTIVITY_ROUTE_ROOT,
+            onSettingsClick = onSettingsClick,
+            onOpenSummaryTab = onOpenSummaryTab,
+            onQuickAccessInventory = onQuickAccessInventory,
+            onQuickAccessLeads = onQuickAccessLeads,
+            navController = activityNav
+        )
+        AppDestination.SUMMARY -> ActivityNavHost(
+            startDestination = HOME_ROUTE_DASHBOARD,
             onSettingsClick = onSettingsClick,
             onQuickAccessInventory = onQuickAccessInventory,
             onQuickAccessLeads = onQuickAccessLeads,
-            navController = homeNav
+            navController = summaryNav
         )
         AppDestination.INVENTORY -> InventoryNavHost(
             navController = inventoryNav,
@@ -391,9 +403,17 @@ private fun MainScreen(
     var inventoryOpenListTrigger by remember { mutableStateOf(0) }
 
     // Hoisted so we can watch each tab's inner route and hide the floating nav on detail screens.
-    val homeNav = rememberNavController()
+    val activityNav = rememberNavController()
+    val summaryNav = rememberNavController()
     val inventoryNav = rememberNavController()
     val leadsNav = rememberNavController()
+    // "Semua menu →" di Activity = pindah tab, bukan navigasi dalam tab.
+    val onOpenSummaryTab: () -> Unit = { selected = AppDestination.SUMMARY }
+    val onQuickAccessLeads: () -> Unit = { selected = AppDestination.LEADS }
+    val onQuickAccessInventory: () -> Unit = {
+        selected = AppDestination.INVENTORY
+        inventoryOpenListTrigger++
+    }
 
     // Deep-link tap-notifikasi → layar relevan. One-shot: dijalankan sekali per nilai channel baru
     // lalu langsung dikonsumsi (di-null-kan) supaya tak ternavigasi ulang saat MainScreen
@@ -401,8 +421,8 @@ private fun MainScreen(
     LaunchedEffect(pendingNotifChannel, pendingNotifRoute) {
         when (pendingNotifChannel) {
             "delivery" -> {
-                selected = AppDestination.HOME
-                homeNav.navigate(ROUTE_SPK_HUB) { launchSingleTop = true }
+                selected = AppDestination.ACTIVITY
+                activityNav.navigate(ROUTE_SPK_HUB) { launchSingleTop = true }
                 // Deep-link halus: buka LANGSUNG halaman tahap terkait (di atas hub, jadi
                 // back → hub). Route dari payload FCM (delivery_notif route_for_kind).
                 val sub = when (pendingNotifRoute) {
@@ -417,22 +437,29 @@ private fun MainScreen(
                     "input" -> ROUTE_DLV_CREATE
                     else -> null
                 }
-                if (sub != null) homeNav.navigate(sub) { launchSingleTop = true }
+                if (sub != null) activityNav.navigate(sub) { launchSingleTop = true }
             }
-            "crm" -> selected = AppDestination.LEADS
+            // Tab CRM sudah tak ada di bottom nav; buka layarnya lewat jalur yang
+            // sama dengan tap kartu "Input prospek" di Activity.
+            "crm" -> {
+                selected = AppDestination.ACTIVITY
+                onQuickAccessLeads()
+            }
             null -> return@LaunchedEffect
         }
         onConsumeNotifChannel()
     }
 
-    val homeEntry by homeNav.currentBackStackEntryAsState()
+    val activityEntry by activityNav.currentBackStackEntryAsState()
+    val summaryEntry by summaryNav.currentBackStackEntryAsState()
     val inventoryEntry by inventoryNav.currentBackStackEntryAsState()
     val leadsEntry by leadsNav.currentBackStackEntryAsState()
 
     // Show the bottom nav only on each tab's root list screen — hide it on any pushed detail
     // (product/lead/ranking/add) and on Settings, so those full-screen sub-pages own the frame.
     val showBottomNav = when (selected) {
-        AppDestination.HOME -> homeEntry?.destination?.route == HOME_ROUTE_DASHBOARD
+        AppDestination.ACTIVITY -> activityEntry?.destination?.route == ACTIVITY_ROUTE_ROOT
+        AppDestination.SUMMARY -> summaryEntry?.destination?.route == HOME_ROUTE_DASHBOARD
         // The Cari tab is a full-screen global search with its own bottom search bar — never
         // show the floating nav over it (or its pushed detail/browse screens).
         AppDestination.INVENTORY -> false
@@ -441,19 +468,21 @@ private fun MainScreen(
     }
 
     // Tab switching here is driven by `selected` state, not a NavController, so system back has
-    // nothing on a back stack to pop when a non-Home tab is at its root — it would fall straight
+    // nothing on a back stack to pop when a non-Activity tab is at its root — it would fall straight
     // through and exit the app (e.g. pressing back on the Cari/global-search screen). This single
     // handler owns back for the *selected* tab: pop that tab's own nested stack first (detail →
-    // list), then fall back to Home, and only exit from Home's root. Reading the observed entry
-    // keeps `canPopSelected` fresh across navigations.
+    // list), then fall back to Activity, and only exit from Activity's root. Reading the observed
+    // entry keeps `canPopSelected` fresh across navigations.
     val selectedNav: NavHostController? = when (selected) {
-        AppDestination.HOME -> homeNav
+        AppDestination.ACTIVITY -> activityNav
+        AppDestination.SUMMARY -> summaryNav
         AppDestination.INVENTORY -> inventoryNav
         AppDestination.LEADS -> leadsNav
         AppDestination.SETTINGS -> null
     }
     val selectedEntry = when (selected) {
-        AppDestination.HOME -> homeEntry
+        AppDestination.ACTIVITY -> activityEntry
+        AppDestination.SUMMARY -> summaryEntry
         AppDestination.INVENTORY -> inventoryEntry
         AppDestination.LEADS -> leadsEntry
         AppDestination.SETTINGS -> null
@@ -524,15 +553,14 @@ private fun MainScreen(
                             DestinationContent(
                                 destination = destination,
                                 onSettingsClick = { selected = AppDestination.SETTINGS },
-                                onSettingsBack = { selected = AppDestination.HOME },
-                                onCloseSearch = { selected = AppDestination.HOME },
-                                onQuickAccessInventory = {
-                                    selected = AppDestination.INVENTORY
-                                    inventoryOpenListTrigger++
-                                },
-                                onQuickAccessLeads = { selected = AppDestination.LEADS },
+                                onSettingsBack = { selected = AppDestination.ACTIVITY },
+                                onCloseSearch = { selected = AppDestination.ACTIVITY },
+                                onQuickAccessInventory = onQuickAccessInventory,
+                                onQuickAccessLeads = onQuickAccessLeads,
+                                onOpenSummaryTab = onOpenSummaryTab,
                                 inventoryOpenListSignal = inventoryOpenListTrigger,
-                                homeNav = homeNav,
+                                activityNav = activityNav,
+                                summaryNav = summaryNav,
                                 inventoryNav = inventoryNav,
                                 leadsNav = leadsNav
                             )
@@ -541,7 +569,7 @@ private fun MainScreen(
                 }
             }
 
-            // Rhythm layout: floating pill (Home + Prospek) + separate search FAB, overlaying
+            // Rhythm layout: floating pill (Activity + Ringkasan) + separate search FAB, overlaying
             // the content — the content scrolls behind it instead of being pushed above a bar.
             // (Scrollable screens add ~100dp bottom clearance so nothing hides permanently.)
             // Slides away on detail/sub-screens.
@@ -563,22 +591,23 @@ private fun MainScreen(
 
     // Composed after the Scaffold so it registers last and takes priority over the (kept-alive)
     // per-tab NavHosts' own back callbacks — this stops a background tab from stealing a back press
-    // and routes it to the selected tab instead. Disabled only on Home's root, where back should
-    // exit the app as usual.
-    BackHandler(enabled = canPopSelected || selected != AppDestination.HOME) {
+    // and routes it to the selected tab instead. Disabled only on Activity's root (the new first
+    // tab), where back should exit the app as usual.
+    BackHandler(enabled = canPopSelected || selected != AppDestination.ACTIVITY) {
         when {
             canPopSelected -> selectedNav?.popBackStack()
-            else -> selected = AppDestination.HOME
+            else -> selected = AppDestination.ACTIVITY
         }
     }
 }
 
 /** Left-to-right screen order used to decide which side a tab slides in from on switch. */
 private fun tabOrder(destination: AppDestination): Int = when (destination) {
-    AppDestination.HOME -> 0
-    AppDestination.LEADS -> 1
+    AppDestination.ACTIVITY -> 0
+    AppDestination.SUMMARY -> 1
     AppDestination.INVENTORY -> 2
-    AppDestination.SETTINGS -> 3
+    AppDestination.LEADS -> 3
+    AppDestination.SETTINGS -> 4
 }
 
 /** Swallows all pointer input for this subtree so an off-screen (alpha=0) kept-alive tab can't steal touches from the active one. */

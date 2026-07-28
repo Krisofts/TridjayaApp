@@ -1,25 +1,32 @@
 package com.krisoft.tridjayaelektronik.ui.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChecklistRtl
 import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
  * Single source of truth for every app destination. [bottomNavItems] is what
- * actually shows on the bottom bar — matches Rhythm's 3-tab pattern (Home,
- * CRM, Cari). SETTINGS still exists as a destination but is reached via a
- * gear icon on Home rather than occupying a 4th bottom-nav slot.
+ * actually shows on the bottom bar. Layar pertama app kini Activity ("hari ini
+ * aku harus ngapain?"), dashboard lama pindah ke tab Ringkasan. SETTINGS &
+ * LEADS tetap ada sebagai destination tapi dibuka dari Activity (gear /
+ * kartu "Input prospek") daripada menempati slot bottom nav sendiri.
  */
 enum class AppDestination(val route: String, val label: String, val icon: ImageVector) {
-    HOME("home", "Home", Icons.Rounded.Home),
-    LEADS("leads", "CRM", Icons.Rounded.Groups),
+    ACTIVITY("activity", "Activity", Icons.Rounded.ChecklistRtl),
+    SUMMARY("summary", "Ringkasan", Icons.Rounded.Insights),
     INVENTORY("inventory", "Cari", Icons.Rounded.Search),
+    // LEADS & SETTINGS tetap destination yang sah — dibuka dari Activity
+    // (kartu "Input prospek" / gear), hanya tak menempati slot bottom nav.
+    LEADS("leads", "CRM", Icons.Rounded.Groups),
     SETTINGS("settings", "Settings", Icons.Rounded.Settings);
 
     companion object {
-        val bottomNavItems = listOf(HOME, LEADS, INVENTORY)
+        // Tab CRM dilepas dari bottom nav: prospek kini jadi tugas harian di
+        // Activity (dan tetap dibuka dari sana). Pill Rhythm dirancang 2-3 item.
+        val bottomNavItems = listOf(ACTIVITY, SUMMARY, INVENTORY)
     }
 }

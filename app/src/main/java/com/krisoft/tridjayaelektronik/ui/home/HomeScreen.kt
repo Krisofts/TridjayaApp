@@ -206,7 +206,8 @@ fun HomeScreen(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomClearance),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        item { NotificationPermissionBanner() }
+                        // Banner izin notifikasi kini di ActivityScreen (layar pertama app,
+                        // Task B6) — dicabut dari sini supaya tak dobel di tab Ringkasan.
                         item { GreetingCard(userName = state.user?.name.orEmpty()) }
                         // Every section renders as a full-width titled card (same style as the rankings),
                         // in the user's chosen order from the Tune sheet.
