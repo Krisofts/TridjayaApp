@@ -491,6 +491,17 @@ data class ConfirmSpkBody(
     val kasirKonfirmasiPembayaran: Boolean? = null,
 )
 
+/**
+ * Kasir konfirmasi pembayaran unit yang sudah sampai konsumen. Berlaku untuk
+ * SEMUA jenis pembayaran (bukan cuma COD) sejak 2026-07-28 — nominal + foto
+ * bukti sama-sama wajib, yang beda cuma sumber uangnya.
+ */
+@Serializable
+data class SetoranKasirBody(
+    val nominalDiterima: Double,
+    val photoUrl: String
+)
+
 @Serializable
 data class DeliveryNoteBody(
     val sourceBranch: String,

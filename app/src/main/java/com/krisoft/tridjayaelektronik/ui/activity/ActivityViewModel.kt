@@ -103,6 +103,21 @@ class ActivityViewModel @Inject constructor(
         viewModelScope.launch { load() }
     }
 
+    /**
+     * `deliveredAt` sudah lewat 24 jam? Timestamp kontrak delivery berformat
+     * `YYYY-MM-DD HH:MM:SS` dalam UTC (kadang bersufiks `Z`). Gagal parse =
+     * `false` (tak dihitung gantung): lebih baik kartunya kurang satu daripada
+     * menuduh kasir lalai gara-gara format tak terbaca.
+     */
+    private fun isGantung(deliveredAt: String?): Boolean {
+        val raw = deliveredAt?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val iso = raw.removeSuffix("Z").replace(' ', 'T')
+        val millis = runCatching {
+            java.time.LocalDateTime.parse(iso).toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+        }.getOrNull() ?: return false
+        return System.currentTimeMillis() - millis > GANTUNG_THRESHOLD_MS
+    }
+
     private suspend fun load() {
         val myGeneration = ++loadGeneration
         _uiState.value = _uiState.value.copy(isLoading = true)
@@ -176,6 +191,19 @@ class ActivityViewModel @Inject constructor(
                 }
             }
 
+            // SPK Gantung: server memberi seluruh unit terkirim yang belum
+            // dikonfirmasi pembayarannya; ambang 24 jam disaring DI SINI supaya
+            // kartunya benar-benar berarti "sudah lewat tenggat", bukan sekadar
+            // "belum ditutup". Baris tanpa `deliveredAt` tak dihitung — tak bisa
+            // dinilai umurnya, dan menebaknya berarti menuduh kasir lalai.
+            if (ActivitySource.DLV_PENDING_PAYMENT in sources) jobs += async {
+                when (val r = deliveryRepository.list(view = "pending_payment")) {
+                    is AuthResult.Success ->
+                        counts[ActivitySource.DLV_PENDING_PAYMENT] = r.data.count { isGantung(it.deliveredAt) }
+                    is AuthResult.Failure -> failed += ActivitySource.DLV_PENDING_PAYMENT
+                }
+            }
+
             if (ActivitySource.DISCOUNT_PENDING in sources) jobs += async {
                 when (val r = deliveryRepository.discounts(status = "pending")) {
                     // `.total`, BUKAN `.items.size` — backend membatasi `items`
@@ -242,5 +270,6 @@ class ActivityViewModel @Inject constructor(
 
     private companion object {
         const val CACHE_WINDOW_MS = 60_000L
+        const val GANTUNG_THRESHOLD_MS = 24 * 60 * 60 * 1000L
     }
 }

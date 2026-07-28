@@ -224,6 +224,23 @@ fun DeliveryQueueScreen(
     val state by viewModel.state.collectAsState()
     LaunchedEffect(status, view) { viewModel.loadQueue(status, view, asDriver) }
 
+    // Antrian surat jalan: tombol terbit muncul per baris, tak perlu buka detail.
+    val terbitkanLangsung = status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && viewModel.access.note
+    var terbitkanJob by remember { mutableStateOf<DeliveryJobDto?>(null) }
+    terbitkanJob?.let { job ->
+        TerbitkanSuratJalanDialog(
+            job = job,
+            submitting = state.submitting,
+            onDismiss = { terbitkanJob = null },
+            onSubmit = { cabang ->
+                viewModel.issueDeliveryNote(job.id, cabang) {
+                    terbitkanJob = null
+                    viewModel.loadQueue(status, view, asDriver)
+                }
+            },
+        )
+    }
+
     TridjayaCollapsibleHeader(title = title, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         when {
@@ -263,6 +280,21 @@ fun DeliveryQueueScreen(
                                     }
                                 }
                             }
+                        } else if (terbitkanLangsung) {
+                            // Terbitkan surat jalan LANGSUNG dari daftar (2026-07-28):
+                            // DC sebelumnya harus membuka detail tiap SPK dulu untuk
+                            // menemukan tombolnya — satu ketukan ekstra per unit pada
+                            // tahap yang justru paling sering diproses borongan.
+                            // Ketuk kartunya tetap membuka detail seperti biasa.
+                            Column {
+                                JobCard(job, onClick = { onOpen(job.id) })
+                                Spacer(Modifier.height(6.dp))
+                                ExpressiveFilledButton(
+                                    onClick = { terbitkanJob = job },
+                                    enabled = !state.submitting,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Terbitkan Surat Jalan") }
+                            }
                         } else {
                             JobCard(job, onClick = { onOpen(job.id) })
                         }
@@ -271,6 +303,37 @@ fun DeliveryQueueScreen(
             }
         }
     }
+}
+
+/** Dialog terbit surat jalan dari daftar antrian — isian sama dengan aksi di
+ *  layar detail (`DeliveryNoteAction`), cuma dibungkus dialog supaya DC tak
+ *  perlu keluar-masuk detail satu per satu. */
+@Composable
+private fun TerbitkanSuratJalanDialog(
+    job: DeliveryJobDto,
+    submitting: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var cabang by remember(job.id) { mutableStateOf(job.kodeDealer.orEmpty()) }
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        title = { Text("Terbitkan Surat Jalan") },
+        text = {
+            Column {
+                Text(job.kodePengiriman, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(job.namaBarang.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(cabang, { cabang = it }, label = "Cabang sumber unit (wajib)", modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(cabang) }, enabled = !submitting && cabang.trim().isNotEmpty()) {
+                Text(if (submitting) "Menerbitkan…" else "Terbitkan")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text("Batal") } },
+    )
 }
 
 // ── Detail + aksi per-tahap ──────────────────────────────────────────────────
@@ -441,6 +504,11 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
                     job.status == DeliveryStatusKey.IN_TRANSIT && isMyDriverJob ->
                         DeliverAction(job, viewModel, state.submitting, state.driverChecklist, state.driverChecklistError)
+                    // Unit sudah sampai konsumen tapi uangnya belum tercatat masuk.
+                    // Berlaku SEMUA jenis pembayaran (2026-07-28) — sebelumnya
+                    // non-COD tak punya titik konfirmasi sama sekali.
+                    job.status == DeliveryStatusKey.DELIVERED && access.kasir && job.setoranKasirAt.isNullOrBlank() ->
+                        SetoranKasirAction(job, viewModel, state.submitting)
                     else -> Text(
                         when (job.status) {
                             DeliveryStatusKey.PENDING_PDI -> "Tahap ini ditangani tim PDI cabang."
@@ -988,6 +1056,47 @@ private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel
         modifier = Modifier.fillMaxWidth(),
     ) {
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Konfirmasi SPK")
+    }
+}
+
+/**
+ * Kasir menutup buku satu unit: nominal yang benar-benar diterima + foto bukti.
+ * Non-blocking (tak mengubah status) dan boleh diulang — server menimpa.
+ */
+@Composable
+private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
+    val id = job.id
+    var nominal by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val file = remember { File(context.cacheDir, "delivery/setoran_$id.jpg").apply { parentFile?.mkdirs() } }
+    val uri = remember { FileProvider.getUriForFile(context, "${'$'}{context.packageName}.fileprovider", file) }
+    val photoState by vm.state.collectAsState()
+    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onDeliverPhotoCaptured(file) }
+
+    photoState.deliverPhoto?.takeIf { !photoState.deliverPhotoConfirmed }?.let { bmp ->
+        PhotoReviewDialog(bmp, onRetake = { vm.retakeDeliverPhoto() }, onConfirm = { vm.confirmDeliverPhoto() })
+    }
+
+    Text("Konfirmasi Pembayaran Diterima", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(4.dp))
+    Text(
+        if (job.driverTerimaUang == true) "Uang COD yang disetor driver ke kasir."
+        else "Pembayaran penjualan ini (transfer/tunai di toko).",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(10.dp))
+    MoneyTextField(nominal, { nominal = it }, label = "Nominal diterima (wajib) *", modifier = Modifier.fillMaxWidth())
+    Spacer(Modifier.height(10.dp))
+    PhotoBox(photoState.deliverPhoto, "Foto bukti (wajib)") { cam.launch(uri) }
+    Spacer(Modifier.height(14.dp))
+    val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
+    val nominalValid = (nominal.toDoubleOrNull() ?: 0.0) > 0.0
+    ExpressiveFilledButton(
+        onClick = { vm.setoranKasir(id, nominal.toDoubleOrNull() ?: 0.0) {} },
+        enabled = !submitting && hasPhoto && nominalValid, modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        else Text(if (!hasPhoto) "Ambil foto bukti dulu" else "Konfirmasi Pembayaran")
     }
 }
 
