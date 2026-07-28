@@ -67,6 +67,10 @@ internal fun buildDailyTasks(
     /** true = panggilan absensi hari ini gagal (jaringan/API) — [checkInAt]/
      *  [checkOutAt] di atas TIDAK bisa dipercaya (bukan benar-benar "belum"). */
     absensiFailed: Boolean = false,
+    /** Jumlah jobdesk raport yang sudah dikirim hari ini. */
+    raportToday: Int = 0,
+    /** true = panggilan raport hari ini gagal — sama alasannya dgn [absensiFailed]. */
+    raportFailed: Boolean = false,
 ): List<DailyTask> = items
     .filter { it.kind == ActivityKind.TUGAS_HARIAN }
     // Absen pulang tak relevan sebelum check-in — menampilkannya sejak pagi
@@ -88,6 +92,16 @@ internal fun buildDailyTasks(
                 item,
                 leadsToday > 0,
                 if (leadsToday > 0) "$leadsToday lead hari ini" else "belum ada",
+            )
+            raportFailed && item.id == "raport" ->
+                DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
+            item.id == "raport" -> DailyTask(
+                item,
+                // "Selesai" = sudah mengirim minimal satu jobdesk. Jumlah jobdesk
+                // yang SEHARUSNYA diisi cuma diketahui setelah master jobdesk
+                // dimuat (layar raport), dan layar ini sengaja tak menembaknya.
+                raportToday > 0,
+                if (raportToday > 0) "$raportToday jobdesk terkirim" else "belum",
             )
             else -> DailyTask(item, done = false, detail = if (item.comingSoon) "SEGERA" else "belum")
         }

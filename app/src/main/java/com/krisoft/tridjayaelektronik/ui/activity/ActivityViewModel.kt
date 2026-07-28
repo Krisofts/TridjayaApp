@@ -7,6 +7,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.CrmRepository
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
+import com.krisoft.tridjayaelektronik.data.RaportRepository
 import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.domain.indent.ListIndentUseCase
@@ -48,6 +49,7 @@ class ActivityViewModel @Inject constructor(
     private val absensiRepository: AbsensiRepository,
     private val deliveryRepository: DeliveryFlowRepository,
     private val crmRepository: CrmRepository,
+    private val raportRepository: RaportRepository,
     private val listIndentUseCase: ListIndentUseCase,
     private val spkTodayCounter: SpkTodayCounter,
 ) : ViewModel() {
@@ -183,6 +185,13 @@ class ActivityViewModel @Inject constructor(
                 }
             }
 
+            if (ActivitySource.RAPORT_TODAY in sources) jobs += async {
+                when (val r = raportRepository.raportOfDay(todayIso, user?.id)) {
+                    is AuthResult.Success -> counts[ActivitySource.RAPORT_TODAY] = r.data.size
+                    is AuthResult.Failure -> failed += ActivitySource.RAPORT_TODAY
+                }
+            }
+
             if (ActivitySource.INDENT_PENDING in sources) jobs += async {
                 when (val r = listIndentUseCase(status = "menunggu")) {
                     is AuthResult.Success -> counts[ActivitySource.INDENT_PENDING] = r.data.count
@@ -211,6 +220,8 @@ class ActivityViewModel @Inject constructor(
             // I3 audit 2026-07-28: tanpa ini, gagal jaringan tampil identik dgn
             // "belum absen" → user yang sudah check-in didorong absen lagi.
             absensiFailed = ActivitySource.ABSENSI_TODAY in failed,
+            raportToday = counts[ActivitySource.RAPORT_TODAY] ?: 0,
+            raportFailed = ActivitySource.RAPORT_TODAY in failed,
         )
 
         // Ada load() yang lebih baru sudah dipanggil sejak kita mulai (atau sedang

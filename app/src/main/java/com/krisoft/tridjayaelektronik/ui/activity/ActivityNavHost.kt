@@ -31,6 +31,7 @@ import com.krisoft.tridjayaelektronik.ui.mutasi.MutasiHistoriScreen
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
 import com.krisoft.tridjayaelektronik.ui.priceerp.ErpPriceChangesScreen
+import com.krisoft.tridjayaelektronik.ui.raport.RaportScreen
 import com.krisoft.tridjayaelektronik.ui.serials.SerialInputScreen
 // Berikut masih tinggal di package ui.home (hanya HomeNavHost yang pindah ke
 // ui.activity) — perlu diimpor eksplisit karena tak lagi satu paket.
@@ -51,6 +52,7 @@ private const val ROUTE_INDENT = "home_indent"
 private const val ROUTE_SALES = "home_sales"
 private const val ROUTE_OPNAME = "home_opname"
 private const val ROUTE_ABSEN = "home_absen"
+private const val ROUTE_RAPORT = "home_raport"
 private const val ROUTE_GAJI = "home_gaji"
 private const val ROUTE_HARGA_GS = "home_harga_gs"
 private const val ROUTE_SERIAL_INPUT = "home_serial_input"
@@ -108,6 +110,7 @@ private fun deliveryStageRoute(key: String): String? = when (key) {
  */
 internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "absen" -> ROUTE_ABSEN
+    "raport" -> ROUTE_RAPORT
     "indent" -> ROUTE_INDENT
     "spk_input" -> ROUTE_DLV_CREATE
     else -> deliveryStageRoute(navKey)
@@ -262,6 +265,9 @@ fun ActivityNavHost(
         }
         composable(ROUTE_ABSEN) {
             AttendanceScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_RAPORT) {
+            RaportScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_GAJI) {
             PayrollScreen(onBack = { navController.popBackStack() })

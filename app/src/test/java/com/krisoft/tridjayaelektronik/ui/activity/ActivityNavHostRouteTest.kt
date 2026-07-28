@@ -1,7 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -22,11 +22,12 @@ class ActivityNavHostRouteTest {
     @Test
     fun `setiap navKey non-kosong dikenali peta route`() {
         ACTIVITY_ITEMS.forEach { item ->
-            if (item.navKey.isBlank()) {
-                // Hanya "raport" (comingSoon, belum ada layarnya) boleh navKey kosong.
-                assertEquals("Item '${item.id}' punya navKey kosong tak terduga", "raport", item.id)
-                return@forEach
-            }
+            // Tak ada lagi item ber-navKey kosong: sisa terakhir ("raport") kini
+            // punya layarnya sendiri. Item baru tanpa navKey = kartu bisu.
+            assertTrue(
+                "Item '${item.id}' punya navKey kosong — kartunya tak akan membuka apa pun",
+                item.navKey.isNotBlank()
+            )
             if (item.navKey in bukanRouteTabel) return@forEach
             assertNotNull(
                 "navKey '${item.navKey}' (item '${item.id}') tak dikenali routeForNavKey — cek salah ketik",

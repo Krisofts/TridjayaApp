@@ -1,6 +1,5 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
-import com.krisoft.tridjayaelektronik.ui.home.ALL_LOGGED_IN
 import com.krisoft.tridjayaelektronik.ui.home.CRM_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.STAFF_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.SPK_MENU_ROLES
@@ -34,6 +33,7 @@ enum class ActivitySource {
     NONE,
     ABSENSI_TODAY,
     LEADS_CACHE,
+    RAPORT_TODAY,
     SPK_LOCAL_COUNTER,
     DLV_PENDING_PDI,
     DLV_PENDING_SPK,
@@ -65,7 +65,18 @@ data class ActivityItem(
     val navKey: String,
     /** Item yang sengaja tampil tapi belum bisa dibuka. */
     val comingSoon: Boolean = false,
+    /** Sudah bisa dipakai, tapi masih terbatas — kartunya diberi label "BETA". */
+    val beta: Boolean = false,
 )
+
+/**
+ * `upsert_raport` (kinerja-service `raport.rs` `KARYAWAN_ROLES`) — role
+ * `karyawan` SAJA yang boleh mengirim raport; role lain 403 walau bisa membaca
+ * (`LIST_ROLES` lebih luas). Belum ada kunci di `GET /api/me/capabilities`
+ * untuk hak ini, jadi item raport satu-satunya yang ber-`capability = null`
+ * (dijaga `ActivityRegistryTest`).
+ */
+internal val RAPORT_INPUT_ROLES = setOf("karyawan")
 
 /** `indent.submit` — `require_indent_submitter_role` (inventory `indent.rs`). */
 internal val INDENT_SUBMIT_ROLES = setOf("admin", "superadmin", "kepala-cabang", "manager")
@@ -143,11 +154,11 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         subtitle = "Laporan aktivitas harian",
         kind = ActivityKind.TUGAS_HARIAN,
         capability = null,
-        allowedRoles = ALL_LOGGED_IN,
-        backendGuard = "belum ada endpoint raport untuk mobile — placeholder",
-        source = ActivitySource.NONE,
-        navKey = "",
-        comingSoon = true,
+        allowedRoles = RAPORT_INPUT_ROLES,
+        backendGuard = "kinerja-service raport.rs KARYAWAN_ROLES (upsert_raport)",
+        source = ActivitySource.RAPORT_TODAY,
+        navKey = "raport",
+        beta = true,
     ),
     ActivityItem(
         id = "buat_spk",
