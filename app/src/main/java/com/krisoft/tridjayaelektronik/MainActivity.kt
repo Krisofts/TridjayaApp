@@ -327,7 +327,6 @@ private fun TridjayaNavHost(
 @Composable
 private fun DestinationContent(
     destination: AppDestination,
-    onSettingsClick: () -> Unit,
     onSettingsBack: () -> Unit,
     onCloseSearch: () -> Unit,
     onQuickAccessInventory: () -> Unit,
@@ -345,7 +344,6 @@ private fun DestinationContent(
     when (destination) {
         AppDestination.ACTIVITY -> ActivityNavHost(
             startDestination = ACTIVITY_ROUTE_ROOT,
-            onSettingsClick = onSettingsClick,
             onOpenSummaryTab = onOpenSummaryTab,
             onQuickAccessInventory = onQuickAccessInventory,
             onQuickAccessSearch = onQuickAccessSearch,
@@ -355,7 +353,6 @@ private fun DestinationContent(
         )
         AppDestination.SUMMARY -> ActivityNavHost(
             startDestination = HOME_ROUTE_DASHBOARD,
-            onSettingsClick = onSettingsClick,
             onQuickAccessInventory = onQuickAccessInventory,
             onQuickAccessSearch = onQuickAccessSearch,
             onQuickAccessLeads = onQuickAccessLeads,
@@ -522,7 +519,10 @@ private fun MainScreen(
         // Back tetap punya jalan keluar: BackHandler di bawah memulangkan ke Activity.
         AppDestination.INVENTORY -> false
         AppDestination.LEADS -> leadsEntry?.destination?.route == LEADS_ROUTE_LIST
-        AppDestination.SETTINGS -> false
+        // Settings kini salah satu tab pill — pill-nya HARUS ikut tampil di sana,
+        // kalau tidak tab yang baru dipilih langsung menyembunyikan alat untuk
+        // pindah tab lagi (hanya tombol back yang tersisa).
+        AppDestination.SETTINGS -> true
     }
 
     // Tab switching here is driven by `selected` state, not a NavController, so system back has
@@ -610,7 +610,6 @@ private fun MainScreen(
                         ) {
                             DestinationContent(
                                 destination = destination,
-                                onSettingsClick = { selected = AppDestination.SETTINGS },
                                 onSettingsBack = { selected = AppDestination.ACTIVITY },
                                 onCloseSearch = { selected = AppDestination.ACTIVITY },
                                 onQuickAccessInventory = onQuickAccessInventory,

@@ -139,7 +139,6 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
 @Composable
 fun ActivityNavHost(
     startDestination: String = ACTIVITY_ROUTE_ROOT,
-    onSettingsClick: () -> Unit = {},
     onOpenSummaryTab: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
     /** Ubin "Cari Semua" → SEARCH_ROUTE_ROOT (`GlobalSearchScreen`), bukan daftar barang. */
@@ -172,7 +171,6 @@ fun ActivityNavHost(
     ) {
         composable(ACTIVITY_ROUTE_ROOT) {
             ActivityScreen(
-                onSettingsClick = onSettingsClick,
                 onOpenNotifications = { navController.navigate(ROUTE_NOTIFICATIONS) { launchSingleTop = true } },
                 onOpenAllMenus = onOpenSummaryTab,
                 tabSelectedSignal = activityTabSelectedSignal,
@@ -209,7 +207,6 @@ fun ActivityNavHost(
                 onSalesClick = { sales ->
                     navController.navigate(salesTransactionsRoute(sales.sourceCode, sales.name)) { launchSingleTop = true }
                 },
-                onSettingsClick = onSettingsClick,
                 onOpenNotifications = { navController.navigate(ROUTE_NOTIFICATIONS) { launchSingleTop = true } },
                 onQuickAccessInventory = onQuickAccessInventory,
                 onQuickAccessLeads = onQuickAccessLeads,

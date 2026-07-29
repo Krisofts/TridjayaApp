@@ -50,7 +50,6 @@ import java.util.Locale
 @Composable
 fun ActivityScreen(
     onOpen: (navKey: String) -> Unit,
-    onSettingsClick: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenAllMenus: () -> Unit,
     // Sisa I1 audit merge-gate: dinaikkan MainScreen tiap tab BERUBAH JADI Activity murni
@@ -116,10 +115,6 @@ fun ActivityScreen(
                         Badge { Text(if (notifState.unreadCount > 99) "99+" else "${notifState.unreadCount}") }
                     }
                 }) { Icon(Icons.Rounded.Notifications, contentDescription = "Notifikasi") }
-            }
-            Spacer(Modifier.size(8.dp))
-            ExpressiveFilledIconButton(onClick = onSettingsClick) {
-                Icon(Icons.Rounded.Settings, contentDescription = "Pengaturan")
             }
         }
     ) { contentModifier ->

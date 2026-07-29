@@ -129,7 +129,6 @@ fun HomeScreen(
     onViewMoreSales: () -> Unit = {},
     onBranchClick: (LeaderboardBranchItemDto) -> Unit = {},
     onSalesClick: (LeaderboardSalesItemDto) -> Unit = {},
-    onSettingsClick: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
@@ -181,10 +180,6 @@ fun HomeScreen(
                 )
             ) {
                 Icon(Icons.Rounded.Tune, contentDescription = "Atur tampilan Home")
-            }
-            Spacer(modifier = Modifier.size(8.dp))
-            ExpressiveFilledIconButton(onClick = onSettingsClick) {
-                Icon(Icons.Rounded.Settings, contentDescription = "Pengaturan")
             }
         }
     ) { contentModifier ->

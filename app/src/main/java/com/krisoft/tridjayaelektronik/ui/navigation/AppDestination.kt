@@ -11,19 +11,19 @@ import androidx.compose.ui.graphics.vector.ImageVector
 /**
  * Single source of truth for every app destination. [bottomNavItems] is what
  * actually shows on the bottom bar. Layar pertama app kini Activity ("hari ini
- * aku harus ngapain?"), dashboard lama pindah ke tab Operasional. SETTINGS,
- * LEADS & INVENTORY tetap ada sebagai destination tapi dibuka dari Activity
- * (gear / kartu "Input prospek" / ubin "Cari Barang") atau dari grid Akses
- * Cepat di Operasional, daripada menempati slot bottom nav sendiri.
+ * aku harus ngapain?"), dashboard lama pindah ke tab Operasional. LEADS &
+ * INVENTORY tetap ada sebagai destination tapi dibuka dari Activity (kartu
+ * "Input prospek" / ubin "Cari Barang") atau dari grid Akses Cepat di
+ * Operasional, daripada menempati slot bottom nav sendiri.
  */
 enum class AppDestination(val route: String, val label: String, val icon: ImageVector) {
     ACTIVITY("activity", "Activity", Icons.Rounded.ChecklistRtl),
     SUMMARY("summary", "Operasional", Icons.Rounded.Insights),
     INVENTORY("inventory", "Cari", Icons.Rounded.Search),
-    // LEADS & SETTINGS tetap destination yang sah — dibuka dari Activity
-    // (kartu "Input prospek" / gear), hanya tak menempati slot bottom nav.
+    // LEADS tetap destination yang sah — dibuka dari Activity (kartu "Input
+    // prospek"), hanya tak menempati slot bottom nav.
     LEADS("leads", "CRM", Icons.Rounded.Groups),
-    SETTINGS("settings", "Settings", Icons.Rounded.Settings);
+    SETTINGS("settings", "Pengaturan", Icons.Rounded.Settings);
 
     companion object {
         // Tab CRM dilepas dari bottom nav: prospek kini jadi tugas harian di
@@ -36,6 +36,10 @@ enum class AppDestination(val route: String, val label: String, val icon: ImageV
         // ubin "Cari Barang" di Activity + tile "Inventory" di grid Akses Cepat
         // Operasional. Menghapus baris ini dari enum akan mematikan seluruh
         // menu Inventory, bukan cuma tombolnya.
-        val bottomNavItems = listOf(ACTIVITY, SUMMARY)
+        // SETTINGS masuk pill 2026-07-29 (permintaan user: lebih mudah
+        // dijangkau). Sebelumnya hanya lewat ikon gear di pojok header Activity
+        // & Operasional — ikon itu DIHAPUS bersamaan supaya tak ada dua pintu ke
+        // layar yang sama.
+        val bottomNavItems = listOf(ACTIVITY, SUMMARY, SETTINGS)
     }
 }
