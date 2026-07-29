@@ -471,10 +471,18 @@ internal fun canAccessSpk(roles: Set<String>): Boolean =
     roles.any { it in setOf("admin", "superadmin", "manager") } ||
         (roles.isNotEmpty() && roles != setOf("ai-engineer"))
 
-/** Siapa yang benar-benar dilayani `crm-service`: `karyawan` (input + lead
- *  miliknya sendiri, lewat `karyawan_scope`) dan `crm-manager`/admin (`CRM_FULL`).
- *  Manager, kepala-cabang, owner, ai-engineer dapat 403 di `/crm/leads`. */
-internal val CRM_MENU_ROLES = setOf("karyawan", "crm-manager", "admin", "superadmin")
+/** Siapa yang benar-benar dilayani `crm-service`: `karyawan` & `kepala-cabang`
+ *  (input + lead miliknya sendiri, lewat `karyawan_scope`) dan
+ *  `crm-manager`/admin (`CRM_FULL`). Manager, owner, ai-engineer dapat 403 di
+ *  `/crm/leads`.
+ *
+ *  `kepala-cabang` masuk 2026-07-29 mengikuti `CRM_INPUT_ROLES` di rust-shared
+ *  (laporan user: kepala cabang ber-`is_sales` punya target prospek harian tapi
+ *  tak punya menu untuk mengisinya). Daftar ini cuma CADANGAN saat peta
+ *  `/api/me/capabilities` belum termuat — lihat `gateAllows`; saat online
+ *  server yang memutuskan, jadi perbaikan backend berlaku tanpa APK baru. */
+internal val CRM_MENU_ROLES =
+    setOf("karyawan", "kepala-cabang", "crm-manager", "admin", "superadmin")
 
 /** Role EFEKTIF: role utama + `roles` (multi-role) + `divisi` (folding
  *  divisi-driven access), semuanya lowercase. Backend menilai hak dari daftar

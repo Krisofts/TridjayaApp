@@ -318,8 +318,11 @@ class ActivityRegistryTest {
     fun `prospek hanya untuk yang benar-benar dilayani crm-service`() {
         assertTrue("prospek" in ids("karyawan"))
         assertTrue("prospek" in ids("crm-manager"))
+        // 2026-07-29: kepala cabang ikut `CRM_INPUT_ROLES` (rust-shared) —
+        // dilayani ter-scope ke lead sendiri, dan `hr_roster` memberinya target
+        // prospek harian. Menahannya di sini = target tanpa pintu input.
+        assertTrue("prospek" in ids("kepala-cabang"))
         assertFalse("prospek" in ids("manager"))
-        assertFalse("prospek" in ids("kepala-cabang"))
         assertFalse("prospek" in ids("owner"))
     }
 

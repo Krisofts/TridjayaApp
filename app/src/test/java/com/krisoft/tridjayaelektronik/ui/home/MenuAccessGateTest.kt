@@ -39,9 +39,11 @@ class MenuAccessGateTest {
         assertTrue(canAccessCrm(rolesOf("karyawan", divisi = "sales")))
         assertTrue(canAccessCrm(rolesOf("crm-manager")))
         assertTrue(canAccessCrm(rolesOf("superadmin")))
+        // 2026-07-29: kepala cabang dilayani ter-scope ke lead sendiri
+        // (`CRM_INPUT_ROLES` rust-shared) — ia punya target prospek harian.
+        assertTrue(canAccessCrm(rolesOf("kepala-cabang")))
         // Semua ini dijawab 403 oleh crm-service → menunya tak boleh muncul.
         assertFalse(canAccessCrm(rolesOf("manager")))
-        assertFalse(canAccessCrm(rolesOf("kepala-cabang")))
         assertFalse(canAccessCrm(rolesOf("owner")))
         assertFalse(canAccessCrm(rolesOf("ai-engineer")))
     }
