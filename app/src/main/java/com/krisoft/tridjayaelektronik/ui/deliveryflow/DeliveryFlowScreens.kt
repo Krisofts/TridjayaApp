@@ -1846,15 +1846,23 @@ fun CreateSpkScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 if (spkCabang.isNotBlank()) {
+                    // Cabang barang dilekatkan saat SUBMIT dari `spkCabang`, bukan dibawa
+                    // tiap baris — jadi daftar milik cabang lain WAJIB tak bisa ditap sama
+                    // sekali. Respons pencarian cabang sebelumnya bisa mendarat setelah
+                    // selektor pindah (insiden DLV-M84149DA0: barang Pagaden ter-submit
+                    // sebagai Soklat, unitnya masuk antrian PDI cabang yang tak
+                    // memegangnya). ViewModel juga membatalkan pencarian lama; penyaring
+                    // ini yang membuat invariannya tak bergantung pada urutan balapan.
+                    val stokRows = stokRowsForCabang(state.stokResults, state.stokDealer, spkCabang)
                     ExpressiveTextField(barangSearch, { barangSearch = it }, label = "Cari & tambah barang (min. 2 karakter)", modifier = Modifier.fillMaxWidth())
                     when {
                         state.stokLoading -> Text("Mencari…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                        state.stokAttempted && state.stokResults.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                        state.stokAttempted && stokRows.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                     }
-                    if (state.stokResults.isNotEmpty()) {
+                    if (stokRows.isNotEmpty()) {
                         Spacer(Modifier.height(6.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            state.stokResults.forEach { row ->
+                            stokRows.forEach { row ->
                                 Surface(
                                     onClick = {
                                         // Prepend + collapse kartu lain (baru = fokus)

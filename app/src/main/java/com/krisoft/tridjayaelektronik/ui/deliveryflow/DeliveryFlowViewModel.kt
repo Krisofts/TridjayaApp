@@ -25,6 +25,7 @@ import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,6 +73,15 @@ data class DeliveryFlowUiState(
     val deliveryContext: com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto? = null,
     /** Hasil autocomplete stok GS (Input SPK). */
     val stokResults: List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow> = emptyList(),
+    /**
+     * Cabang ASAL [stokResults] — baris stok tak membawa kodeDealer sendiri,
+     * jadi tanpa penanda ini daftar di layar tak bisa dibedakan milik cabang
+     * mana. Layar Input SPK hanya menampilkan hasil yang cabangnya sama dengan
+     * "Cabang SPK" saat itu (insiden DLV-M84149DA0, 2026-07-29: barang Pagaden
+     * ter-submit dengan kode dealer Soklat, unitnya masuk antrian PDI cabang
+     * yang tak memegang barangnya).
+     */
+    val stokDealer: String = "",
     val stokLoading: Boolean = false,
     val stokAttempted: Boolean = false,
     /** Hasil autocomplete broker KBK (Input SPK section 3). */
@@ -516,19 +526,32 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Pencarian stok yang sedang berjalan — dibatalkan tiap pencarian baru.
+     *  Tanpa ini respons cabang LAMA mendarat setelah user pindah cabang dan
+     *  mengisi ulang daftar (lihat [DeliveryFlowUiState.stokDealer]). */
+    private var stokJob: Job? = null
+
     /** Autocomplete barang — dipanggil UI setelah debounce. `query` < 2 char atau
      *  `kodeDealer` kosong → kosongkan hasil tanpa panggil server. */
     fun searchStok(query: String, kodeDealer: String) {
+        stokJob?.cancel()
         val term = query.trim()
-        if (term.length < 2 || kodeDealer.isBlank()) {
-            _state.update { it.copy(stokResults = emptyList(), stokLoading = false, stokAttempted = false) }
+        val dealer = kodeDealer.trim()
+        if (term.length < 2 || dealer.isBlank()) {
+            _state.update {
+                it.copy(stokResults = emptyList(), stokDealer = dealer, stokLoading = false, stokAttempted = false)
+            }
             return
         }
         _state.update { it.copy(stokLoading = true) }
-        viewModelScope.launch {
-            when (val res = repository.stokCabang(term, kodeDealer)) {
-                is AuthResult.Success -> _state.update { it.copy(stokLoading = false, stokResults = res.data, stokAttempted = true) }
-                is AuthResult.Failure -> _state.update { it.copy(stokLoading = false, stokResults = emptyList(), stokAttempted = true) }
+        stokJob = viewModelScope.launch {
+            when (val res = repository.stokCabang(term, dealer)) {
+                is AuthResult.Success -> _state.update {
+                    it.copy(stokLoading = false, stokResults = res.data, stokDealer = dealer, stokAttempted = true)
+                }
+                is AuthResult.Failure -> _state.update {
+                    it.copy(stokLoading = false, stokResults = emptyList(), stokDealer = dealer, stokAttempted = true)
+                }
             }
         }
     }
