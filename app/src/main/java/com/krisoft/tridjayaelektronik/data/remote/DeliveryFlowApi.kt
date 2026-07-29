@@ -9,6 +9,11 @@ import com.krisoft.tridjayaelektronik.data.model.BrokerListData
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
 import com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody
 import com.krisoft.tridjayaelektronik.data.model.CreateSerialNumbersBody
+import com.krisoft.tridjayaelektronik.data.model.CreateSerialRequestBody
+import com.krisoft.tridjayaelektronik.data.model.GenerateSerialBody
+import com.krisoft.tridjayaelektronik.data.model.GenerateSerialData
+import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
+import com.krisoft.tridjayaelektronik.data.model.SerialRequestListData
 import com.krisoft.tridjayaelektronik.data.model.DecisionBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryCategoriesData
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
@@ -191,6 +196,31 @@ interface DeliveryFlowApi {
      *  (mismatch → 403 Forbidden eksplisit, beda dari GET yang auto-floor). */
     @POST("api/inventory/serial-numbers")
     suspend fun createSerialNumbers(@Body body: CreateSerialNumbersBody): Response<ApiResponse<SerialCreateResultDto>>
+
+    /** Foto bukti usulan SN (multipart `file`, maks 5MB) → `{ url }` relatif
+     *  `/uploads/serial/...`. Endpoint TERPISAH dari foto delivery: direktorinya
+     *  sendiri (`SERIAL_UPLOAD_DIR`) dan gate-nya pengusul SN, bukan aktor SPK. */
+    @Multipart
+    @POST("api/inventory/serial-numbers/photo")
+    suspend fun uploadSerialPhoto(@Part file: MultipartBody.Part): Response<ApiResponse<DeliveryUploadResponse>>
+
+    /** Usulkan pendaftaran SN dari cabang (keputusan tetap di admin-stok). */
+    @POST("api/inventory/serial-numbers/requests")
+    suspend fun createSerialRequest(@Body body: CreateSerialRequestBody): Response<ApiResponse<SerialRequestDto>>
+
+    /** Antrian usulan: pengusul cabang di-scope cabangnya sendiri oleh server. */
+    @GET("api/inventory/serial-numbers/requests")
+    suspend fun serialRequests(
+        @Query("kodeDealer") kodeDealer: String? = null,
+        @Query("status") status: String? = null,
+        @Query("limit") limit: Int? = null
+    ): Response<ApiResponse<SerialRequestListData>>
+
+    /** Kode pengganti SN (`GEN-…`) untuk barang tanpa serial pabrik — admin-stok
+     *  saja. Backend LANGSUNG menuliskannya ke registry, jadi respons ini bukan
+     *  sekadar usulan kode: barangnya sudah punya nomor begitu dipanggil. */
+    @POST("api/inventory/serial-numbers/generate")
+    suspend fun generateSerials(@Body body: GenerateSerialBody): Response<ApiResponse<GenerateSerialData>>
 
     /** Arsip mutasi ERP (histori-only, baca saja) — tanpa gate role server-side; RBAC
      *  halaman (admin/admin-stok) direplikasi di client (`InventoryMutasiPage.tsx`). */

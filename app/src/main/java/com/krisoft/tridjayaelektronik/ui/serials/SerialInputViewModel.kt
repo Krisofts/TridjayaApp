@@ -27,7 +27,11 @@ data class SerialInputUiState(
     val text: String = "",
     val saving: Boolean = false,
     val result: SerialCreateResultDto? = null,
-    val formError: String? = null
+    val formError: String? = null,
+    /** Jumlah kode pengganti SN yang akan dibuat (barang tanpa serial pabrik). */
+    val generateCount: String = "",
+    val generating: Boolean = false,
+    val generated: List<String> = emptyList()
 )
 
 /** Input Serial Number (admin-stok) — pilih produk stok cabang sendiri, input bulk 1 SN/baris. */
@@ -39,24 +43,46 @@ class SerialInputViewModel @Inject constructor(
     private val _state = MutableStateFlow(SerialInputUiState())
     val state: StateFlow<SerialInputUiState> = _state.asStateFlow()
 
+    /**
+     * Registry SN terpusat: admin-stok mendaftarkan untuk cabang MANA PUN, jadi
+     * cabang akun cuma jadi nilai awal dropdown — bukan kunci lagi. Gagal/kosong
+     * BUKAN alasan memblokir layar: admin-stok pusat boleh tak terikat cabang,
+     * tinggal pilih dari dropdown.
+     */
     fun load() {
         _state.update { it.copy(loadingContext = true, contextError = null) }
         viewModelScope.launch {
-            when (val ctx = repository.context()) {
-                is AuthResult.Success -> {
-                    val dealer = ctx.data.sourceDealerCode
-                    if (dealer.isNullOrBlank()) {
-                        _state.update { it.copy(loadingContext = false, contextError = "Akun belum terikat cabang.") }
-                        return@launch
-                    }
-                    _state.update { it.copy(loadingContext = false, dealerCode = dealer, itemsLoading = true) }
-                    when (val stok = repository.stokCabang(dealer)) {
-                        is AuthResult.Success -> _state.update { it.copy(itemsLoading = false, items = stok.data) }
-                        is AuthResult.Failure -> _state.update { it.copy(itemsLoading = false, contextError = stok.message) }
-                    }
-                }
-                is AuthResult.Failure -> _state.update { it.copy(loadingContext = false, contextError = ctx.message) }
-            }
+            val dealer = (repository.context() as? AuthResult.Success)?.data?.sourceDealerCode
+            _state.update { it.copy(loadingContext = false, dealerCode = dealer?.ifBlank { null }) }
+            dealer?.takeIf { it.isNotBlank() }?.let { loadStok(it) }
+        }
+    }
+
+    /**
+     * Ganti cabang mengosongkan produk terpilih: SN yang sudah diketik milik
+     * cabang lama, menyimpannya ke cabang baru = serial masuk gudang yang salah.
+     */
+    fun changeCabang(kodeDealer: String) {
+        if (kodeDealer.isBlank() || kodeDealer == _state.value.dealerCode) return
+        _state.update {
+            it.copy(
+                dealerCode = kodeDealer,
+                selected = null,
+                text = "",
+                result = null,
+                formError = null,
+                contextError = null,
+                items = emptyList()
+            )
+        }
+        viewModelScope.launch { loadStok(kodeDealer) }
+    }
+
+    private suspend fun loadStok(dealer: String) {
+        _state.update { it.copy(itemsLoading = true) }
+        when (val stok = repository.stokCabang(dealer)) {
+            is AuthResult.Success -> _state.update { it.copy(itemsLoading = false, items = stok.data) }
+            is AuthResult.Failure -> _state.update { it.copy(itemsLoading = false, contextError = stok.message) }
         }
     }
 
@@ -83,6 +109,46 @@ class SerialInputViewModel @Inject constructor(
 
     fun onTextChange(text: String) {
         _state.update { it.copy(text = text, formError = null) }
+    }
+
+    fun onGenerateCountChange(value: String) {
+        // Angka saja: keypad HP tetap bisa memasukkan koma/spasi, dan server
+        // menolak apa pun yang bukan bilangan.
+        _state.update { it.copy(generateCount = value.filter(Char::isDigit).take(3), formError = null) }
+    }
+
+    /**
+     * Kode pengganti SN untuk barang tanpa serial pabrik (sofa, kursi).
+     * Backend LANGSUNG menulis registry — tombol ini bukan pratinjau, dan
+     * menekannya dua kali berarti dua set kode nyata untuk barang yang sama.
+     * Karena itu hasilnya ditampilkan, bukan dibuang diam-diam.
+     */
+    fun generateSerials() {
+        val current = _state.value
+        val dealer = current.dealerCode ?: return
+        val product = current.selected ?: return
+        val jumlah = current.generateCount.toIntOrNull() ?: 0
+        if (jumlah !in 1..500) {
+            _state.update { it.copy(formError = "Jumlah kode harus antara 1 dan 500.") }
+            return
+        }
+        _state.update { it.copy(generating = true, formError = null, generated = emptyList()) }
+        viewModelScope.launch {
+            when (val res = repository.generateSerials(dealer, product.kode, product.nama, jumlah)) {
+                is AuthResult.Success -> _state.update {
+                    it.copy(
+                        generating = false,
+                        generated = res.data,
+                        generateCount = "",
+                        // Kode yang dibuat SUDAH masuk registry — hitungan "SN
+                        // tercatat" harus ikut naik, kalau tidak petugas mengira
+                        // kodenya gagal dan menekan tombolnya lagi.
+                        existingCount = it.existingCount + res.data.size
+                    )
+                }
+                is AuthResult.Failure -> _state.update { it.copy(generating = false, formError = res.message) }
+            }
+        }
     }
 
     fun save() {
