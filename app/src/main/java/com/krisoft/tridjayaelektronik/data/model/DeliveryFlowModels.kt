@@ -326,6 +326,29 @@ data class SerialRequestDto(
     val decidedAt: String? = null
 )
 
+@Serializable
+data class SerialRequestListData(
+    val count: Int = 0,
+    /** Cabang yang di-scope server, atau "all" untuk pemutus/pengawas. */
+    val kodeDealer: String = "",
+    val items: List<SerialRequestDto> = emptyList()
+)
+
+/**
+ * Body `POST /inventory/serial-numbers/generate` — kode pengganti SN untuk
+ * barang tanpa serial pabrik (sofa, kursi). `jumlah` dibatasi 1–500 server.
+ */
+@Serializable
+data class GenerateSerialBody(
+    val kodeDealer: String,
+    val kodeBarang: String,
+    val namaBarang: String? = null,
+    val jumlah: Int
+)
+
+@Serializable
+data class GenerateSerialData(val generated: List<String> = emptyList())
+
 /** Body `POST /inventory/serial-numbers` — input manual admin-stok (dipaksa dealer sendiri di backend). */
 @Serializable
 data class CreateSerialNumbersBody(

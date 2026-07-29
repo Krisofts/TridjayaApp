@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.data
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateSerialNumbersBody
 import com.krisoft.tridjayaelektronik.data.model.CreateSerialRequestBody
+import com.krisoft.tridjayaelektronik.data.model.GenerateSerialBody
 import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
@@ -142,6 +143,42 @@ class SerialInputRepository @Inject constructor(
         } catch (e: Exception) {
             AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
         }
+    }
+
+    /** Antrian usulan cabang. Server yang men-scope cabangnya untuk pengusul. */
+    suspend fun serialRequests(kodeDealer: String?): AuthResult<List<SerialRequestDto>> = try {
+        val response = api.serialRequests(kodeDealer = kodeDealer)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat usulan SN")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Buat kode pengganti SN. Backend LANGSUNG menulis registry — memanggil ini
+     * dua kali berarti dua set kode nyata untuk barang yang sama, bukan sekadar
+     * pratinjau yang bisa dibuang.
+     */
+    suspend fun generateSerials(
+        kodeDealer: String,
+        kodeBarang: String,
+        namaBarang: String?,
+        jumlah: Int
+    ): AuthResult<List<String>> = try {
+        val response = api.generateSerials(
+            GenerateSerialBody(
+                kodeDealer = kodeDealer,
+                kodeBarang = kodeBarang,
+                namaBarang = namaBarang,
+                jumlah = jumlah
+            )
+        )
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.generated)
+        else parseError(response, "Gagal membuat kode serial")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
     private fun <T> parseError(response: Response<*>, fallback: String): AuthResult<T> {

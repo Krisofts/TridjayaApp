@@ -61,6 +61,7 @@ import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.BarcodeScanButton
 import com.krisoft.tridjayaelektronik.data.model.OpnameItemDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
+import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
@@ -343,12 +344,22 @@ fun OpnameDetailScreen(
                     }
 
                     item(key = "items_header") {
-                        Text(
-                            text = if (completed) "Hasil Opname (${detail.items.size})" else "Unit Terscan (${state.units.size})",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp)
+                        ) {
+                            Text(
+                                text = if (completed) "Hasil Opname (${detail.items.size})" else "Unit Terscan (${state.units.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (state.canPropose) {
+                                TextButton(onClick = viewModel::openRequests) {
+                                    Text("Usulan SN", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
                     }
                     if (!completed) {
                         // Draft: blind count — hanya serial yang benar-benar discan petugas.
@@ -433,6 +444,15 @@ fun OpnameDetailScreen(
             onDelete = { unit -> viewModel.deleteUnit(unit) },
             canPropose = state.canPropose,
             onUsulkan = { unit -> viewModel.startProposal(unit) }
+        )
+    }
+
+    if (state.requestsOpen) {
+        SerialRequestsSheet(
+            loading = state.requestsLoading,
+            error = state.requestsError,
+            requests = state.requests,
+            onDismiss = viewModel::closeRequests
         )
     }
 
@@ -639,6 +659,93 @@ private fun ScannedUnitRow(
             }
         }
     }
+}
+
+/**
+ * Status usulan SN cabang ini. Yang DITOLAK adalah alasan utama panel ini ada:
+ * usulan yang diterima akhirnya terlihat sendiri (temuan "belum terdaftar"
+ * berhenti muncul), sedangkan penolakan tak pernah memberi tanda apa pun.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SerialRequestsSheet(
+    loading: Boolean,
+    error: String?,
+    requests: List<SerialRequestDto>,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Text("Usulan Pendaftaran SN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            when {
+                loading -> repeat(3) { SkeletonCard(modifier = Modifier.padding(vertical = 4.dp)) }
+                error != null -> ExpressiveInlineError(message = error)
+                requests.isEmpty() -> Text(
+                    text = "Belum ada usulan dari cabang ini.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                else -> requests.take(50).forEach { req ->
+                    ClayCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = req.serialNumber,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = statusUsulanLabel(req.status),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (req.status) {
+                                        "approved" -> Color(0xFF12B76A)
+                                        "rejected" -> MaterialTheme.colorScheme.error
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                            Text(
+                                text = buildString {
+                                    append(req.kodeBarang)
+                                    req.namaBarang?.takeIf { it.isNotBlank() }?.let { append(" · $it") }
+                                    // Alasan tolak dibawa ke muka: itu satu-satunya
+                                    // petunjuk apa yang harus diperbaiki sebelum
+                                    // mengusulkan ulang.
+                                    req.alasanTolak?.takeIf { it.isNotBlank() }?.let { append("\nDitolak: $it") }
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+            if (requests.size > 50) {
+                Text(
+                    text = "...dan ${requests.size - 50} usulan lainnya",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private fun statusUsulanLabel(status: String): String = when (status) {
+    "pending" -> "MENUNGGU"
+    "approved" -> "DISETUJUI"
+    "rejected" -> "DITOLAK"
+    else -> status.uppercase()
 }
 
 /**

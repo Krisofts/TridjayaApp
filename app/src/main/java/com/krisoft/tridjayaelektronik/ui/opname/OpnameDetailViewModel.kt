@@ -11,6 +11,7 @@ import com.krisoft.tridjayaelektronik.data.SerialInputRepository
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
+import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +52,12 @@ data class OpnameDetailUiState(
     val canPropose: Boolean = true,
     /** Usulan yang sedang disusun; `null` = dialog tertutup. */
     val proposal: SerialProposalDraft? = null,
-    val proposalMessage: String? = null
+    val proposalMessage: String? = null,
+    /** Panel status usulan terbuka (dimuat saat dibuka, bukan saat layar dimuat). */
+    val requestsOpen: Boolean = false,
+    val requestsLoading: Boolean = false,
+    val requests: List<SerialRequestDto> = emptyList(),
+    val requestsError: String? = null
 )
 
 /** Foto mana yang sedang diambil — dua-duanya wajib, dan bukan foto yang sama. */
@@ -314,6 +320,29 @@ class OpnameDetailViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * Status usulan yang sudah dikirim. Tanpa panel ini pengusul buta: satu-
+     * satunya tanda usulannya disetujui adalah temuan "belum terdaftar" yang
+     * berhenti muncul pada scan berikutnya — dan yang DITOLAK tak pernah
+     * memberi tanda apa pun.
+     */
+    fun openRequests() {
+        _uiState.update { it.copy(requestsOpen = true, requestsLoading = true, requestsError = null) }
+        val dealer = _uiState.value.detail?.dealerCode
+        viewModelScope.launch {
+            when (val res = serialRepository.serialRequests(dealer)) {
+                is AuthResult.Success -> _uiState.update {
+                    it.copy(requestsLoading = false, requests = res.data)
+                }
+                is AuthResult.Failure -> _uiState.update {
+                    it.copy(requestsLoading = false, requestsError = res.message)
+                }
+            }
+        }
+    }
+
+    fun closeRequests() = _uiState.update { it.copy(requestsOpen = false) }
 
     private fun updateProposal(block: (SerialProposalDraft) -> SerialProposalDraft) {
         _uiState.update { state ->

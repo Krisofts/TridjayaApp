@@ -27,7 +27,11 @@ data class SerialInputUiState(
     val text: String = "",
     val saving: Boolean = false,
     val result: SerialCreateResultDto? = null,
-    val formError: String? = null
+    val formError: String? = null,
+    /** Jumlah kode pengganti SN yang akan dibuat (barang tanpa serial pabrik). */
+    val generateCount: String = "",
+    val generating: Boolean = false,
+    val generated: List<String> = emptyList()
 )
 
 /** Input Serial Number (admin-stok) — pilih produk stok cabang sendiri, input bulk 1 SN/baris. */
@@ -105,6 +109,46 @@ class SerialInputViewModel @Inject constructor(
 
     fun onTextChange(text: String) {
         _state.update { it.copy(text = text, formError = null) }
+    }
+
+    fun onGenerateCountChange(value: String) {
+        // Angka saja: keypad HP tetap bisa memasukkan koma/spasi, dan server
+        // menolak apa pun yang bukan bilangan.
+        _state.update { it.copy(generateCount = value.filter(Char::isDigit).take(3), formError = null) }
+    }
+
+    /**
+     * Kode pengganti SN untuk barang tanpa serial pabrik (sofa, kursi).
+     * Backend LANGSUNG menulis registry — tombol ini bukan pratinjau, dan
+     * menekannya dua kali berarti dua set kode nyata untuk barang yang sama.
+     * Karena itu hasilnya ditampilkan, bukan dibuang diam-diam.
+     */
+    fun generateSerials() {
+        val current = _state.value
+        val dealer = current.dealerCode ?: return
+        val product = current.selected ?: return
+        val jumlah = current.generateCount.toIntOrNull() ?: 0
+        if (jumlah !in 1..500) {
+            _state.update { it.copy(formError = "Jumlah kode harus antara 1 dan 500.") }
+            return
+        }
+        _state.update { it.copy(generating = true, formError = null, generated = emptyList()) }
+        viewModelScope.launch {
+            when (val res = repository.generateSerials(dealer, product.kode, product.nama, jumlah)) {
+                is AuthResult.Success -> _state.update {
+                    it.copy(
+                        generating = false,
+                        generated = res.data,
+                        generateCount = "",
+                        // Kode yang dibuat SUDAH masuk registry — hitungan "SN
+                        // tercatat" harus ikut naik, kalau tidak petugas mengira
+                        // kodenya gagal dan menekan tombolnya lagi.
+                        existingCount = it.existingCount + res.data.size
+                    )
+                }
+                is AuthResult.Failure -> _state.update { it.copy(generating = false, formError = res.message) }
+            }
+        }
     }
 
     fun save() {
