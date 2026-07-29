@@ -39,24 +39,46 @@ class SerialInputViewModel @Inject constructor(
     private val _state = MutableStateFlow(SerialInputUiState())
     val state: StateFlow<SerialInputUiState> = _state.asStateFlow()
 
+    /**
+     * Registry SN terpusat: admin-stok mendaftarkan untuk cabang MANA PUN, jadi
+     * cabang akun cuma jadi nilai awal dropdown — bukan kunci lagi. Gagal/kosong
+     * BUKAN alasan memblokir layar: admin-stok pusat boleh tak terikat cabang,
+     * tinggal pilih dari dropdown.
+     */
     fun load() {
         _state.update { it.copy(loadingContext = true, contextError = null) }
         viewModelScope.launch {
-            when (val ctx = repository.context()) {
-                is AuthResult.Success -> {
-                    val dealer = ctx.data.sourceDealerCode
-                    if (dealer.isNullOrBlank()) {
-                        _state.update { it.copy(loadingContext = false, contextError = "Akun belum terikat cabang.") }
-                        return@launch
-                    }
-                    _state.update { it.copy(loadingContext = false, dealerCode = dealer, itemsLoading = true) }
-                    when (val stok = repository.stokCabang(dealer)) {
-                        is AuthResult.Success -> _state.update { it.copy(itemsLoading = false, items = stok.data) }
-                        is AuthResult.Failure -> _state.update { it.copy(itemsLoading = false, contextError = stok.message) }
-                    }
-                }
-                is AuthResult.Failure -> _state.update { it.copy(loadingContext = false, contextError = ctx.message) }
-            }
+            val dealer = (repository.context() as? AuthResult.Success)?.data?.sourceDealerCode
+            _state.update { it.copy(loadingContext = false, dealerCode = dealer?.ifBlank { null }) }
+            dealer?.takeIf { it.isNotBlank() }?.let { loadStok(it) }
+        }
+    }
+
+    /**
+     * Ganti cabang mengosongkan produk terpilih: SN yang sudah diketik milik
+     * cabang lama, menyimpannya ke cabang baru = serial masuk gudang yang salah.
+     */
+    fun changeCabang(kodeDealer: String) {
+        if (kodeDealer.isBlank() || kodeDealer == _state.value.dealerCode) return
+        _state.update {
+            it.copy(
+                dealerCode = kodeDealer,
+                selected = null,
+                text = "",
+                result = null,
+                formError = null,
+                contextError = null,
+                items = emptyList()
+            )
+        }
+        viewModelScope.launch { loadStok(kodeDealer) }
+    }
+
+    private suspend fun loadStok(dealer: String) {
+        _state.update { it.copy(itemsLoading = true) }
+        when (val stok = repository.stokCabang(dealer)) {
+            is AuthResult.Success -> _state.update { it.copy(itemsLoading = false, items = stok.data) }
+            is AuthResult.Failure -> _state.update { it.copy(itemsLoading = false, contextError = stok.message) }
         }
     }
 

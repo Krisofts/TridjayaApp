@@ -2,11 +2,16 @@ package com.krisoft.tridjayaelektronik.data
 
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateSerialNumbersBody
+import com.krisoft.tridjayaelektronik.data.model.CreateSerialRequestBody
 import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
+import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -84,6 +89,59 @@ class SerialInputRepository @Inject constructor(
         else parseError(response, "Gagal menyimpan serial number")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Foto bukti usulan (JPEG sudah dikompres pemanggil) → URL relatif. */
+    suspend fun uploadPhoto(bytes: ByteArray, filename: String): AuthResult<String> = try {
+        val part = MultipartBody.Part.createFormData("file", filename, bytes.toRequestBody("image/jpeg".toMediaType()))
+        val response = api.uploadSerialPhoto(part)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null && data.url.isNotBlank()) AuthResult.Success(data.url)
+        else parseError(response, "Gagal mengunggah foto")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Usulkan pendaftaran SN dari cabang. Serial dinormalkan di sini dengan
+     * [normalizeSerial] yang SAMA dengan scan opname — aturan berbeda sedikit
+     * saja berarti usulan lolos untuk serial yang server tolak, atau usulan
+     * ganda untuk serial yang server anggap sama.
+     */
+    suspend fun proposeSerial(
+        kodeDealer: String,
+        kodeBarang: String,
+        namaBarang: String?,
+        serialNumberRaw: String,
+        fotoSnUrl: String,
+        fotoBarangUrl: String,
+        opnameSessionId: String?,
+        catatan: String?
+    ): AuthResult<SerialRequestDto> {
+        val serial = normalizeSerial(serialNumberRaw)
+            ?: return AuthResult.Failure(
+                "validation",
+                "Serial kosong atau lebih dari $SERIAL_MAX_LENGTH karakter"
+            )
+        return try {
+            val response = api.createSerialRequest(
+                CreateSerialRequestBody(
+                    kodeDealer = kodeDealer,
+                    kodeBarang = kodeBarang,
+                    namaBarang = namaBarang,
+                    serialNumber = serial,
+                    fotoSnUrl = fotoSnUrl,
+                    fotoBarangUrl = fotoBarangUrl,
+                    opnameSessionId = opnameSessionId,
+                    catatan = catatan
+                )
+            )
+            val data = response.body()?.data
+            if (response.isSuccessful && data != null) AuthResult.Success(data)
+            else parseError(response, "Gagal mengirim usulan SN")
+        } catch (e: Exception) {
+            AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+        }
     }
 
     private fun <T> parseError(response: Response<*>, fallback: String): AuthResult<T> {

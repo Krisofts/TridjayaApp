@@ -9,6 +9,8 @@ import com.krisoft.tridjayaelektronik.data.model.BrokerListData
 import com.krisoft.tridjayaelektronik.data.model.ChecklistConfigData
 import com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody
 import com.krisoft.tridjayaelektronik.data.model.CreateSerialNumbersBody
+import com.krisoft.tridjayaelektronik.data.model.CreateSerialRequestBody
+import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.data.model.DecisionBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryCategoriesData
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
@@ -191,6 +193,17 @@ interface DeliveryFlowApi {
      *  (mismatch → 403 Forbidden eksplisit, beda dari GET yang auto-floor). */
     @POST("api/inventory/serial-numbers")
     suspend fun createSerialNumbers(@Body body: CreateSerialNumbersBody): Response<ApiResponse<SerialCreateResultDto>>
+
+    /** Foto bukti usulan SN (multipart `file`, maks 5MB) → `{ url }` relatif
+     *  `/uploads/serial/...`. Endpoint TERPISAH dari foto delivery: direktorinya
+     *  sendiri (`SERIAL_UPLOAD_DIR`) dan gate-nya pengusul SN, bukan aktor SPK. */
+    @Multipart
+    @POST("api/inventory/serial-numbers/photo")
+    suspend fun uploadSerialPhoto(@Part file: MultipartBody.Part): Response<ApiResponse<DeliveryUploadResponse>>
+
+    /** Usulkan pendaftaran SN dari cabang (keputusan tetap di admin-stok). */
+    @POST("api/inventory/serial-numbers/requests")
+    suspend fun createSerialRequest(@Body body: CreateSerialRequestBody): Response<ApiResponse<SerialRequestDto>>
 
     /** Arsip mutasi ERP (histori-only, baca saja) — tanpa gate role server-side; RBAC
      *  halaman (admin/admin-stok) direplikasi di client (`InventoryMutasiPage.tsx`). */

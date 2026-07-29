@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PictureAsPdf
@@ -365,6 +366,9 @@ fun OpnameDetailScreen(
                                     unit = unit,
                                     onDelete = if (state.canManage) {
                                         { viewModel.deleteUnit(unit) }
+                                    } else null,
+                                    onUsulkan = if (bolehUsulkanSn(unit, state.canPropose)) {
+                                        { viewModel.startProposal(unit) }
                                     } else null
                                 )
                             }
@@ -426,7 +430,30 @@ fun OpnameDetailScreen(
                 search = ""
             },
             onScan = { serial, tidakLayak -> viewModel.scan(serial, tidakLayak) },
-            onDelete = { unit -> viewModel.deleteUnit(unit) }
+            onDelete = { unit -> viewModel.deleteUnit(unit) },
+            canPropose = state.canPropose,
+            onUsulkan = { unit -> viewModel.startProposal(unit) }
+        )
+    }
+
+    state.proposal?.let { draft ->
+        SerialProposalDialog(
+            draft = draft,
+            onCatatanChange = viewModel::onProposalCatatan,
+            onCapture = { file, kind -> viewModel.uploadProposalPhoto(file, kind) },
+            onSubmit = viewModel::submitProposal,
+            onDismiss = viewModel::cancelProposal
+        )
+    }
+
+    state.proposalMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearProposalMessage,
+            title = { Text("Usulan terkirim") },
+            text = { Text("$message. Serial baru bisa dipakai setelah disetujui.") },
+            confirmButton = {
+                TextButton(onClick = viewModel::clearProposalMessage) { Text("Tutup") }
+            }
         )
     }
 
@@ -552,7 +579,11 @@ private fun StockSearchRow(
  * sistem — penghitung tak boleh melihat angka pembanding (blind count).
  */
 @Composable
-private fun ScannedUnitRow(unit: OpnameUnitEntity, onDelete: (() -> Unit)?) {
+private fun ScannedUnitRow(
+    unit: OpnameUnitEntity,
+    onDelete: (() -> Unit)?,
+    onUsulkan: (() -> Unit)? = null
+) {
     ClayCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -586,6 +617,15 @@ private fun ScannedUnitRow(unit: OpnameUnitEntity, onDelete: (() -> Unit)?) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (onUsulkan != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    TextButton(
+                        onClick = onUsulkan,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text("Usulkan SN", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
             if (onDelete != null) {
                 IconButton(onClick = onDelete) {
@@ -597,6 +637,133 @@ private fun ScannedUnitRow(unit: OpnameUnitEntity, onDelete: (() -> Unit)?) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Usulan pendaftaran SN — dua foto wajib, keputusan tetap di admin-stok.
+ *
+ * Teks jarak ditulis sebagai instruksi, BUKAN divalidasi: "minimal 1 meter" tak
+ * bisa diukur program dari sebuah JPEG, dan pura-pura bisa lebih berbahaya
+ * daripada tidak ada — penegaknya mata admin-stok saat menyetujui.
+ */
+@Composable
+private fun SerialProposalDialog(
+    draft: SerialProposalDraft,
+    onCatatanChange: (String) -> Unit,
+    onCapture: (java.io.File, SerialPhotoKind) -> Unit,
+    onSubmit: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!draft.busy) onDismiss() },
+        title = { Text("Usulkan pendaftaran SN") },
+        text = {
+            Column {
+                Text(
+                    text = "${draft.serialNumber}\n${draft.kodeBarang}${draft.namaBarang?.let { " · $it" } ?: ""}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SerialPhotoField(
+                    label = "Foto nomor seri",
+                    hint = "Dekat, nomornya terbaca jelas",
+                    url = draft.fotoSnUrl,
+                    enabled = !draft.busy,
+                    kind = SerialPhotoKind.SERIAL,
+                    onCapture = onCapture
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                SerialPhotoField(
+                    label = "Foto barang",
+                    hint = "Ambil dari jarak ±1 meter, seluruh unit terlihat",
+                    url = draft.fotoBarangUrl,
+                    enabled = !draft.busy,
+                    kind = SerialPhotoKind.BARANG,
+                    onCapture = onCapture
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                ExpressiveTextField(
+                    value = draft.catatan,
+                    onValueChange = onCatatanChange,
+                    label = "Catatan (opsional)",
+                    modifier = Modifier.fillMaxWidth()
+                )
+                draft.error?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ExpressiveInlineError(message = it)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSubmit, enabled = draft.isValid && !draft.busy) {
+                Text(if (draft.submitting) "Mengirim…" else "Kirim usulan")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !draft.busy) { Text("Batal") }
+        }
+    )
+}
+
+/** Satu slot foto: kamera → watermark+unggah (ViewModel) → URL tersimpan di draft. */
+@Composable
+private fun SerialPhotoField(
+    label: String,
+    hint: String,
+    url: String?,
+    enabled: Boolean,
+    kind: SerialPhotoKind,
+    onCapture: (java.io.File, SerialPhotoKind) -> Unit
+) {
+    val context = LocalContext.current
+    // Satu file cache per slot: pengambilan ulang menimpa isinya, jadi tak ada
+    // sampah menumpuk di cache HP lapangan.
+    val file = remember(kind) {
+        java.io.File(context.cacheDir, "serial/usulan_${kind.name.lowercase()}.jpg")
+            .apply { parentFile?.mkdirs() }
+    }
+    val uri = remember(file) {
+        androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }
+    val cam = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.TakePicture()
+    ) { ok -> if (ok) onCapture(file, kind) }
+
+    Surface(
+        onClick = { if (enabled) cam.launch(uri) },
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (url.isNullOrBlank()) label else "$label ✓",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (url.isNullOrBlank()) hint else "Tersimpan — ketuk untuk ambil ulang",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                Icons.Rounded.AddAPhoto,
+                contentDescription = null,
+                tint = if (url.isNullOrBlank()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -676,7 +843,9 @@ private fun ScanUnitSheet(
     scanMessage: String?,
     onDismiss: () -> Unit,
     onScan: (serial: String, tidakLayak: Boolean) -> Unit,
-    onDelete: (OpnameUnitEntity) -> Unit
+    onDelete: (OpnameUnitEntity) -> Unit,
+    canPropose: Boolean,
+    onUsulkan: ((OpnameUnitEntity) -> Unit)?
 ) {
     var manual by remember { mutableStateOf("") }
     var tidakLayak by remember { mutableStateOf(false) }
@@ -768,7 +937,14 @@ private fun ScanUnitSheet(
             )
             Spacer(modifier = Modifier.height(4.dp))
             units.take(30).forEach { unit ->
-                ScannedUnitRow(unit = unit, onDelete = { onDelete(unit) })
+                ScannedUnitRow(
+                    unit = unit,
+                    onDelete = { onDelete(unit) },
+                    // Usulan dipicu justru di sini: petugas melihat "belum terdaftar"
+                    // sesaat setelah scan, sambil barangnya masih di depan mata.
+                    onUsulkan = onUsulkan?.takeIf { bolehUsulkanSn(unit, canPropose) }
+                        ?.let { aksi -> { aksi(unit) } }
+                )
             }
             if (units.size > 30) {
                 Text(

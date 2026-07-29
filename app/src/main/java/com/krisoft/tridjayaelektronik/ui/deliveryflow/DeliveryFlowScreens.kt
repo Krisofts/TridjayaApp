@@ -2015,13 +2015,19 @@ private fun SpkSection(title: String, expanded: Boolean, onToggle: () -> Unit, c
 }
 
 /** Selektor Cabang SPK — wajib, tanpa opsi kosong. Pola visual mirror
- *  `OptionDropdownField` (`ui/leads/AddLeadScreen.kt`), grouped per region. */
+ *  `OptionDropdownField` (`ui/leads/AddLeadScreen.kt`), grouped per region.
+ *  `internal` + [label] sejak layar Input Serial Number ikut memilih cabang
+ *  (registry SN terpusat) — daftar 13 cabang cukup punya SATU selektor. */
 @Composable
-private fun CabangSelector(selected: String, onSelect: (String) -> Unit) {
+internal fun CabangSelector(
+    selected: String,
+    onSelect: (String) -> Unit,
+    label: String = "Cabang SPK *"
+) {
     var expanded by remember { mutableStateOf(false) }
     val currentLabel = BranchRegions.DEALER_LABEL[selected] ?: ""
     Column {
-        Text("Cabang SPK *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         Box {
             Row(

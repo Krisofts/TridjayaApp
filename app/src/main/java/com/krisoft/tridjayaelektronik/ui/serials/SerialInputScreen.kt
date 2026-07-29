@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.CabangSelector
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
@@ -76,11 +77,18 @@ fun SerialInputScreen(
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         Column(modifier = contentModifier.fillMaxSize()) {
             Text(
-                text = "Pilih produk, lalu masukkan serial number satu per baris.",
+                text = "Pilih cabang & produk, lalu masukkan serial number satu per baris.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp)
             )
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                CabangSelector(
+                    selected = state.dealerCode.orEmpty(),
+                    onSelect = viewModel::changeCabang,
+                    label = "Cabang"
+                )
+            }
             ExpressiveTextField(
                 value = state.search,
                 onValueChange = viewModel::onSearchChange,
