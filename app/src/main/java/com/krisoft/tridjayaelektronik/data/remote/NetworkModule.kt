@@ -110,6 +110,9 @@ object NetworkModule {
     fun createPayrollApi(tokenStore: TokenStore): PayrollApi =
         authenticatedRetrofit(tokenStore).create(PayrollApi::class.java)
 
+    fun createKpiApi(tokenStore: TokenStore): KpiApi =
+        authenticatedRetrofit(tokenStore).create(KpiApi::class.java)
+
     fun createErpPriceChangesApi(tokenStore: TokenStore): ErpPriceChangesApi =
         authenticatedRetrofit(tokenStore).create(ErpPriceChangesApi::class.java)
 

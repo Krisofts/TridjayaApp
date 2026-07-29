@@ -27,6 +27,7 @@ import com.krisoft.tridjayaelektronik.ui.deliveryflow.DiscountApprovalScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryQueueScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkHubScreen
+import com.krisoft.tridjayaelektronik.ui.kpi.KpiScreen
 import com.krisoft.tridjayaelektronik.ui.mutasi.MutasiHistoriScreen
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
@@ -54,6 +55,7 @@ private const val ROUTE_OPNAME = "home_opname"
 private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_RAPORT = "home_raport"
 private const val ROUTE_GAJI = "home_gaji"
+private const val ROUTE_KPI = "home_kpi"
 private const val ROUTE_HARGA_GS = "home_harga_gs"
 private const val ROUTE_SERIAL_INPUT = "home_serial_input"
 private const val ROUTE_DEADSTOCK = "home_deadstock"
@@ -216,6 +218,7 @@ fun ActivityNavHost(
                 onQuickAccessOpname = { navController.navigate(ROUTE_OPNAME) { launchSingleTop = true } },
                 onQuickAccessAbsen = { navController.navigate(ROUTE_ABSEN) { launchSingleTop = true } },
                 onQuickAccessGaji = { navController.navigate(ROUTE_GAJI) { launchSingleTop = true } },
+                onQuickAccessKpi = { navController.navigate(ROUTE_KPI) { launchSingleTop = true } },
                 onQuickAccessHargaGs = { navController.navigate(ROUTE_HARGA_GS) { launchSingleTop = true } },
                 onQuickAccessSerialInput = { navController.navigate(ROUTE_SERIAL_INPUT) { launchSingleTop = true } },
                 onQuickAccessDeadstock = { navController.navigate(ROUTE_DEADSTOCK) { launchSingleTop = true } },
@@ -284,6 +287,9 @@ fun ActivityNavHost(
         }
         composable(ROUTE_GAJI) {
             PayrollScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_KPI) {
+            KpiScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_HARGA_GS) {
             ErpPriceChangesScreen(onBack = { navController.popBackStack() })

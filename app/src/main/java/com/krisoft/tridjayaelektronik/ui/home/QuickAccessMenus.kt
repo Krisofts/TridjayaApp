@@ -115,6 +115,17 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
         backendGuard = "kinerja-service payroll VIEW_OWN_ROLES (= STAFF_ROLES)",
     ),
     QuickAccessMenu(
+        id = "kpi",
+        // `GET /kpi/me` HANYA memanggil `identity_from_headers` — tak ada
+        // `ensure_role` sama sekali; scope-nya diri sendiri lewat user_id token.
+        // Daftar karyawan (`/kpi/karyawan`) yang ber-gate `kpi.manage` disaring
+        // di dalam layar, bukan di sini — menunya sendiri milik semua orang.
+        capability = null,
+        label = "KPI Saya",
+        allowedRoles = ALL_LOGGED_IN,
+        backendGuard = "tanpa gate role — kinerja-service kpi.rs get_me (self-scoped)",
+    ),
+    QuickAccessMenu(
         id = "inventory",
         capability = null,
         label = "Inventory",

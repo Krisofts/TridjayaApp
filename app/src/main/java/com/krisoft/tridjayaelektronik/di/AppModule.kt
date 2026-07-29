@@ -24,6 +24,7 @@ import com.krisoft.tridjayaelektronik.data.remote.RaportApi
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import com.krisoft.tridjayaelektronik.data.remote.NetworkModule
 import com.krisoft.tridjayaelektronik.data.remote.NotificationsApi
+import com.krisoft.tridjayaelektronik.data.remote.KpiApi
 import com.krisoft.tridjayaelektronik.data.remote.PayrollApi
 import com.krisoft.tridjayaelektronik.data.remote.SalesApi
 import dagger.Module
@@ -108,6 +109,11 @@ object AppModule {
     @Singleton
     fun providePayrollApi(tokenStore: TokenStore): PayrollApi =
         NetworkModule.createPayrollApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideKpiApi(tokenStore: TokenStore): KpiApi =
+        NetworkModule.createKpiApi(tokenStore)
 
     @Provides
     @Singleton
