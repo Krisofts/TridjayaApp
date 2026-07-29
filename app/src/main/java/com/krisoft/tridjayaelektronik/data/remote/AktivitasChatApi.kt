@@ -8,6 +8,7 @@ import com.krisoft.tridjayaelektronik.data.model.KirimBuktiRequest
 import com.krisoft.tridjayaelektronik.data.model.ReviewBuktiRequest
 import com.krisoft.tridjayaelektronik.data.model.UploadVideoDto
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -16,6 +17,7 @@ import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 /** Bukti aktivitas chat harian — kinerja-service via gateway `/api/aktivitas-chat`. */
 interface AktivitasChatApi {
@@ -51,4 +53,14 @@ interface AktivitasChatUploadApi {
     @Multipart
     @POST("api/aktivitas-chat/upload-video")
     suspend fun uploadVideo(@Part file: MultipartBody.Part): Response<ApiResponse<UploadVideoDto>>
+
+    /**
+     * Unduh video bukti — endpoint serve butuh header `Authorization`, jadi URL-nya tak bisa
+     * diserahkan mentah ke pemutar. Ditaruh di interface INI (bukan [AktivitasChatApi]) karena
+     * berkasnya sebesar yang diunggah: lewat client JSON ber-timeout 20 detik, unduhan puluhan
+     * MB di jaringan cabang mati di tengah jalan.
+     */
+    @Streaming
+    @GET("api/aktivitas-chat/video/{filename}")
+    suspend fun unduhVideo(@Path("filename") filename: String): Response<ResponseBody>
 }

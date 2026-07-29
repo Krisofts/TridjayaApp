@@ -53,6 +53,15 @@ class ChatActivityPresentationTest {
     }
 
     @Test
+    fun `ukuran berkas terbaca manusia`() {
+        // 0 TIDAK boleh tampil "0 MB" — itu terbaca sebagai berkas rusak, padahal artinya
+        // provider-nya saja yang tak mengisi kolom SIZE.
+        assertEquals("ukuran tak terbaca", formatUkuranBerkas(0))
+        assertEquals("512 KB", formatUkuranBerkas(512 * 1024))
+        assertTrue(formatUkuranBerkas(8L * 1024 * 1024).endsWith("MB"))
+    }
+
+    @Test
     fun `tolak wajib alasan`() {
         assertFalse(bolehReview(status = "rejected", alasan = "").ok)
         assertFalse(bolehReview(status = "rejected", alasan = "   ").ok)

@@ -16,6 +16,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.krisoft.tridjayaelektronik.ui.attendance.AttendanceScreen
+import com.krisoft.tridjayaelektronik.ui.chatactivity.ChatActivityScreen
+import com.krisoft.tridjayaelektronik.ui.chatactivity.ChatReviewScreen
 import com.krisoft.tridjayaelektronik.ui.deadstock.DeadstockScreen
 import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
 import com.krisoft.tridjayaelektronik.ui.opname.OpnameListScreen
@@ -54,6 +56,8 @@ private const val ROUTE_SALES = "home_sales"
 private const val ROUTE_OPNAME = "home_opname"
 private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_RAPORT = "home_raport"
+private const val ROUTE_BUKTI_CHAT = "home_bukti_chat"
+private const val ROUTE_REVIEW_BUKTI_CHAT = "home_review_bukti_chat"
 private const val ROUTE_GAJI = "home_gaji"
 private const val ROUTE_KPI = "home_kpi"
 private const val ROUTE_HARGA_GS = "home_harga_gs"
@@ -119,6 +123,9 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     // peta ini supaya kontraknya diuji sama seperti navKey lain.
     "panduan_alur" -> ROUTE_PANDUAN_ALUR
     "raport" -> ROUTE_RAPORT
+    // Bukti chat harian: layar karyawan (kirim) vs antrian kepala cabang (periksa).
+    "bukti_chat" -> ROUTE_BUKTI_CHAT
+    "review_bukti_chat" -> ROUTE_REVIEW_BUKTI_CHAT
     "indent" -> ROUTE_INDENT
     "spk_input" -> ROUTE_DLV_CREATE
     "spk_history" -> ROUTE_DLV_HISTORY
@@ -281,6 +288,12 @@ fun ActivityNavHost(
         }
         composable(ROUTE_RAPORT) {
             RaportScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_BUKTI_CHAT) {
+            ChatActivityScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_REVIEW_BUKTI_CHAT) {
+            ChatReviewScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_GAJI) {
             PayrollScreen(onBack = { navController.popBackStack() })

@@ -11,6 +11,8 @@ import com.krisoft.tridjayaelektronik.data.model.ReviewBuktiRequest
 import com.krisoft.tridjayaelektronik.data.model.UploadVideoDto
 import com.krisoft.tridjayaelektronik.data.remote.AktivitasChatApi
 import com.krisoft.tridjayaelektronik.data.remote.AktivitasChatUploadApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -19,6 +21,7 @@ import okhttp3.RequestBody
 import okio.BufferedSink
 import okio.source
 import retrofit2.Response
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -92,6 +95,30 @@ class AktivitasChatRepository @Inject constructor(
         else parseError(response, "Gagal memuat daftar bukti aktivitas chat")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Unduh video bukti ke [dir] (cache) lalu kembalikan berkasnya — endpoint serve butuh
+     * header `Authorization`, jadi URL polos tak bisa diberikan ke pemutar video. `null` =
+     * gagal; pemanggil menampilkan pesan, tidak crash.
+     *
+     * [videoUrl] = URL logis `/uploads/aktivitas-chat/{berkas}` dari field bukti; hanya nama
+     * berkasnya yang dipakai (pola [DeliveryFlowRepository.fetchPhoto]).
+     */
+    suspend fun unduhVideo(videoUrl: String, dir: File): File? = withContext(Dispatchers.IO) {
+        try {
+            val namaBerkas = videoUrl.trim().substringAfterLast('/')
+            if (namaBerkas.isBlank()) return@withContext null
+            val response = uploadApi.unduhVideo(namaBerkas)
+            val body = response.body()
+            if (!response.isSuccessful || body == null) return@withContext null
+            dir.mkdirs()
+            val file = File(dir, namaBerkas)
+            body.byteStream().use { input -> file.outputStream().use { output -> input.copyTo(output) } }
+            file
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /** Keputusan kepala cabang: [status] `approved` atau `rejected` (tolak wajib [alasan]). */

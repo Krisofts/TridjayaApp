@@ -43,6 +43,16 @@ fun bolehReview(status: String, alasan: String?): KirimGate =
 
 fun sisaChat(jumlah: Int, minimal: Int): Int = maxOf(0, minimal - jumlah)
 
+/**
+ * Ukuran berkas terpilih untuk ditampilkan. `0` = kolom `SIZE` tak diisi ContentProvider —
+ * bukan berkas kosong, dan bukan alasan menolak kirim (lihat [bolehKirim]).
+ */
+fun formatUkuranBerkas(bytes: Long): String = when {
+    bytes <= 0 -> "ukuran tak terbaca"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    else -> String.format(java.util.Locale("in", "ID"), "%.1f MB", bytes / (1024.0 * 1024.0))
+}
+
 fun statusLabel(status: String): String = when (status) {
     "pending_review" -> "Menunggu diperiksa"
     "approved" -> "Disetujui"

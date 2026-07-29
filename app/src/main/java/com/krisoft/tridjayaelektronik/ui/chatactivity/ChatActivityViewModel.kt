@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 data class ChatActivityUiState(
@@ -144,6 +145,22 @@ class ChatActivityViewModel @Inject constructor(
                 is AuthResult.Failure ->
                     _uiState.update { it.copy(reviewLoading = false, pesanError = res.message) }
             }
+        }
+    }
+
+    /**
+     * Unduh video bukti ke cache lalu serahkan berkasnya ke [onSelesai] (`null` = gagal,
+     * pesannya sudah dipasang di state). Dipanggil dari layar review — pemutarannya diserahkan
+     * ke aplikasi pemutar bawaan HP, lihat catatan di `ChatReviewScreen`.
+     */
+    fun bukaVideo(videoUrl: String, cacheDir: File, onSelesai: (File?) -> Unit) {
+        _uiState.update { it.copy(pesanError = null) }
+        viewModelScope.launch {
+            val berkas = repository.unduhVideo(videoUrl, File(cacheDir, "aktivitas-chat"))
+            if (berkas == null) {
+                _uiState.update { it.copy(pesanError = "Video gagal diunduh. Coba lagi.") }
+            }
+            onSelesai(berkas)
         }
     }
 
