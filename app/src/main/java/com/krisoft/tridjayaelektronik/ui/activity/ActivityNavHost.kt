@@ -284,7 +284,15 @@ fun ActivityNavHost(
             OpnameListScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_ABSEN) {
-            AttendanceScreen(onBack = { navController.popBackStack() })
+            AttendanceScreen(
+                onBack = { navController.popBackStack() },
+                // Absen pulang terkunci sampai bukti chat beres — jalan pintasnya
+                // dari layar yang mematikan tombolnya, bukan menyuruh user mencari
+                // sendiri kartunya di layar pertama.
+                onUploadBuktiChat = {
+                    navController.navigate(ROUTE_BUKTI_CHAT) { launchSingleTop = true }
+                },
+            )
         }
         composable(ROUTE_RAPORT) {
             RaportScreen(onBack = { navController.popBackStack() })

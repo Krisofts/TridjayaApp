@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
@@ -85,6 +86,7 @@ import java.util.TimeZone
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import kotlinx.coroutines.delay
 import java.io.File
@@ -101,6 +103,8 @@ import java.util.Locale
 @Composable
 fun AttendanceScreen(
     onBack: () -> Unit,
+    /** Tombol "Upload Bukti Chat" saat absen pulang terkunci — lihat [gateAbsenPulang]. */
+    onUploadBuktiChat: () -> Unit = {},
     viewModel: AttendanceViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -180,7 +184,8 @@ fun AttendanceScreen(
                             onRefreshLocation = requestLocation,
                             onTakeSelfie = { cameraLauncher.launch(selfieUri) },
                             onCheckIn = viewModel::checkIn,
-                            onCheckOut = viewModel::checkOut
+                            onCheckOut = viewModel::checkOut,
+                            onUploadBuktiChat = onUploadBuktiChat
                         )
                     }
                     item(key = "aturan") { WorkRuleInfo() }
@@ -327,14 +332,25 @@ private fun AbsenCard(
     onRefreshLocation: () -> Unit,
     onTakeSelfie: () -> Unit,
     onCheckIn: () -> Unit,
-    onCheckOut: () -> Unit
+    onCheckOut: () -> Unit,
+    onUploadBuktiChat: () -> Unit
 ) {
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             when {
                 state.hasCheckedOut -> DoneSection(state)
-                state.hasCheckedIn -> PunchSection(state, isCheckIn = false, onRefreshLocation, onTakeSelfie, onCheckOut)
-                else -> PunchSection(state, isCheckIn = true, onRefreshLocation, onTakeSelfie, onCheckIn)
+                // Gate bukti chat HANYA berlaku untuk check-out. Check-in dapat
+                // GatePulang(true) mati-matian: absen MASUK tak pernah boleh
+                // terkunci oleh bukti chat (yang justru baru bisa dikumpulkan
+                // setelah orangnya masuk kerja).
+                state.hasCheckedIn -> PunchSection(
+                    state, isCheckIn = false, onRefreshLocation, onTakeSelfie, onCheckOut,
+                    gate = state.gatePulang, onUploadBuktiChat = onUploadBuktiChat
+                )
+                else -> PunchSection(
+                    state, isCheckIn = true, onRefreshLocation, onTakeSelfie, onCheckIn,
+                    gate = GatePulang(true), onUploadBuktiChat = onUploadBuktiChat
+                )
             }
         }
     }
@@ -347,7 +363,9 @@ private fun ColumnScope.PunchSection(
     isCheckIn: Boolean,
     onRefreshLocation: () -> Unit,
     onTakeSelfie: () -> Unit,
-    onSubmit: () -> Unit
+    onSubmit: () -> Unit,
+    gate: GatePulang,
+    onUploadBuktiChat: () -> Unit
 ) {
     val title = if (isCheckIn) "Absen Masuk" else "Absen Pulang"
     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -378,7 +396,11 @@ private fun ColumnScope.PunchSection(
     SelfieBox(state, onTakeSelfie)
     Spacer(modifier = Modifier.height(16.dp))
 
-    val canSubmit = state.hasLocation && state.selfie != null && !state.submitting
+    // `siapKirim` = syarat yang bisa dipenuhi DI LAYAR INI (selfie + lokasi);
+    // dipisah dari `gate` supaya petunjuk di bawah tombol tak salah menuduh
+    // "menunggu lokasi…" padahal yang mengunci adalah bukti chat.
+    val siapKirim = state.hasLocation && state.selfie != null && !state.submitting
+    val canSubmit = siapKirim && gate.boleh
     ExpressiveFilledButton(onClick = onSubmit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) {
         if (state.submitting) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
@@ -391,9 +413,9 @@ private fun ColumnScope.PunchSection(
     val hint = when {
         state.actionError != null -> state.actionError
         state.submitting -> null
-        !canSubmit && state.selfie == null && !state.hasLocation -> "Perlu selfie & lokasi dulu"
-        !canSubmit && state.selfie == null -> "Ambil selfie dulu"
-        !canSubmit -> "Menunggu lokasi…"
+        !siapKirim && state.selfie == null && !state.hasLocation -> "Perlu selfie & lokasi dulu"
+        !siapKirim && state.selfie == null -> "Ambil selfie dulu"
+        !siapKirim -> "Menunggu lokasi…"
         else -> null
     }
     if (hint != null) {
@@ -404,6 +426,24 @@ private fun ColumnScope.PunchSection(
             color = if (state.actionError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
+    }
+    if (!gate.boleh) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            // Kalimatnya milik SERVER (`alasanCheckoutTertutup`) — jangan menyusun
+            // teks sendiri di sini, supaya layar dan pesan error 400 saat menekan
+            // tombol tak pernah berselisih isi.
+            gate.alasan ?: "Bukti chat harian belum beres.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        ExpressiveOutlinedButton(onClick = onUploadBuktiChat, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Rounded.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Upload Bukti Chat")
+        }
     }
 }
 

@@ -5,11 +5,13 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AbsensiRepository
+import com.krisoft.tridjayaelektronik.data.AktivitasChatRepository
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.OffRepository
 import com.krisoft.tridjayaelektronik.data.model.AbsensiGeofenceDto
 import com.krisoft.tridjayaelektronik.data.model.AbsensiRecordDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasChatTodayDto
 import com.krisoft.tridjayaelektronik.data.model.OffRequestDto
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -54,12 +56,20 @@ data class AttendanceUiState(
     // Izin / OFF milik user login
     val offRequests: List<OffRequestDto> = emptyList(),
     val offSubmitting: Boolean = false,
-    val offError: String? = null
+    val offError: String? = null,
+
+    /**
+     * Bukti chat harian — syarat absen pulang. `null` = tak diketahui (panggilan
+     * gagal / offline / backend belum punya fiturnya); lihat [gateAbsenPulang],
+     * yang sengaja FAIL-OPEN untuk keadaan itu.
+     */
+    val chatToday: AktivitasChatTodayDto? = null,
 ) {
     val hasCheckedIn: Boolean get() = today?.checkInAt != null
     val hasCheckedOut: Boolean get() = today?.checkOutAt != null
     val hasLocation: Boolean get() = lat != null && lng != null
     val rekap: AttendanceRekap get() = buildRekap(history, offRequests)
+    val gatePulang: GatePulang get() = gateAbsenPulang(chatToday)
 }
 
 /**
@@ -70,6 +80,7 @@ data class AttendanceUiState(
 @HiltViewModel
 class AttendanceViewModel @Inject constructor(
     private val repository: AbsensiRepository,
+    private val aktivitasChatRepository: AktivitasChatRepository,
     private val offRepository: OffRepository,
     private val deviceRepository: com.krisoft.tridjayaelektronik.data.DeviceRepository,
     authRepository: AuthRepository,
@@ -122,10 +133,15 @@ class AttendanceViewModel @Inject constructor(
     fun load() {
         _uiState.update { it.copy(loading = true, loadError = null) }
         viewModelScope.launch {
-            val (todayRes, historyRes) = coroutineScope {
+            // Bukti chat diambil BERSAMAAN (bukan berurutan) supaya tak menambah
+            // waktu buka layar. Kegagalannya SENGAJA tak mengisi `loadError`:
+            // absensi tak boleh ikut mati gara-gara endpoint bukti chat bermasalah
+            // — `null` di sini artinya "tak tahu", dan gate-nya fail-open.
+            val (todayRes, historyRes, chatRes) = coroutineScope {
                 val t = async { repository.today() }
                 val h = async { repository.history() }
-                t.await() to h.await()
+                val c = async { aktivitasChatRepository.today() }
+                Triple(t.await(), h.await(), c.await())
             }
             val todayData = (todayRes as? AuthResult.Success)?.data
             val today = todayData?.record
@@ -143,6 +159,10 @@ class AttendanceViewModel @Inject constructor(
                         today = today ?: it.today,
                         history = history ?: it.history,
                         loadError = error,
+                        // Gagal = `null` (bukan nilai lama): status kemarin/tadi
+                        // bisa sudah tak berlaku, dan menahan gate tertutup atas
+                        // data basi persis yang dilarang doc [gateAbsenPulang].
+                        chatToday = (chatRes as? AuthResult.Success)?.data,
                         geofences = geofences ?: it.geofences
                     )
                 )
