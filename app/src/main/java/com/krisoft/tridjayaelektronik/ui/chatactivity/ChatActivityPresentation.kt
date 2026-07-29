@@ -11,9 +11,16 @@ package com.krisoft.tridjayaelektronik.ui.chatactivity
  * Pakai `attendanceToday()` di `ui/attendance/AttendancePresentation.kt`.
  */
 
-/** Batas server (spec §7). Ditegakkan di klien juga supaya karyawan tak menunggu
- *  unggahan 60 MB selesai hanya untuk ditolak 400. */
-const val MAX_VIDEO_BYTES: Long = 50L * 1024 * 1024
+/** Batas server. Ditegakkan di klien juga supaya karyawan tak menunggu unggahan
+ *  selesai bermenit-menit di jaringan cabang hanya untuk ditolak 400.
+ *
+ *  WAJIB sama dengan `chat_activity::upload::MAX_VIDEO_BYTES` di repo `Tridjaya`
+ *  (dan `frontend/src/utils/aktivitasChat.ts`). Diturunkan 50 → 20 MB pada
+ *  2026-07-30 karena gateway menyangga badan unggahan PENUH di RAM
+ *  (`proxy_kinerja` menerima `body: Bytes`) dan VPS cuma punya ±3 GB sisa —
+ *  angka mobile yang lebih tinggi dari server berarti app menerima berkas yang
+ *  pasti ditolak di ujung sana. */
+const val MAX_VIDEO_BYTES: Long = 20L * 1024 * 1024
 
 data class KirimGate(val ok: Boolean, val alasan: String? = null)
 
@@ -21,11 +28,11 @@ fun bolehKirim(adaVideo: Boolean, jumlahChat: Int, minimal: Int, ukuranBytes: Lo
     if (!adaVideo) return KirimGate(false, "Pilih video bukti dulu.")
     // ponytail: HANYA yang terbukti kebesaran ditolak. Sebagian ContentProvider mengembalikan
     // kolom SIZE null → ViewModel mengirim 0; menolak ukuran tak terbaca akan mengunci karyawan
-    // dari fitur ini tanpa jalan keluar. Server tetap punya batas 50 MB-nya sendiri.
+    // dari fitur ini tanpa jalan keluar. Server tetap punya batas 20 MB-nya sendiri.
     if (ukuranBytes > MAX_VIDEO_BYTES) {
         return KirimGate(
             false,
-            "Video terlalu besar (maks 50 MB). Rekam lebih pendek atau turunkan " +
+            "Video terlalu besar (maks 20 MB). Rekam lebih pendek atau turunkan " +
                 "kualitas perekam layar ke 720p.",
         )
     }

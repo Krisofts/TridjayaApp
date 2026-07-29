@@ -97,7 +97,7 @@ object NetworkModule {
 
     /**
      * Client TERPISAH untuk unggah video bukti chat. Client bersama ber-write/readTimeout
-     * 20 detik — video sampai 50MB di jaringan cabang butuh MENIT, jadi lewat client itu
+     * 20 detik — video sampai 20MB di jaringan cabang butuh MENIT, jadi lewat client itu
      * unggahan besar SELALU mati timeout dan di layar terlihat seperti "server error".
      *
      * Diturunkan lewat `newBuilder()` dari client bersama (BUKAN client baru dari nol) supaya

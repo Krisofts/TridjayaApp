@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Gate kirim bukti chat ditegakkan di klien SEBELUM unggahan dimulai — video bisa 50 MB,
+ * Gate kirim bukti chat ditegakkan di klien SEBELUM unggahan dimulai — video bisa 20 MB,
  * dan menolaknya baru setelah terkirim membuang kuota karyawan di lapangan.
  */
 class ChatActivityPresentationTest {
@@ -24,7 +24,7 @@ class ChatActivityPresentationTest {
     }
 
     @Test
-    fun `menolak video lebih dari 50MB sebelum menyentuh jaringan`() {
+    fun `menolak video lebih dari 20MB sebelum menyentuh jaringan`() {
         val gate = bolehKirim(true, 250, 200, MAX_VIDEO_BYTES + 1)
         assertFalse(gate.ok)
         assertTrue(gate.alasan!!.contains("720p"))

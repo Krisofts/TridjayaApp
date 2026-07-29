@@ -95,7 +95,7 @@ class ChatActivityViewModel @Inject constructor(
     fun bersihkanPesan() = _uiState.update { it.copy(pesanError = null, pesanSukses = null) }
 
     /**
-     * Gate diperiksa SEBELUM unggahan: mengunggah 50 MB lalu ditolak karena angka chat
+     * Gate diperiksa SEBELUM unggahan: mengunggah 20 MB lalu ditolak karena angka chat
      * kurang membuang kuota karyawan di lapangan.
      */
     fun kirim(resolver: ContentResolver) {

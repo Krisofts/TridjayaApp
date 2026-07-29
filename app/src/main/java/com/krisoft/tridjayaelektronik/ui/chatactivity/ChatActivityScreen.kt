@@ -85,7 +85,7 @@ fun ChatActivityScreen(
     }
 
     // Hanya pesan SUKSES yang hilang sendiri. Pesan error dibiarkan sampai karyawan
-    // bertindak — kalau ikut hilang, kegagalan unggah 50 MB lewat begitu saja tanpa jejak.
+    // bertindak — kalau ikut hilang, kegagalan unggah 20 MB lewat begitu saja tanpa jejak.
     LaunchedEffect(state.pesanSukses) {
         if (state.pesanSukses != null) {
             delay(4000)

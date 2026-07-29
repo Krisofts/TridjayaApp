@@ -115,7 +115,7 @@ class AktivitasChatRepository @Inject constructor(
             dir.mkdirs()
             val file = File(dir, namaBerkas)
             // ponytail: sapu video lain SEBELUM mengunduh — kepala cabang memeriksa
-            // belasan bukti sehari dan tiap berkasnya s/d 50MB, jadi tanpa ini cache
+            // belasan bukti sehari dan tiap berkasnya s/d 20MB, jadi tanpa ini cache
             // app membengkak ratusan MB dalam sepekan. Menghapus SETELAH memutar tidak
             // bisa: berkasnya masih dibaca aplikasi pemutar bawaan HP.
             dir.listFiles()?.forEach { lama -> if (lama.name != namaBerkas) lama.delete() }
@@ -151,7 +151,7 @@ class AktivitasChatRepository @Inject constructor(
 /**
  * ponytail: STREAMING dari `ContentResolver`, bukan `ByteArray` seperti
  * [AbsensiRepository.uploadPhoto]. Selfie JPEG beberapa ratus KB aman dimuat penuh ke memori;
- * video bukti bisa 50MB sedangkan heap HP low-end di lapangan bisa <128MB — memuatnya utuh
+ * video bukti bisa 20MB sedangkan heap HP low-end di lapangan bisa <128MB — memuatnya utuh
  * (ditambah salinan yang dibuat OkHttp saat menulis) = OutOfMemoryError, bukan sekadar lambat.
  * OkHttp menyalin per-blok dari `openInputStream`, jadi puncak memori tetap kecil apa pun
  * ukuran videonya.
