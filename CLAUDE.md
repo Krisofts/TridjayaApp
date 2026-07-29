@@ -135,10 +135,26 @@ releases to Main once `markPasswordChanged()` clears it. The **required-WhatsApp
 
 **Floating pill bottom nav (Rhythm `FloatingNavigationBar`), not Material3 `NavigationBar`.**
 `TridjayaBottomNav.kt` reproduces Rhythm's actual home-screen nav: a pill-shaped
-`FloatingNavigationBar` at the bottom-start holding the browse tabs (Home + Prospek — selected
-tab expands to icon+label, others are icon-only) plus a **separate bold circular search FAB** at
-the bottom-end for the Cari tab (always solid `primary`, like Rhythm's persistent search
-button). The **Cari tab opens a global search** (`GlobalSearchScreen`, `ui/search/`), NOT the
+`FloatingNavigationBar` at the bottom holding the browse tabs (Activity + Operasional — selected
+tab expands to icon+label, others are icon-only).
+
+> **Tombol Cari (search FAB) DIHAPUS 2026-07-29** atas permintaan user. Pill kini memenuhi
+> lebar layar sendirian dan `TridjayaFloatingNav` tak lagi punya parameter `searchItem`.
+> **`AppDestination.INVENTORY` SENGAJA tetap ada** — ia HOST `InventoryNavHost`, jadi
+> menghapusnya dari enum akan mematikan seluruh menu Inventory (jelajah barang, detail
+> produk, flyer), bukan cuma tombolnya. Ia hanya dilepas dari `bottomNavItems` dan kini
+> dijangkau lewat callback pindah-tab `onQuickAccessInventory`: ubin **"Cari Barang"** di
+> Activity (item `inventory` di `ActivityRegistry.ACTIVITY_ITEMS`, navKey ditangani seperti
+> `"crm"` — di luar `routeForNavKey`) dan tile "Inventory" di grid Akses Cepat Operasional.
+> Dijaga `ActivityRegistryTest.inventory punya pintu masuk di Activity dan tak lagi di bottom nav`.
+> **Efek samping yang disadari:** karena kedua pintu masuk itu selalu menaikkan
+> `inventoryOpenListSignal`, `SEARCH_ROUTE_ROOT` (`GlobalSearchScreen`) langsung di-pop tiap
+> kali tab ini dibuka → pencarian gabungan produk+prospek praktis tak terjangkau lagi.
+> Kodenya sengaja TIDAK dihapus (keputusan produk, bukan teknis); pencarian produk tetap ada
+> di dalam `InventoryScreen`, pencarian prospek di layar Leads.
+
+Deskripsi historis tab Cari (masih berlaku untuk isi `InventoryNavHost` itu sendiri): tab ini
+membuka **global search** (`GlobalSearchScreen`, `ui/search/`), NOT the
 inventory browse screen — one field searches cached products (`InventoryRepository.searchProducts`)
 + leads (`CrmRepository.cachedLeads`) at once, grouped by type; results deep-link to product/lead
 detail, and the full filterable inventory browse is still reachable via "Jelajahi semua barang".
@@ -151,7 +167,7 @@ at the bottom above the keyboard** — the floating bottom nav is hidden here (`
 **`MainActivity` MUST keep `android:windowSoftInputMode="adjustResize"`** (in AndroidManifest) —
 without it, the bottom-docked search field double-pads on some devices (window auto-resize *plus*
 `imePadding()`) and floats mid-screen. The search Column uses `.imePadding()`; adjustResize makes
-that report the keyboard correctly. Wired via `TridjayaFloatingNav(pillItems, searchItem)`, **overlaid** at `BottomCenter`
+that report the keyboard correctly. Wired via `TridjayaFloatingNav(pillItems)`, **overlaid** at `BottomCenter`
 inside `MainActivity`'s content `Box` (NOT `Scaffold.bottomBar`) so content scrolls *behind* it
 like Rhythm — every scrollable tab (Home/Inventory/Leads/RankingList/Settings) adds ~100dp bottom
 content clearance so nothing hides permanently. The pill uses `Modifier.weight(1f)` to stretch

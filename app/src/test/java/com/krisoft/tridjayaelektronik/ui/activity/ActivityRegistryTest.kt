@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.ui.activity
 
 import com.krisoft.tridjayaelektronik.ui.home.ALL_LOGGED_IN
 import com.krisoft.tridjayaelektronik.ui.home.KNOWN_ROLES
+import com.krisoft.tridjayaelektronik.ui.navigation.AppDestination
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -41,9 +42,12 @@ class ActivityRegistryTest {
     }
 
     @Test
-    fun `hanya item raport yang boleh tanpa kunci kemampuan`() {
+    fun `hanya raport dan inventory yang boleh tanpa kunci kemampuan`() {
+        // raport: hak `upsert_raport` belum punya kunci di /api/me/capabilities.
+        // inventory: backend memang tak ber-gate role (cermin QUICK_ACCESS_MENUS).
+        // Item ber-gate lain WAJIB punya kunci supaya ikut sumber tunggal.
         val tanpaKunci = ACTIVITY_ITEMS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("raport"), tanpaKunci)
+        assertEquals(listOf("raport", "inventory"), tanpaKunci)
     }
 
     // ── Gate dua arah per persona ────────────────────────────────────────────
@@ -157,6 +161,31 @@ class ActivityRegistryTest {
         assertTrue("daftar_spk" in ids("manager", caps = caps))
         assertTrue("daftar_spk" in ids("owner", caps = caps))
         assertTrue("daftar_spk" in ids("karyawan", caps = null))
+    }
+
+    // ── Inventory tetap terjangkau setelah tombol Cari dihapus (2026-07-29) ──
+
+    @Test
+    fun `inventory punya pintu masuk di Activity dan tak lagi di bottom nav`() {
+        // Tab "Cari" adalah HOST `InventoryNavHost` — root-nya GlobalSearchScreen
+        // dan jelajah barang (INVENTORY_ROUTE_LIST) sub-layar di dalamnya. Melepas
+        // tabnya dari bottom nav TANPA pintu masuk pengganti akan mematikan seluruh
+        // menu Inventory (jelajah barang, detail produk, flyer).
+        assertFalse(
+            "Tombol Cari sudah dihapus — INVENTORY tak boleh kembali ke bottom nav " +
+                "tanpa keputusan sadar",
+            AppDestination.INVENTORY in AppDestination.bottomNavItems,
+        )
+        // Destination-nya sendiri WAJIB tetap ada: ia yang meng-host InventoryNavHost.
+        assertTrue(AppDestination.INVENTORY.route.isNotBlank())
+        // Dan harus ada pintu masuknya di layar pertama.
+        val inventory = ACTIVITY_ITEMS.first { it.id == "inventory" }
+        assertEquals(ActivityKind.AKSI, inventory.kind)
+        assertEquals("inventory", inventory.navKey)
+        assertTrue("inventory" in ids("karyawan"))
+        assertTrue("inventory" in ids("manager"))
+        // Bahkan tanpa peta kemampuan server (offline) — backend memang tak ber-gate.
+        assertTrue("inventory" in ids("driver", caps = null))
     }
 
     @Test

@@ -502,8 +502,9 @@ private fun MainScreen(
     val showBottomNav = when (selected) {
         AppDestination.ACTIVITY -> activityEntry?.destination?.route == ACTIVITY_ROUTE_ROOT
         AppDestination.SUMMARY -> summaryEntry?.destination?.route == HOME_ROUTE_DASHBOARD
-        // The Cari tab is a full-screen global search with its own bottom search bar — never
-        // show the floating nav over it (or its pushed detail/browse screens).
+        // Inventory tak lagi punya slot di pill (tombol Cari dihapus 2026-07-29) — ia dibuka
+        // sebagai layar penuh dari Activity/Operasional, jadi nav-nya tetap disembunyikan.
+        // Back tetap punya jalan keluar: BackHandler di bawah memulangkan ke Activity.
         AppDestination.INVENTORY -> false
         AppDestination.LEADS -> leadsEntry?.destination?.route == LEADS_ROUTE_LIST
         AppDestination.SETTINGS -> false
@@ -612,7 +613,7 @@ private fun MainScreen(
                 }
             }
 
-            // Rhythm layout: floating pill (Activity + Operasional) + separate search FAB, overlaying
+            // Rhythm layout: floating pill (Activity + Operasional) overlaying
             // the content — the content scrolls behind it instead of being pushed above a bar.
             // (Scrollable screens add ~100dp bottom clearance so nothing hides permanently.)
             // Slides away on detail/sub-screens.
@@ -622,12 +623,7 @@ private fun MainScreen(
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
-                TridjayaFloatingNav(
-                    pillItems = destinations
-                        .filter { it != AppDestination.INVENTORY }
-                        .map { navItem(it) },
-                    searchItem = navItem(AppDestination.INVENTORY)
-                )
+                TridjayaFloatingNav(pillItems = destinations.map { navItem(it) })
             }
         }
     }

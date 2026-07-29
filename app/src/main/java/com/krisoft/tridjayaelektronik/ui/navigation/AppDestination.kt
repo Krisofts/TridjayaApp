@@ -11,9 +11,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 /**
  * Single source of truth for every app destination. [bottomNavItems] is what
  * actually shows on the bottom bar. Layar pertama app kini Activity ("hari ini
- * aku harus ngapain?"), dashboard lama pindah ke tab Operasional. SETTINGS &
- * LEADS tetap ada sebagai destination tapi dibuka dari Activity (gear /
- * kartu "Input prospek") daripada menempati slot bottom nav sendiri.
+ * aku harus ngapain?"), dashboard lama pindah ke tab Operasional. SETTINGS,
+ * LEADS & INVENTORY tetap ada sebagai destination tapi dibuka dari Activity
+ * (gear / kartu "Input prospek" / ubin "Cari Barang") atau dari grid Akses
+ * Cepat di Operasional, daripada menempati slot bottom nav sendiri.
  */
 enum class AppDestination(val route: String, val label: String, val icon: ImageVector) {
     ACTIVITY("activity", "Activity", Icons.Rounded.ChecklistRtl),
@@ -27,6 +28,14 @@ enum class AppDestination(val route: String, val label: String, val icon: ImageV
     companion object {
         // Tab CRM dilepas dari bottom nav: prospek kini jadi tugas harian di
         // Activity (dan tetap dibuka dari sana). Pill Rhythm dirancang 2-3 item.
-        val bottomNavItems = listOf(ACTIVITY, SUMMARY, INVENTORY)
+        //
+        // INVENTORY menyusul dilepas 2026-07-29 (tombol Cari/search FAB dihapus
+        // atas permintaan user). Destination-nya SENGAJA tetap ada — ia host
+        // `InventoryNavHost` (jelajah barang, detail produk, flyer) — dan
+        // dijangkau lewat callback pindah-tab `onQuickAccessInventory`:
+        // ubin "Cari Barang" di Activity + tile "Inventory" di grid Akses Cepat
+        // Operasional. Menghapus baris ini dari enum akan mematikan seluruh
+        // menu Inventory, bukan cuma tombolnya.
+        val bottomNavItems = listOf(ACTIVITY, SUMMARY)
     }
 }

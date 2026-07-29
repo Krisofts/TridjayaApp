@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
+import com.krisoft.tridjayaelektronik.ui.home.ALL_LOGGED_IN
 import com.krisoft.tridjayaelektronik.ui.home.CRM_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.STAFF_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.SPK_MENU_ROLES
@@ -199,6 +200,27 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "inventory-service indent.rs require_indent_submitter_role",
         source = ActivitySource.NONE,
         navKey = "indent",
+    ),
+    ActivityItem(
+        // Ditambahkan 2026-07-29 bersamaan penghapusan tombol Cari di bottom nav:
+        // tab itu adalah HOST `InventoryNavHost`, jadi tanpa pintu masuk pengganti
+        // seluruh menu Inventory (jelajah barang, detail produk, flyer) tak
+        // terjangkau dari layar pertama. Sengaja diletakkan PALING BELAKANG di
+        // antara item AKSI supaya pasangan "Buat SPK" + "Daftar SPK" tetap
+        // berdampingan di baris pertama (dijaga `ActivityRegistryTest`).
+        id = "inventory",
+        label = "Cari Barang",
+        subtitle = "Stok & harga per cabang",
+        kind = ActivityKind.AKSI,
+        // Cerminan entri `inventory` di `QUICK_ACCESS_MENUS` — backend memang tak
+        // ber-gate role di sini, jadi `capability` null + ALL_LOGGED_IN eksplisit.
+        capability = null,
+        allowedRoles = ALL_LOGGED_IN,
+        backendGuard = "gateway grup protected — stok cabang tanpa gate role tambahan",
+        source = ActivitySource.NONE,
+        // Seperti "crm": dibuka lewat callback PINDAH TAB (InventoryNavHost punya
+        // tabel route sendiri), bukan lewat `routeForNavKey`.
+        navKey = "inventory",
     ),
     ActivityItem(
         id = "antrian_pdi",

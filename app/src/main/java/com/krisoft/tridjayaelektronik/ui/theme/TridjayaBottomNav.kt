@@ -42,18 +42,19 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Rhythm's actual bottom navigation (as seen on its Home screen): a pill-shaped
- * [FloatingNavigationBar] floating at the bottom-start holding the browse tabs, plus a
- * separate circular search button at the bottom-end. Ported 1:1 from Rhythm's
+ * [FloatingNavigationBar] floating at the bottom holding the browse tabs. Ported 1:1 from Rhythm's
  * `FloatingNavigationBar` / `FloatingNavigationBarItem`
  * (github.com/cromaguy/Rhythm, `shared/presentation/components/common/ExpressiveNavigation.kt`).
  *
- * Tridjaya mapping: the pill carries [pillItems] (Home, Prospek) and the search FAB carries
- * [searchItem] (Cari) — Cari is the search/inventory tab, matching Rhythm's search FAB exactly.
+ * Tridjaya mapping: the pill carries [pillItems] (Activity, Operasional). Rhythm's separate
+ * circular search FAB (tab "Cari") **was removed 2026-07-29 at the user's request** — the pill
+ * now spans the full width on its own. Inventory itself did NOT go away with it: it's still a
+ * live `AppDestination`, reached via the "Cari Barang" tile on Activity and the "Inventory" tile
+ * in Operasional's quick-access grid (see `AppDestination.bottomNavItems`).
  */
 @Composable
 fun TridjayaFloatingNav(
     pillItems: List<TridjayaNavItem>,
-    searchItem: TridjayaNavItem,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -63,7 +64,7 @@ fun TridjayaFloatingNav(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Pill stretches to fill the row up to the search FAB. Sisa ruang diberikan
+        // Pill stretches to fill the row. Sisa ruang diberikan
         // ke item TERPILIH saja — item lain hanya ikon 24dp, jadi membaginya rata
         // (`weight(1f)` untuk semua, versi sebelum 2026-07-29) membuang separuh pil
         // pada ikon dan memotong label yang panjang: lebar teks tersisa cuma
@@ -87,10 +88,6 @@ fun TridjayaFloatingNav(
                 )
             }
         }
-
-        Spacer(Modifier.width(12.dp))
-
-        SearchNavButton(item = searchItem)
     }
 }
 
@@ -100,63 +97,6 @@ data class TridjayaNavItem(
     val selected: Boolean,
     val onClick: () -> Unit
 )
-
-/** Circular search FAB mirroring Rhythm's home-screen search button. */
-@Composable
-private fun SearchNavButton(
-    item: TridjayaNavItem,
-    modifier: Modifier = Modifier
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.88f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "search_fab_scale"
-    )
-
-    // Rhythm's search FAB is always a bold, dark, saturated circle — never a washed-out
-    // neutral. Keep it solid `primary` in every state; press just deepens it slightly.
-    val container by animateColorAsState(
-        targetValue = if (isPressed) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.88f)
-        } else {
-            MaterialTheme.colorScheme.primary
-        },
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "search_fab_container"
-    )
-    val content = MaterialTheme.colorScheme.onPrimary
-
-    Surface(
-        modifier = modifier
-            .size(64.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            },
-        onClick = rememberHapticClick(item.onClick),
-        shape = CircleShape,
-        color = container,
-        contentColor = content,
-        // No drop shadow — Rhythm's floating nav is flat (tonal tint only).
-        shadowElevation = 0.dp,
-        tonalElevation = 4.dp,
-        interactionSource = interactionSource
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = item.label,
-                modifier = Modifier.size(28.dp)
-            )
-        }
-    }
-}
 
 // ============================================================================
 // FLOATING NAVIGATION BAR — ported 1:1 from Rhythm
