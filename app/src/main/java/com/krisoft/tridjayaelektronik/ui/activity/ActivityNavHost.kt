@@ -106,10 +106,10 @@ private fun deliveryStageRoute(key: String): String? = when (key) {
  * tabel ini. Fungsi MURNI (tanpa Compose) supaya bisa diuji JUnit biasa —
  * `navKey` adalah kontrak stringly-typed tanpa pemeriksa kompiler, jadi satu
  * salah ketik di sini berarti kartu yang diam tak melakukan apa-apa. `null`
- * berarti `navKey` tak dikenal (typo) — KECUALI `"crm"` dan `"inventory"`, yang
- * sengaja tak masuk peta ini karena punya NavHost/tab sendiri dan dibuka lewat
- * callback pindah-tab, bukan navigasi di tabel route ini (lihat pemanggil di
- * [ActivityNavHost]). Diuji di `ActivityNavHostRouteTest`.
+ * berarti `navKey` tak dikenal (typo) — KECUALI `"crm"`, `"inventory"` dan
+ * `"cari_semua"`, yang sengaja tak masuk peta ini karena punya NavHost/tab sendiri
+ * dan dibuka lewat callback pindah-tab, bukan navigasi di tabel route ini (lihat
+ * pemanggil di [ActivityNavHost]). Diuji di `ActivityNavHostRouteTest`.
  */
 internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "absen" -> ROUTE_ABSEN
@@ -140,6 +140,8 @@ fun ActivityNavHost(
     onSettingsClick: () -> Unit = {},
     onOpenSummaryTab: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
+    /** Ubin "Cari Semua" → SEARCH_ROUTE_ROOT (`GlobalSearchScreen`), bukan daftar barang. */
+    onQuickAccessSearch: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
     // Sisa I1: dinaikkan MainScreen tiap tab terpilih berubah JADI Activity (lihat
     // `activityTabSelectedTrigger` di MainActivity.kt) — diteruskan apa adanya ke
@@ -173,12 +175,15 @@ fun ActivityNavHost(
                 onOpenAllMenus = onOpenSummaryTab,
                 tabSelectedSignal = activityTabSelectedSignal,
                 onOpen = { navKey ->
-                    // "crm" & "inventory" sengaja tak masuk `routeForNavKey`: keduanya
-                    // punya NavHost/tab sendiri (LeadsNavHost, InventoryNavHost), jadi
-                    // dibuka lewat callback pindah-tab, bukan route di tabel ini.
+                    // "crm", "inventory" & "cari_semua" sengaja tak masuk `routeForNavKey`:
+                    // ketiganya punya NavHost/tab sendiri (LeadsNavHost, InventoryNavHost),
+                    // jadi dibuka lewat callback pindah-tab, bukan route di tabel ini.
+                    // "inventory" dan "cari_semua" berbagi tab yang sama tapi BERBEDA
+                    // tujuan — daftar barang vs pencarian gabungan; jangan disatukan.
                     when (navKey) {
                         "crm" -> onQuickAccessLeads()
                         "inventory" -> onQuickAccessInventory()
+                        "cari_semua" -> onQuickAccessSearch()
                         else -> routeForNavKey(navKey)?.let { route ->
                             navController.navigate(route) { launchSingleTop = true }
                         }

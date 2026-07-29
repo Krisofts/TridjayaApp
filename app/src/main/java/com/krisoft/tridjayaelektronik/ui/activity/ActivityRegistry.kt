@@ -223,6 +223,35 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         navKey = "inventory",
     ),
     ActivityItem(
+        // Ditambahkan 2026-07-29 untuk mengembalikan akses ke `GlobalSearchScreen`.
+        // 41f570d melepas Inventory dari bottom nav dan menaruhnya di ubin "Cari
+        // Barang" — tapi ubin itu (dan tile Akses Cepat Operasional) selalu
+        // menaikkan `inventoryOpenListSignal`, yang mem-pop SEARCH_ROUTE_ROOT, jadi
+        // pencarian gabungan produk+prospek jadi tak terjangkau sama sekali.
+        //
+        // DUA PINTU, DUA TUJUAN — jangan digabung: "Cari Barang" → daftar Inventory
+        // (filter/urut/paging, stok per cabang), "Cari Semua" → satu kolom yang
+        // mencari produk DAN prospek sekaligus.
+        id = "cari_semua",
+        label = "Cari Semua",
+        subtitle = "Barang & prospek dalam satu pencarian",
+        kind = ActivityKind.AKSI,
+        // Layar ini membaca CACHE ROOM LOKAL saja — `InventoryRepository.searchProducts`
+        // (branch_stock) + `CrmRepository.cachedLeads` (leads) — tanpa satu pun panggilan
+        // backend, jadi tak ada guard yang bisa dicerminkan dan `capability` = null.
+        // Mengarang kunci (mis. "crm.input") justru salah dua arah: gate-nya fail-closed
+        // sehingga ubin hilang diam-diam dari orang tanpa CRM, padahal pencarian PRODUK
+        // di layar yang sama tak ada hubungannya dengan hak CRM. Isi cache-nya sendiri
+        // sudah dibatasi endpoint yang mengisinya — yang tak boleh menarik prospek
+        // memang punya cache prospek kosong.
+        capability = null,
+        allowedRoles = ALL_LOGGED_IN,
+        backendGuard = "tidak ada — layar baca cache Room lokal (branch_stock + leads), tanpa panggilan backend",
+        source = ActivitySource.NONE,
+        // Sama seperti "inventory": tab INVENTORY, tapi berhenti di SEARCH_ROUTE_ROOT.
+        navKey = "cari_semua",
+    ),
+    ActivityItem(
         id = "antrian_pdi",
         label = "Antrian PDI",
         subtitle = "Unit menunggu inspeksi",

@@ -154,16 +154,27 @@ tab expands to icon+label, others are icon-only).
 > lebar layar sendirian dan `TridjayaFloatingNav` tak lagi punya parameter `searchItem`.
 > **`AppDestination.INVENTORY` SENGAJA tetap ada** — ia HOST `InventoryNavHost`, jadi
 > menghapusnya dari enum akan mematikan seluruh menu Inventory (jelajah barang, detail
-> produk, flyer), bukan cuma tombolnya. Ia hanya dilepas dari `bottomNavItems` dan kini
-> dijangkau lewat callback pindah-tab `onQuickAccessInventory`: ubin **"Cari Barang"** di
-> Activity (item `inventory` di `ActivityRegistry.ACTIVITY_ITEMS`, navKey ditangani seperti
-> `"crm"` — di luar `routeForNavKey`) dan tile "Inventory" di grid Akses Cepat Operasional.
-> Dijaga `ActivityRegistryTest.inventory punya pintu masuk di Activity dan tak lagi di bottom nav`.
-> **Efek samping yang disadari:** karena kedua pintu masuk itu selalu menaikkan
-> `inventoryOpenListSignal`, `SEARCH_ROUTE_ROOT` (`GlobalSearchScreen`) langsung di-pop tiap
-> kali tab ini dibuka → pencarian gabungan produk+prospek praktis tak terjangkau lagi.
-> Kodenya sengaja TIDAK dihapus (keputusan produk, bukan teknis); pencarian produk tetap ada
-> di dalam `InventoryScreen`, pencarian prospek di layar Leads.
+> produk, flyer) DAN pencarian gabungan, bukan cuma tombolnya. Ia hanya dilepas dari
+> `bottomNavItems` dan kini dijangkau lewat **dua ubin berbeda di seksi PINTASAN layar
+> Activity** — satu tab, dua tujuan; jangan digabung jadi satu:
+>
+> | Ubin | Item registri / `navKey` | Callback | Mendarat di |
+> |---|---|---|---|
+> | **"Cari Barang"** | `inventory` | `onQuickAccessInventory` → `inventoryOpenListSignal++` | `INVENTORY_ROUTE_LIST` (jelajah barang: filter, urut, paging, stok per cabang) |
+> | **"Cari Semua"** | `cari_semua` | `onQuickAccessSearch` → `inventoryOpenSearchSignal++` | `SEARCH_ROUTE_ROOT` (`GlobalSearchScreen`: produk + prospek dalam satu kolom) |
+>
+> Keduanya di luar `routeForNavKey` (ditangani seperti `"crm"` — tujuannya NavHost lain).
+> Tile "Inventory" di grid Akses Cepat Operasional memakai callback yang pertama.
+> **Dua sinyal terpisah itu WAJIB**, bukan kemewahan: tab ini tetap ter-compose seumur sesi,
+> jadi sesudah sekali "Cari Barang" nav controller-nya duduk di `INVENTORY_ROUTE_LIST` dengan
+> `SEARCH_ROUTE_ROOT` sudah di-pop — pindah tab tanpa sinyal akan memunculkan daftar barang
+> lagi. `openSearchSignal` memakai `popUpTo(graph.id) { inclusive = true }` (kosongkan seluruh
+> tumpukan tab, apa pun isinya) supaya Back dari pencarian keluar ke Activity, bukan mendarat
+> di daftar barang. Dijaga `ActivityRegistryTest` (`inventory punya pintu masuk di Activity dan
+> tak lagi di bottom nav` + `cari semua adalah pintu kedua yang terpisah dari cari barang`).
+>
+> Riwayat: antara 41f570d dan perbaikan ini, kedua pintu masuk sama-sama menaikkan
+> `inventoryOpenListSignal` sehingga `GlobalSearchScreen` praktis tak terjangkau.
 
 Deskripsi historis tab Cari (masih berlaku untuk isi `InventoryNavHost` itu sendiri): tab ini
 membuka **global search** (`GlobalSearchScreen`, `ui/search/`), NOT the

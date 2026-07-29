@@ -15,12 +15,12 @@ import org.junit.Test
  */
 class ActivityNavHostRouteTest {
 
-    // "crm" & "inventory" SENGAJA tak masuk `routeForNavKey`: keduanya punya
-    // NavHost/tab sendiri (LeadsNavHost / InventoryNavHost) dan dibuka lewat
-    // callback pindah-tab (onQuickAccessLeads / onQuickAccessInventory di
-    // ActivityNavHost), bukan route di tabel route home_*. Pengecualian sah,
-    // bukan typo.
-    private val bukanRouteTabel = setOf("crm", "inventory")
+    // "crm", "inventory" & "cari_semua" SENGAJA tak masuk `routeForNavKey`: ketiganya
+    // punya NavHost/tab sendiri (LeadsNavHost / InventoryNavHost) dan dibuka lewat
+    // callback pindah-tab (onQuickAccessLeads / onQuickAccessInventory /
+    // onQuickAccessSearch di ActivityNavHost), bukan route di tabel route home_*.
+    // Pengecualian sah, bukan typo.
+    private val bukanRouteTabel = setOf("crm", "inventory", "cari_semua")
 
     @Test
     fun `setiap navKey non-kosong dikenali peta route`() {

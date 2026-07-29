@@ -329,6 +329,9 @@ private fun activityVisual(id: String): Pair<ImageVector, Color> = when (id) {
     "daftar_spk" -> Icons.Rounded.History to Color(0xFF667085)
     // Sama dgn tile "Inventory" di grid Akses Cepat (HomeScreen) — layar tujuannya sama.
     "inventory" -> Icons.Rounded.Inventory2 to MaterialTheme.colorScheme.primary
+    // Kaca pembesar, SENGAJA beda dari ikon kardus "Cari Barang" di sebelahnya: dua ubin
+    // bersebelahan dgn ikon sama akan terbaca sebagai duplikat, bukan dua tujuan berbeda.
+    "cari_semua" -> Icons.Rounded.Search to Color(0xFF0086C9)
     "ajukan_inden", "approval_inden" -> Icons.Rounded.PlaylistAddCheck to MaterialTheme.colorScheme.secondary
     "antrian_pdi" -> Icons.Rounded.FactCheck to Color(0xFF6941C6)
     "aki_saya", "aki_approval" -> Icons.Rounded.BatteryChargingFull to Color(0xFF9C27B0)

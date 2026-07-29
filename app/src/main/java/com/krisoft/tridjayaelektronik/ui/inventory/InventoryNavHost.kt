@@ -29,6 +29,7 @@ fun InventoryNavHost(
     navController: NavHostController = rememberNavController(),
     onCloseSearch: () -> Unit = {},
     openListSignal: Int = 0,
+    openSearchSignal: Int = 0,
     onExitToHome: () -> Unit = {}
 ) {
     // Bumped by Home's "Akses Cepat" Inventory tile. Navigating here (inside this NavHost's own
@@ -43,6 +44,29 @@ fun InventoryNavHost(
         if (openListSignal > 0) {
             navController.navigate(INVENTORY_ROUTE_LIST) {
                 popUpTo(SEARCH_ROUTE_ROOT) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    // Kembaran [openListSignal] untuk ubin "Cari Semua" (Activity → PINTASAN): tab yang SAMA,
+    // tujuan BERBEDA — pencarian gabungan produk + prospek, bukan daftar barang.
+    //
+    // Sinyal terpisah memang perlu, bukan kemewahan: tab ini tetap ter-compose seumur sesi
+    // (lihat `visitedDestinations` di MainActivity), jadi sesudah sekali "Cari Barang" nav
+    // controller-nya sudah duduk di INVENTORY_ROUTE_LIST dengan SEARCH_ROUTE_ROOT ter-pop —
+    // sekadar pindah tab tanpa sinyal akan memunculkan daftar barang lagi, bukan pencarian.
+    //
+    // `popUpTo(graph.id) { inclusive = true }` mengosongkan SELURUH tumpukan tab ini lebih
+    // dulu, apa pun isinya (daftar barang, detail produk, detail prospek), lalu masuk ulang
+    // ke start destination-nya. popUpTo ber-route tidak cukup: entri yang mau dituju bisa
+    // saja sudah di-pop `openListSignal` di atas, dan popUpTo yang tak menemukan padanan
+    // tidak membuang apa-apa — hasilnya tumpukan sisa yang bikin tombol Back mendarat di
+    // daftar barang, bukan keluar ke Activity.
+    LaunchedEffect(openSearchSignal) {
+        if (openSearchSignal > 0) {
+            navController.navigate(SEARCH_ROUTE_ROOT) {
+                popUpTo(navController.graph.id) { inclusive = true }
                 launchSingleTop = true
             }
         }

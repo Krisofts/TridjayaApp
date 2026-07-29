@@ -331,9 +331,11 @@ private fun DestinationContent(
     onSettingsBack: () -> Unit,
     onCloseSearch: () -> Unit,
     onQuickAccessInventory: () -> Unit,
+    onQuickAccessSearch: () -> Unit,
     onQuickAccessLeads: () -> Unit,
     onOpenSummaryTab: () -> Unit,
     inventoryOpenListSignal: Int,
+    inventoryOpenSearchSignal: Int,
     activityTabSelectedSignal: Int,
     activityNav: NavHostController,
     summaryNav: NavHostController,
@@ -346,6 +348,7 @@ private fun DestinationContent(
             onSettingsClick = onSettingsClick,
             onOpenSummaryTab = onOpenSummaryTab,
             onQuickAccessInventory = onQuickAccessInventory,
+            onQuickAccessSearch = onQuickAccessSearch,
             onQuickAccessLeads = onQuickAccessLeads,
             activityTabSelectedSignal = activityTabSelectedSignal,
             navController = activityNav
@@ -354,6 +357,7 @@ private fun DestinationContent(
             startDestination = HOME_ROUTE_DASHBOARD,
             onSettingsClick = onSettingsClick,
             onQuickAccessInventory = onQuickAccessInventory,
+            onQuickAccessSearch = onQuickAccessSearch,
             onQuickAccessLeads = onQuickAccessLeads,
             navController = summaryNav
         )
@@ -361,6 +365,7 @@ private fun DestinationContent(
             navController = inventoryNav,
             onCloseSearch = onCloseSearch,
             openListSignal = inventoryOpenListSignal,
+            openSearchSignal = inventoryOpenSearchSignal,
             // Same "leave this tab, land on Home" semantics as closing search — reused here for
             // quick-access entries where there's nothing left in this tab's own back stack to pop.
             onExitToHome = onCloseSearch
@@ -420,6 +425,9 @@ private fun MainScreen(
     // Bumped by Home's "Akses Cepat" Inventory tile — see the LaunchedEffect inside
     // InventoryNavHost for why the actual navigate() call lives there, not here.
     var inventoryOpenListTrigger by remember { mutableStateOf(0) }
+    // Kembarannya untuk ubin "Cari Semua": tab INVENTORY yang sama, tapi berhenti di
+    // SEARCH_ROUTE_ROOT (pencarian gabungan produk+prospek) alih-alih daftar barang.
+    var inventoryOpenSearchTrigger by remember { mutableStateOf(0) }
 
     // Sisa temuan I1 (merge-gate): tab Activity/Operasional sama-sama tetap ter-compose
     // (lihat `visitedDestinations` di bawah) — tukar tab murni TIDAK memicu lifecycle
@@ -455,6 +463,13 @@ private fun MainScreen(
     val onQuickAccessInventory: () -> Unit = {
         selected = AppDestination.INVENTORY
         inventoryOpenListTrigger++
+    }
+    // Ubin "Cari Semua" (Activity → PINTASAN). Tab yang sama dengan "Cari Barang", tujuan
+    // berbeda: SENGAJA tidak menaikkan `inventoryOpenListTrigger`, sebab sinyal itulah yang
+    // mem-pop SEARCH_ROUTE_ROOT dan membuat pencarian gabungan tak terjangkau sejak 41f570d.
+    val onQuickAccessSearch: () -> Unit = {
+        selected = AppDestination.INVENTORY
+        inventoryOpenSearchTrigger++
     }
 
     // Deep-link tap-notifikasi → layar relevan. One-shot: dijalankan sekali per nilai channel baru
@@ -599,9 +614,11 @@ private fun MainScreen(
                                 onSettingsBack = { selected = AppDestination.ACTIVITY },
                                 onCloseSearch = { selected = AppDestination.ACTIVITY },
                                 onQuickAccessInventory = onQuickAccessInventory,
+                                onQuickAccessSearch = onQuickAccessSearch,
                                 onQuickAccessLeads = onQuickAccessLeads,
                                 onOpenSummaryTab = onOpenSummaryTab,
                                 inventoryOpenListSignal = inventoryOpenListTrigger,
+                                inventoryOpenSearchSignal = inventoryOpenSearchTrigger,
                                 activityTabSelectedSignal = activityTabSelectedTrigger,
                                 activityNav = activityNav,
                                 summaryNav = summaryNav,
