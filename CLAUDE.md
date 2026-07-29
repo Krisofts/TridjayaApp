@@ -1,9 +1,10 @@
 # Tridjaya Elektronik — Android App Master Plan
 
-Native Android app (Kotlin + Jetpack Compose) for Tridjaya Elektronik's sales staff: browse
-inventory, manage CRM leads/prospects, view sales KPIs, and generate/share promotional product
-flyers. Talks to an existing Rust microservices backend at `https://tridjaya.com/api`
-(separate repo, not part of this project).
+Native Android app (Kotlin + Jetpack Compose) untuk staf lapangan Tridjaya Elektronik. Awalnya
+hanya "browse inventory + CRM + KPI + flyer", kini juga alat kerja harian operasional: absen,
+raport harian, alur SPK → surat jalan → serah terima → PDI → kasir, stok opname per serial,
+indent, mutasi, payroll, dan Pusat Notifikasi. Talks to an existing Rust microservices backend at
+`https://tridjaya.com/api` (separate repo, not part of this project).
 
 Read this file first in any new session. It exists so a future agent doesn't have to
 re-derive architecture decisions or repeat mistakes already fixed once.
@@ -24,30 +25,50 @@ re-derive architecture decisions or repeat mistakes already fixed once.
 
 ## Package layout
 
+Daftar di bawah tidak lengkap — ia menyebut yang perlu konteks. `ls` dulu sebelum menyimpulkan
+sebuah modul belum ada; app ini sudah jauh lebih luas dari "inventory + CRM + KPI" di paragraf
+pembuka (ada alur SPK/pengiriman/PDI, opname, indent, mutasi, payroll, notifikasi, dll).
+
 ```
 data/
   AuthRepository.kt        auth (login/profile/logout), token refresh race-condition-safe
   InventoryRepository.kt   product/stock sync + paging (Inventory tab only)
   SalesRepository.kt       KPI/target/leaderboard (klasemen) + Home dashboard cache + txn drill-down
   CrmRepository.kt         leads sync/cache + pipeline/CRM actions
+  DeliveryFlowRepository.kt  SPK → surat jalan → serah terima → PDI → kasir
+  OpnameRepository.kt      stok opname per unit/serial + antrean offline
+  RaportRepository.kt      raport harian / Input Aktivitas (BETA) — parseError utamakan `errors[0]`
+  NotificationsRepository.kt  Pusat Notifikasi (+ FCM deep-link)
+  Indent/Mutasi/Deadstock/Payroll/ErpPriceChanges/SerialInput/Off/Device Repository.kt
+  SpkTodayCounter.kt       hitungan SPK hari ini untuk kartu Activity
+  ProductImageUrl.kt       resolusi field ERP `Gambar` → URL gambar (dipakai flyer, list, search)
   TokenStore.kt            encrypted DataStore (Keystore AES-GCM): tokens, expiry, profile, mustChangePassword
   SessionCrypto.kt         Android Keystore AES-256/GCM encrypt/decrypt for the session blob
   SessionSerializer.kt     DataStore Serializer<PersistedSession> (encrypts via SessionCrypto)
-  local/                   Room entities/DAOs/AppDatabase (branch_stock, leads, dashboard cache, sync meta)
+  ThemePreferences.kt / SearchHistoryPreferences.kt   plain SharedPreferences (bukan terenkripsi)
+  local/                   Room entities/DAOs/AppDatabase (branch_stock, leads, dashboard cache,
+                           opname_unit, sync meta) — **version 14**
   remote/                  Retrofit API interfaces + NetworkModule (OkHttp client, auth interceptor)
   model/                   @Serializable DTOs mirroring backend JSON
   pricing/                 InstallmentCalculator (cicilan/OTR simulator, ported from TE KOTLINT reference)
   export/                  CSV export, flyer PNG export + WhatsApp/generic share intents
+domain/                    use case murni + logika teruji (auth, home, indent, inventory, leads,
+                           sales/KlasemenStandings, search) — target utama unit test
 di/AppModule.kt            Hilt providers: Room DB, DAOs, TokenStore, repositories
 ui/
   activity/     Activity — layar pertama app (tugas harian + antrian ber-gate), ActivityNavHost
-                (tabel route dipakai juga oleh tab Operasional, lihat catatan arsitektur di bawah)
-  home/         Dashboard lama (KPI, branch/sales rankings) — kini tab kedua "Operasional"
+                (tabel route dipakai juga oleh tab Operasional, lihat catatan arsitektur di bawah),
+                ActivityRegistry/ActivityPlan (gating), PanduanAlurScreen (alur + direktori petugas)
+  home/         Dashboard lama (KPI, branch/sales rankings) — kini tab kedua "Operasional";
+                QuickAccessMenus.kt = grid Akses Cepat ber-gate (pola sama ActivityRegistry)
+  deliveryflow/ SpkHub + layar lapangan (surat jalan, serah terima, PDI, kasir), BranchRegions
+  opname/, serials/, indent/, mutasi/, deadstock/, priceerp/, payroll/, notifications/
+  raport/       Input Aktivitas (BETA) — lihat "What's implemented"
   inventory/    Product list (search/filter/sort/paging), ProductDetailScreen (flyer generator)
   leads/        CRM: list/search, add, detail (stage move, won/lost/reopen)
-  login/, settings/
+  attendance/, search/, sales/, security/, session/, splash/, login/, settings/, update/
   navigation/   AppDestination enum — single source of truth for bottom-nav tabs
-  theme/        TridjayaAppTheme, ClayCard, TridjayaBottomNav, TridjayaHeader, custom icons
+  theme/        TridjayaAppTheme, ClayCard, TridjayaBottomNav, TridjayaHeader, RupiahInput, custom icons
 MainActivity.kt             hosts every tab's NavHost + the keep-all-tabs-alive bottom nav container
 ```
 
@@ -82,6 +103,18 @@ read from Room; a background sync only fires when stale, plus manual pull/refres
 still runs on init/refresh; it just writes into the same cache the UI already observes.
 This was a deliberate user choice (they were shown a "smarter tiered TTL" option and picked
 uniform 5h instead) — don't quietly change it back to tiered without asking.
+
+**Migrasi Room ditulis eksplisit begitu tabel memegang data yang belum tersinkron.** `AppDatabase`
+kini **version 14** (`branch_stock`, `leads`, dashboard cache, `opname_unit`, sync meta). Bump-bump
+awal mengandalkan `fallbackToDestructiveMigration()` dan itu aman selama isi tabel cuma cache yang
+bisa di-fetch ulang. Sudah tidak aman lagi: `opname_unit` dan lead `pendingSync` menyimpan **hasil
+kerja lapangan yang belum sampai server**, jadi migrasi destruktif = data user hilang diam-diam.
+Karena itu `AppModule.kt` (bukan `AppDatabase.kt`) mendaftarkan `MIGRATION_11_12` dan
+`MIGRATION_13_14` lewat `.addMigrations(...)`. **Jebakannya:** `.fallbackToDestructiveMigration()`
+masih terpasang sebagai jaring pengaman, jadi menaikkan `version` **tanpa** menulis `Migration`
+tetap kompilasi hijau dan tetap menghapus tabel di HP user tanpa peringatan (itulah yang terjadi di
+12→13). Tiap bump: tanyakan "tabel ini bisa hilang tanpa rugi?" — kalau tidak, tulis `Migration`
+sungguhan dan daftarkan.
 
 **Tab switching must not tear down state.** `MainActivity.kt`'s `MainScreen` composes *every
 visited tab* once and keeps it alive for the session (visibility-toggled via alpha + a
@@ -192,19 +225,19 @@ without it, the bottom-docked search field double-pads on some devices (window a
 `imePadding()`) and floats mid-screen. The search Column uses `.imePadding()`; adjustResize makes
 that report the keyboard correctly. Wired via `TridjayaFloatingNav(pillItems)`, **overlaid** at `BottomCenter`
 inside `MainActivity`'s content `Box` (NOT `Scaffold.bottomBar`) so content scrolls *behind* it
-like Rhythm — every scrollable tab (Home/Inventory/Leads/RankingList/Settings) adds ~100dp bottom
-content clearance so nothing hides permanently. The pill uses `Modifier.weight(1f)` to stretch
-full-width up to the FAB (items spread evenly), not wrap-content. The nav **hides on any
-sub-screen**: `MainScreen` hoists each tab's nested `NavHostController`, watches its current route
+like Rhythm — every scrollable tab (Activity/Operasional/Inventory/Leads/RankingList/Settings) adds
+~100dp bottom content clearance so nothing hides permanently. Sejak search FAB dihapus, pil
+memenuhi lebar sendirian dan tab terpilih diberi **sisa ruang** supaya label panjang
+("Operasional") tak terpotong (6b40d08) — jangan kembalikan ke pembagian rata. The nav **hides on
+any sub-screen**: `MainScreen` hoists each tab's nested `NavHostController`, watches its current route
 via `currentBackStackEntryAsState`, and an `AnimatedVisibility` (slide down + fade) shows the nav
-only when the selected tab is on its root list route (`HOME_ROUTE_DASHBOARD`/`INVENTORY_ROUTE_LIST`/
-`LEADS_ROUTE_LIST`) — hidden on pushed details (product/lead/ranking/add) and on Settings, so those
-full-screen pages own the frame. Each nested `NavHost` uses Rhythm's sub-screen transition
+only when the selected tab is on its root route — hidden on pushed details (product/lead/ranking/add)
+and on Settings, so those full-screen pages own the frame. Each nested `NavHost` uses Rhythm's
+sub-screen transition
 (`fadeIn(300) + slideInVertically(offsetY = it/4, tween 350 EaseInOutQuart)`, reversed on pop).
 This was chosen over Material3 `NavigationBar` **and** over `NavigationSuiteScaffold` at the user's
 explicit request (they compared all three) — don't swap it without asking. The Leads screen's own
-add FAB is deliberately a smaller tonal `SmallFloatingActionButton` so it reads as secondary,
-stacked above the search FAB rather than as a duplicate circle.
+add FAB is deliberately a smaller tonal `SmallFloatingActionButton` so it reads as secondary.
 
 **Edge-to-edge is handled in `Theme.kt` via `SideEffect`**, not `enableEdgeToEdge()` in
 `MainActivity`. Every screen's own `Scaffold` sets `contentWindowInsets = WindowInsets(0,0,0,0)`
@@ -241,17 +274,22 @@ specific reference design (blue/white poster with promo price, tenor/cicilan gri
 price cards) — colors are intentionally hardcoded in a `FlyerColors` object, not
 `MaterialTheme`-driven, so the shared image looks identical regardless of the user's device theme.
 
-Capture works via `View.draw(Canvas)` on the root view + cropping to the flyer's
-`onGloballyPositioned` bounds (no newer Compose `GraphicsLayer` capture API — wasn't confirmed
-available in this project's resolved Compose version, so don't assume it exists without checking
-`ui-graphics-android`'s actual jar contents first). Three actions: "Buat Gambar" (generate +
-generic Android share sheet), "Kirim ke WA" (generate + `Intent` targeted at `com.whatsapp`,
-falls back to generic share if not installed), "Salin" (copies a formatted "Struktur Kredit" text
-block to clipboard).
+Capture works via **`PixelCopy`** (API 24+) on the host Window, cropped to the flyer's
+`onGloballyPositioned` bounds, with a `legacyCapture()` `View.draw(Canvas)` fallback when no Window
+is reachable — see the performance section for why. No newer Compose `GraphicsLayer` capture API is
+used (wasn't confirmed available in this project's resolved Compose version, so don't assume it
+exists without checking `ui-graphics-android`'s actual jar contents first). Three actions: "Buat
+Gambar" (generate + generic Android share sheet), "Kirim ke WA" (generate + `Intent` targeted at
+`com.whatsapp`, falls back to generic share if not installed), "Salin" (copies a formatted
+"Struktur Kredit" text block to clipboard).
 
-**Product images are not implemented.** `FlyerImagePlaceholder` is a static placeholder box —
-the backend/local data model has no product photo URL field at all. Wiring in real photos (e.g.
-via Coil `AsyncImage`) needs a backend field first; don't assume one exists.
+**Product images ARE implemented now** (catatan lama "tidak ada field foto" sudah kedaluwarsa).
+Foto datang dari field ERP `Gambar`; `data/ProductImageUrl.resolve()` menormalkan nilainya —
+formatnya belum pasti dari backend, bisa path relatif atau URL penuh, jadi ia melewatkan yang
+sudah `http(s)://` dan memprefiks sisanya dengan `BuildConfig.API_BASE_URL`. **Semua** pemakai
+harus lewat helper itu supaya aturannya seragam (`FlyerLayouts.kt`, `InventoryScreen.kt`,
+`GlobalSearchScreen.kt`); render pakai Coil (`io.coil-kt:coil-compose`). Placeholder tetap dipakai
+saat `Gambar` kosong/null.
 
 ## Installment/cicilan simulator (`data/pricing/InstallmentCalculator.kt`)
 
@@ -286,9 +324,10 @@ nyata. Kontrak lengkap: `docs/absen-api-contract.md`.
   ke app kamera; kalau CAMERA dideklarasi wajib request runtime — jangan tambah tanpa alasan).
 - **Lokasi**: framework `LocationManager` (`ui/attendance/LocationProvider.kt`, suspend, tanpa
   play-services) — izin `ACCESS_FINE/COARSE_LOCATION` di manifest + request runtime.
-- **Menu**: tile "Absen" (ikon Fingerprint, teal) paling depan di `QuickAccessRow` (Home), route
-  nested `home_absen` di `HomeNavHost`. Role gate di **backend** (STAFF_ROLES self-service); app
-  belum menyembunyikan tile per-role (semua user login lihat menu, backend menolak yang tak berhak).
+- **Menu**: absen adalah tugas harian pertama di layar **Activity**, route nested `home_absen` di
+  `ActivityNavHost` (nama route `home_*` sengaja tak berubah saat `HomeNavHost` di-rename — lihat
+  catatan arsitektur Activity). Role gate di **backend** (STAFF_ROLES self-service); gate di app
+  kini dinyatakan lewat `ActivityRegistry`/`QuickAccessMenus`, bukan lagi "semua user lihat menu".
 - **Prasyarat data**: tiap cabang perlu di-set geofence via `PUT /api/absensi/config/{cabangId}`
   (admin). Tanpa config → jarak null, absen tak pernah di-flag telat/luar-area (fail-open).
 
@@ -314,8 +353,10 @@ nyata. Kontrak lengkap: `docs/absen-api-contract.md`.
   `run_in_background`, watch the Gradle daemon's `java.exe` CPU/RAM climbing to confirm progress,
   and only trust `BUILD SUCCESSFUL` in the output — `--console=plain` buffers, so an empty output
   file mid-build is normal, not a hang.
-- **`versionCode` must be bumped** in `app/build.gradle.kts` for every release (currently `1`) —
-  the update system's Remote Config comparison and Play/side-load upgrades both depend on it.
+- **`versionCode` must be bumped** in `app/build.gradle.kts` for every release (per 2026-07-29:
+  `versionCode = 49`, `versionName = "2.38"`) — the update system's Remote Config comparison and
+  Play/side-load upgrades both depend on it. Pola commit yang dipakai: satu commit
+  `chore(release): bump versi X.YY (<ringkasan>)` di akhir tiap batch fitur/fix.
 
 ## Release hardening (production-readiness pass)
 
@@ -371,7 +412,7 @@ Three fixes from a dedicated performance audit — don't regress these:
   `ARGB_8888` bitmap and rasterised the whole view tree synchronously on the UI thread (a visible
   freeze on tap). A `legacyCapture()` software fallback remains for the rare case where no host
   Window is reachable. It's a `suspend` fn — callers already invoke it from a coroutine.
-- **Home dashboard fires its 4 endpoints concurrently.** `InventoryRepository.homeDashboard()`
+- **Home dashboard fires its 4 endpoints concurrently.** `SalesRepository.homeDashboard()`
   wraps the KPI / monthly-target / branch-performance / sales-performance calls in
   `coroutineScope { async { … } }` so cold-load latency is the slowest single round-trip, not the
   sum of four. Keep them independent — don't serialise them back.
@@ -428,7 +469,20 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   generator + WhatsApp share + installment simulator
 - CRM/Leads: list with search + summary stats, add lead, detail screen (WhatsApp chat deep link,
   pipeline stage picker, won/lost/reopen actions)
-- Settings: profile display, logout
+- **Alur SPK → pengiriman → PDI → kasir** (`ui/deliveryflow/`): SpkHub + daftar SPK, input item
+  (autocomplete barang ber-stok+harga, picker serial, No PO, kolom nominal berformat rupiah lewat
+  `ui/theme/RupiahInput.kt`), terbit surat jalan sekali ketuk, serah terima ber-GPS, klaim PDI
+  ("Ambil PDI" + label "diproses oleh X"), konfirmasi pembayaran kasir. Syarat kirim disatukan
+  (link Maps wajib untuk Sales Antar Sendiri); alasan tolak diskon wajib.
+- **Stok opname per unit/serial** (`ui/opname/`, `data/OpnameRepository.kt`): hitung fisik per unit
+  ber-serial — **bukan** angka jumlah per SKU — layar scan per unit, laporan PDF berisi daftar
+  serial, antrean offline. Normalisasi serial dijaga sejajar implementasi Rust lewat unit test.
+- **Pusat Notifikasi** (`ui/notifications/`) + deep-link FCM; notifikasi terbaca bisa dihapus.
+- Indent, mutasi histori, deadstock, perubahan harga ERP, payroll, input serial — masing-masing
+  satu layar + ViewModel, semuanya ber-gate (lihat `ActivityRegistry`/`QuickAccessMenus`).
+- **Panduan Alur + Direktori Petugas** (`ui/activity/PanduanAlurScreen.kt`) dari tombol PINTASAN.
+- Settings: profile display, nomor WA bisa diubah, semua role terlihat, logout dikonfirmasi,
+  cabang, cek pembaruan (`ui/settings/SettingsFormat.kt` memformat nilai tampilan)
 - Input Aktivitas / raport harian (`ui/raport/`, **BETA** — kartu di Activity berlabel BETA):
   daftar jobdesk posisi karyawan dari `GET /api/jobdesk-divisions` (dicocokkan ke `divisi`
   profil lewat `matchJobdeskPosition`, port 1:1 `getPositionMatch` web — **tak boleh** jatuh ke
@@ -464,30 +518,6 @@ edge-to-edge, R8/shrinking, synchronized token refresh). This pass covered the r
 
 **Deliberately not applied — with reasoning, don't "fix" these without checking with the user first:**
 
-- ~~Dynamic color deliberately not applied~~ — **superseded** (user requested full theming):
-  `TridjayaAppTheme(themeState)` renders the chosen preset (`colorSchemeFor` in `ThemeSchemes.kt`
-  — 9 presets: the **default is now `Biru Tridjaya`** — the flyer's brand blue `#1E63E9`, built by
-  `blueDefaultScheme()` in `ThemeSchemes.kt` (blue primary/secondary/tertiary triad **plus**
-  softly blue-tinted neutral roles — background `#F6F8FF`, container `#EAEEF6` — unlike the other
-  presets which share the M3 neutrals; this replaced the old purple `#6750A4` default). Plus
-  Lavender/Rose/Warm/Amber/Forest/Mint/Cool/Ocean) OR Material
-  You `dynamicLight/DarkColorScheme` when enabled on Android 12+, with dark mode system/light/dark.
-  Choices persist in `ThemePreferences` (`data/`, Hilt singleton + StateFlow) which
-  `MainActivity.setContent` observes so the whole app recolours live; edited from Settings → Tema
-  (`ThemeSettingsScreen`). Flyer stays theme-independent (hardcoded `FlyerColors`), unaffected.
-  Icons app-wide use `Icons.Rounded.*` (rounded variants, Rhythm-style); primary interactions fire a
-  light `CONTEXT_CLICK` haptic via `rememberHapticClick`; `ExpressiveShapes` adds squircle/asymmetric
-  tokens.
-
-**App theme = Rhythm's default M3 theme.** The color palette (`Color.kt` — seed `#6750A4` M3
-baseline purple, rosy-pink tertiary, full surface-container elevation set), type scale (`Type.kt`),
-and shape scale (`Shape.kt`, 8/12/16/24/32 dp) were ported *exactly* from the Rhythm reference app
-(github.com/cromaguy/Rhythm) at the user's explicit request. This deliberately replaced the earlier
-custom violet (`#5C4AD5` + amber tertiary) branding — that decision is superseded, don't restore it.
-Only the theme's *visual tokens* were ported, NOT Rhythm's theming engine (album-art dynamic color,
-downloadable "Geom" font, 12 switchable preset schemes, festive overlays) — those are music-app
-machinery and out of scope. If the user later wants the switchable presets or the Geom font, they'd
-need to be wired in fresh.
 - **String resource extraction**: the whole UI hardcodes Indonesian strings directly in `Text(...)`
   calls rather than `stringResource(R.string.xxx)` (`strings.xml` only has `app_name`). This is a
   real localization/testability gap per official guidance, but migrating 30+ call sites across
@@ -498,6 +528,42 @@ need to be wired in fresh.
   official Gradle/AGP recommendation. Low runtime impact, pure tooling/maintainability — worth
   doing but isn't urgent, and touching every dependency line in one pass is unnecessary risk for
   a build that's currently working.
+
+## Tema & warna
+
+Bagian ini pernah terpecah dua catatan yang saling bertabrakan (satu bilang default `Biru
+Tridjaya` `#1E63E9` lewat `blueDefaultScheme()`, satu bilang tema app = ungu Rhythm `#6750A4`).
+**Keduanya sudah tidak cocok dengan kode** — `blueDefaultScheme()` tak ada lagi, dan ungu Rhythm
+bukan warna app. Yang berlaku sekarang, dari `ui/theme/ThemeSchemes.kt`:
+
+- **Default = `AppColorScheme.DEFAULT`, label "Tridjaya Web", primary `#465FFF`**, dibangun
+  `tridjayaWebScheme(dark)` — mengikuti palet web Tridjaya, bukan M3 baseline. Ia mendefinisikan
+  **seluruh** role sendiri termasuk netral (light: background/surface putih `#FFFFFF`, dark:
+  `#101828` dengan tangga `surfaceContainer*` sendiri), jadi jangan berasumsi ia memakai netral
+  bersama seperti preset lain.
+- **8 preset lain** — Lavender/Rose/Warm/Amber/Forest/Mint/Cool/Ocean — cuma memasok triad
+  primary/secondary/tertiary lewat helper `lightTriad()`/`darkTriad()`, dan **meminjam netral +
+  error dari `Color.kt`**. Di situlah warisan Rhythm sesungguhnya masih hidup.
+- **`Color.kt` = sisa port Rhythm** (github.com/cromaguy/Rhythm), bersama `Type.kt` dan
+  `Shape.kt` (8/12/16/24/32 dp) — di-port persis atas permintaan user, menggantikan branding
+  violet lama (`#5C4AD5` + amber tertiary); jangan pulihkan yang lama. Tapi seed ungu `#6750A4`
+  kini **praktis mati**: `PrimaryLight` tidak dirujuk di mana pun (cek `grep -rn "PrimaryLight\b"`
+  — hanya deklarasinya sendiri). Yang benar-benar dipakai dari file itu adalah netral, error, dan
+  `InversePrimaryLight`. Jadi: Rhythm = substrat netral + tipografi + bentuk, **bukan** warna
+  utama app.
+- Hanya *visual token* Rhythm yang di-port, BUKAN mesin temanya (dynamic color dari album art,
+  font "Geom" unduhan, preset festive) — itu mesin app musik, di luar lingkup.
+- **Material You** (`dynamicLight/DarkColorScheme`) tersedia sebagai pilihan di Android 12+;
+  mode gelap ikut sistem/terang/gelap. Pilihan disimpan `ThemePreferences` (`data/`, Hilt
+  singleton + StateFlow) yang di-observe `MainActivity.setContent`, jadi seluruh app berganti
+  warna live; diatur dari Settings → Tema (`ThemeSettingsScreen`).
+- **Flyer sengaja kebal tema** (`FlyerColors` hardcoded) supaya gambar yang dibagikan identik di
+  HP mana pun — lihat bagian flyer.
+- Ikon se-app pakai `Icons.Rounded.*`; interaksi utama memicu haptic `CONTEXT_CLICK` ringan lewat
+  `rememberHapticClick`; `ExpressiveShapes` menambah token squircle/asimetris.
+
+Catatan historis: "dynamic color deliberately not applied" sudah **superseded** — user memang
+meminta theming penuh.
 
 ## Known gaps / natural next steps
 
@@ -522,7 +588,8 @@ need to be wired in fresh.
   refresh / list-VM init (`GetLeadsUseCase.syncPending()`). `syncLeads()` flushes pending first and
   re-appends any still-pending rows after `replaceAll` so a refresh never drops an unsynced lead.
   `@AppScope CoroutineScope` (in `AppModule`) keeps the push alive past the Add-Lead screen. DB
-  bumped to v5 for the `pendingSync` column (destructive migration — cache re-syncs).
+  was bumped to v5 for the `pendingSync` column at the time (destructive migration — cache
+  re-syncs); skema sekarang **v14**, lihat catatan migrasi Room di bawah.
   **Still online-only:** move-stage / mark won/lost (they act on a server `id`, so a pending lead
   can't be mutated until it syncs).
 - No string resources (see guideline section above) and no Gradle version catalog — both real
