@@ -53,6 +53,18 @@ MainActivity.kt             hosts every tab's NavHost + the keep-all-tabs-alive 
 
 ## Architecture decisions worth knowing before you touch things
 
+**`java.time` DILARANG di `app/src/main`.** minSdk 24, dan `coreLibraryDesugaring` TIDAK
+diaktifkan (cek sendiri: `grep -r desugar` di semua `*.kts` — nihil), sedangkan `java.time`
+baru ada di API 26. Kompilasi tetap hijau; yang pecah adalah HP Android 7.0/7.1 di lapangan,
+dengan `NoClassDefFoundError` — turunan `Error`, BUKAN `Exception`, jadi gejalanya berbeda-beda
+tergantung penangkap terdekat: `runCatching` (menangkap `Throwable`) menelannya jadi **nol
+senyap selamanya**, sementara `catch (e: Exception)` tidak menangkapnya sama sekali dan
+**app-nya tutup**. Sudah menggigit dua kali dalam sehari (371d0f5 `isGantung` → senyap;
+`InventoryRepository.findInTransitHint` → crash saat hasil pencarian kosong). Pakai
+`SimpleDateFormat`/`Calendar`, dan pakai ULANG helper yang sudah ada alih-alih menulis util
+tanggal ke-sekian: `parseIsoUtcMillis` (`data/model/NotificationModels.kt`) untuk parse ISO,
+`KlasemenStandings.todayIso()`/`shiftDays()` (`domain/sales/`) untuk `yyyy-MM-dd` + geser hari.
+
 **Region-aware product identity.** The ERP's `kode` (product code) collides across regions —
 the same code can be a *different physical product* in a different branch region. Product
 identity is always the composite key `kode + kodeCabang`, never `kode` alone. This shows up in

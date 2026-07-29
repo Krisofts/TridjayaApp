@@ -14,6 +14,7 @@ import com.krisoft.tridjayaelektronik.data.model.IndentDto
 import com.krisoft.tridjayaelektronik.data.model.IndentListData
 import com.krisoft.tridjayaelektronik.data.model.UpdateIndentRequest
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
+import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -69,6 +70,25 @@ data class InTransitHint(
     val tujuanCabang: String,
     val tanggal: String
 )
+
+/** Sejauh mana ke belakang riwayat mutasi OUT ditelusuri [InventoryRepository.findInTransitHint]. */
+internal const val IN_TRANSIT_LOOKBACK_DAYS = 30
+
+/**
+ * Batas bawah jendela riwayat mutasi (`yyyy-MM-dd`) = [todayIso] mundur
+ * [IN_TRANSIT_LOOKBACK_DAYS] hari. Fungsi murni supaya ambangnya bisa diuji tanpa
+ * Retrofit/Room (pola sama [nextSyncStep]).
+ *
+ * SENGAJA lewat [KlasemenStandings.shiftDays] (`Calendar` + `SimpleDateFormat`), BUKAN
+ * `java.time.LocalDate.now().minusDays(30)` yang dipakai versi sebelum 2026-07-29: modul ini
+ * minSdk 24 TANPA `coreLibraryDesugaring`, sedangkan `java.time` baru ada di API 26. Di
+ * Android 7.0/7.1 baris itu melempar `NoClassDefFoundError` — turunan `Error`, jadi
+ * `catch (e: Exception)` di [InventoryRepository.findInTransitHint] TIDAK menangkapnya dan
+ * app-nya benar-benar tutup (beda dari kasus `isGantung` 371d0f5 yang tertelan `runCatching`).
+ * Alih-alih menulis parser/format tanggal keempat, ini memakai ulang helper yang sudah ada.
+ */
+internal fun inTransitFromDate(todayIso: String = KlasemenStandings.todayIso()): String =
+    KlasemenStandings.shiftDays(todayIso, -IN_TRANSIT_LOOKBACK_DAYS)
 
 @Singleton
 class InventoryRepository @Inject constructor(
@@ -150,8 +170,8 @@ class InventoryRepository @Inject constructor(
         val needle = query.trim()
         if (needle.isEmpty() || dealerCode.isEmpty()) return null
         return try {
-            val fromDate = java.time.LocalDate.now().minusDays(30).toString()
-            val listResponse = api.mutasiHistori(dealer = dealerCode, arah = "out", from = fromDate, limit = limit)
+            val listResponse =
+                api.mutasiHistori(dealer = dealerCode, arah = "out", from = inTransitFromDate(), limit = limit)
             val rows = listResponse.body()?.data?.items.orEmpty()
             for (row in rows) {
                 val detailResponse = api.mutasiHistoriDetail(noTransaksi = row.noTransaksi, arah = "out")
