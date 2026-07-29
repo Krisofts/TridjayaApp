@@ -236,7 +236,10 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
     ActivityItem(
         id = "spk_gantung",
         label = "SPK Gantung",
-        subtitle = "Sudah diantar >24 jam, bayar belum dikonfirmasi",
+        // Sejak 2026-07-29 kartunya berangka SEMUA unit terkirim yang bayarnya
+        // belum dikonfirmasi (berapa pun umurnya) — subtitle ikut dilepas dari
+        // ">24 jam", karena umur kini tampil sbg baris `alert` terpisah.
+        subtitle = "Sudah diantar, bayar belum dikonfirmasi",
         kind = ActivityKind.ANTRIAN,
         capability = "kasir.queue",
         allowedRoles = KASIR_QUEUE_ROLES,

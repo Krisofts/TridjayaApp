@@ -467,10 +467,18 @@ private fun QueueRow(card: ActivityCard, onClick: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(card.item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                // `alert` (mis. "2 lewat tenggat 24 jam") menggantikan subtitle DAN
+                // diberi warna error — itu satu-satunya pembeda mendesak vs biasa
+                // sejak angka kartu berhenti menyaring umur (lihat spkGantungRingkas).
                 Text(
-                    if (card.failed) "Gagal memuat — ketuk untuk coba lagi" else card.item.subtitle,
+                    when {
+                        card.failed -> "Gagal memuat — ketuk untuk coba lagi"
+                        else -> card.alert ?: card.item.subtitle
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (card.alert != null && !card.failed) FontWeight.Bold else FontWeight.Normal,
+                    color = if (card.alert != null && !card.failed) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Surface(

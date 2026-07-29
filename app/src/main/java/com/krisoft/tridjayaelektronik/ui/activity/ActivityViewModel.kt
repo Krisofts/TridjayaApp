@@ -107,21 +107,6 @@ class ActivityViewModel @Inject constructor(
         viewModelScope.launch { load() }
     }
 
-    /**
-     * `deliveredAt` sudah lewat 24 jam? Timestamp kontrak delivery berformat
-     * `YYYY-MM-DD HH:MM:SS` dalam UTC (kadang bersufiks `Z`). Gagal parse =
-     * `false` (tak dihitung gantung): lebih baik kartunya kurang satu daripada
-     * menuduh kasir lalai gara-gara format tak terbaca.
-     */
-    private fun isGantung(deliveredAt: String?): Boolean {
-        val raw = deliveredAt?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-        val iso = raw.removeSuffix("Z").replace(' ', 'T')
-        val millis = runCatching {
-            java.time.LocalDateTime.parse(iso).toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
-        }.getOrNull() ?: return false
-        return System.currentTimeMillis() - millis > GANTUNG_THRESHOLD_MS
-    }
-
     private suspend fun load() {
         val myGeneration = ++loadGeneration
         _uiState.value = _uiState.value.copy(isLoading = true)
@@ -141,6 +126,8 @@ class ActivityViewModel @Inject constructor(
         var raportExpected: Int? = null
         /** `null` = target prospek tak diketahui — lihat `prospekTaskDetail`. */
         var prospekTarget: ProspekTargetDto? = null
+        /** `null` = tak ada SPK gantung yang lewat tenggat (atau tak diambil). */
+        var gantungAlert: String? = null
 
         coroutineScope {
             val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
@@ -200,14 +187,16 @@ class ActivityViewModel @Inject constructor(
             }
 
             // SPK Gantung: server memberi seluruh unit terkirim yang belum
-            // dikonfirmasi pembayarannya; ambang 24 jam disaring DI SINI supaya
-            // kartunya benar-benar berarti "sudah lewat tenggat", bukan sekadar
-            // "belum ditutup". Baris tanpa `deliveredAt` tak dihitung — tak bisa
-            // dinilai umurnya, dan menebaknya berarti menuduh kasir lalai.
+            // dikonfirmasi pembayarannya. Angka kartu = SEMUA baris itu (kasir
+            // harus tahu ada kerjaan sejak menit pertama); umur >24 jam turun
+            // pangkat jadi baris penanda mendesak — lihat `spkGantungRingkas`.
             if (ActivitySource.DLV_PENDING_PAYMENT in sources) jobs += async {
                 when (val r = deliveryRepository.list(view = "pending_payment")) {
-                    is AuthResult.Success ->
-                        counts[ActivitySource.DLV_PENDING_PAYMENT] = r.data.count { isGantung(it.deliveredAt) }
+                    is AuthResult.Success -> {
+                        val ringkas = spkGantungRingkas(r.data.map { it.deliveredAt })
+                        counts[ActivitySource.DLV_PENDING_PAYMENT] = ringkas.total
+                        gantungAlert = spkGantungAlert(ringkas)
+                    }
                     is AuthResult.Failure -> failed += ActivitySource.DLV_PENDING_PAYMENT
                 }
             }
@@ -299,7 +288,12 @@ class ActivityViewModel @Inject constructor(
             cabangName = user?.cabangName.orEmpty(),
             tasks = tasks,
             progress = dailyProgressLabel(tasks),
-            queueCards = buildQueueCards(items, counts, failed, roles),
+            queueCards = buildQueueCards(
+                items, counts, failed, roles,
+                alerts = gantungAlert
+                    ?.let { mapOf(ActivitySource.DLV_PENDING_PAYMENT to it) }
+                    ?: emptyMap(),
+            ),
             actions = items.filter { it.kind == ActivityKind.AKSI },
             spkToday = spkTodayCounter.todayCount(todayIso),
             panduanVisible = panduanAlurVisible(roles, capabilities),
@@ -308,6 +302,5 @@ class ActivityViewModel @Inject constructor(
 
     private companion object {
         const val CACHE_WINDOW_MS = 60_000L
-        const val GANTUNG_THRESHOLD_MS = 24 * 60 * 60 * 1000L
     }
 }

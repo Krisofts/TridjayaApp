@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
 import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
+import com.krisoft.tridjayaelektronik.data.model.parseIsoUtcMillis
 
 /**
  * Penyusun tampilan layar Activity — SENGAJA fungsi murni tanpa Android/Compose
@@ -12,6 +13,12 @@ data class ActivityCard(
     /** `null` = belum/ gagal dimuat — BUKAN nol. */
     val count: Int?,
     val failed: Boolean,
+    /**
+     * Baris pengganti subtitle, dirender MENONJOL (warna error) — dipakai kartu
+     * yang angkanya perlu dipecah jadi "biasa vs mendesak" (SPK Gantung:
+     * "2 lewat tenggat 24 jam"). `null` = pakai subtitle registri seperti biasa.
+     */
+    val alert: String? = null,
 )
 
 data class DailyTask(
@@ -37,6 +44,8 @@ internal fun buildQueueCards(
     counts: Map<ActivitySource, Int?>,
     failed: Set<ActivitySource>,
     effectiveRoles: Set<String>,
+    /** Baris [ActivityCard.alert] per sumber — lihat [spkGantungAlert]. */
+    alerts: Map<ActivitySource, String> = emptyMap(),
 ): List<ActivityCard> = items
     .filter { it.kind == ActivityKind.ANTRIAN }
     .map { item ->
@@ -45,6 +54,8 @@ internal fun buildQueueCards(
             item = item,
             count = if (gagal) null else counts[item.source],
             failed = gagal,
+            // Gagal muat: barisnya sudah dipakai pesan "ketuk untuk coba lagi".
+            alert = if (gagal) null else alerts[item.source],
         )
     }
     .filter { card ->
@@ -52,6 +63,60 @@ internal fun buildQueueCards(
         else card.failed || driverCardVisible(card.count, effectiveRoles)
     }
     .sortedByDescending { it.count ?: -1 }
+
+// ── Kartu "SPK Gantung" (antrian konfirmasi pembayaran kasir) ───────────────
+
+/** Ambang "lewat tenggat" — bukan lagi syarat MUNCUL, cuma penanda mendesak. */
+internal const val GANTUNG_TENGGAT_MS = 24 * 60 * 60 * 1000L
+
+/**
+ * [total] = SEMUA unit terkirim yang pembayarannya belum dikonfirmasi;
+ * [lewatTenggat] = bagian yang umurnya sudah melewati [GANTUNG_TENGGAT_MS].
+ */
+internal data class SpkGantungRingkas(val total: Int, val lewatTenggat: Int)
+
+/**
+ * Timestamp `deliveredAt` kontrak delivery (`YYYY-MM-DD HH:MM:SS` UTC, kadang
+ * bersufiks `Z`) → epoch millis. Spasi dinormalkan jadi `T` lalu diserahkan ke
+ * [parseIsoUtcMillis] (SimpleDateFormat).
+ *
+ * SENGAJA bukan `java.time.LocalDateTime.parse`, yang dipakai versi sebelum
+ * 2026-07-29: modul ini minSdk 24 TANPA `coreLibraryDesugaring` (dicek di
+ * `app/build.gradle.kts`), jadi di Android 7.0/7.1 baris itu melempar
+ * `NoClassDefFoundError` — turunan `Error`, yang tetap tertangkap
+ * `runCatching` (menangkap `Throwable`), sehingga kegagalannya SENYAP dan
+ * hitungannya nol selamanya di HP tersebut.
+ */
+internal fun deliveredAtUtcMillis(raw: String?): Long? =
+    parseIsoUtcMillis(raw?.trim()?.takeIf { it.isNotEmpty() }?.replace(' ', 'T'))
+
+/**
+ * Aturan hitung kartu SPK Gantung.
+ *
+ * Angka kartu = JUMLAH SELURUH baris, bukan hanya yang lewat 24 jam. Menyaring
+ * lebih dulu (perilaku sebelum 2026-07-29) membuat kartunya nol sepanjang hari
+ * pertama — persis yang terjadi setelah data SPK produksi dihapus: semua SPK
+ * baru berumur < 24 jam, kasir tak pernah tahu ada yang menunggu.
+ *
+ * Umurnya tidak dibuang, cuma turun pangkat jadi [SpkGantungRingkas.lewatTenggat]
+ * (dirender [spkGantungAlert]) — itu yang membedakan mendesak dari biasa.
+ * Baris yang `deliveredAt`-nya kosong/tak terbaca tetap DIHITUNG di [total]
+ * (pekerjaannya nyata) tapi tak pernah dituduh lewat tenggat.
+ */
+internal fun spkGantungRingkas(
+    deliveredAt: List<String?>,
+    nowMillis: Long = System.currentTimeMillis(),
+    tenggatMs: Long = GANTUNG_TENGGAT_MS,
+): SpkGantungRingkas = SpkGantungRingkas(
+    total = deliveredAt.size,
+    lewatTenggat = deliveredAt.count { raw ->
+        deliveredAtUtcMillis(raw)?.let { nowMillis - it > tenggatMs } ?: false
+    },
+)
+
+/** `null` = tak ada yang lewat tenggat → kartu pakai subtitle biasa. */
+internal fun spkGantungAlert(ringkas: SpkGantungRingkas): String? =
+    if (ringkas.lewatTenggat > 0) "${ringkas.lewatTenggat} lewat tenggat 24 jam" else null
 
 /**
  * Jam dari timestamp kontrak absensi (`YYYY-MM-DD HH:MM:SS`, bukan ISO "T").

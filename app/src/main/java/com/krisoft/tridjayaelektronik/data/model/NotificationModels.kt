@@ -60,7 +60,13 @@ fun relativeTimeId(iso: String?, nowMillis: Long = System.currentTimeMillis()): 
     }
 }
 
-private fun parseIsoUtcMillis(iso: String?): Long? {
+/**
+ * `yyyy-MM-dd'T'HH:mm:ss…` (naive UTC) → epoch millis. `internal`, bukan
+ * private: dipakai ulang `ui/activity/ActivityPlan.kt` (umur `deliveredAt`
+ * kartu SPK Gantung). Sengaja SimpleDateFormat — `java.time` butuh API 26 dan
+ * modul ini minSdk 24 tanpa `coreLibraryDesugaring`.
+ */
+internal fun parseIsoUtcMillis(iso: String?): Long? {
     if (iso == null || iso.length < 19) return null
     return runCatching {
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {

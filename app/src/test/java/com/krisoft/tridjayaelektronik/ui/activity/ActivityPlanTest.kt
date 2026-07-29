@@ -53,6 +53,112 @@ class ActivityPlanTest {
         assertEquals(2, cards.first { it.item.id == "aki_saya" }.count)
     }
 
+    // ── Kartu SPK Gantung (antrian konfirmasi pembayaran kasir) ─────────────
+    //
+    // Bug 2026-07-29: angka kartu disaring `isGantung` (>24 jam) DULU, jadi
+    // setelah seluruh data SPK produksi dihapus semua baris berumur < 24 jam
+    // dan kartunya nol seharian — kasir tak pernah tahu ada yang menunggu.
+
+    /** `nowMillis` tetap supaya test tak bergantung jam mesin. */
+    private val now = 1_800_000_000_000L // 2027-01-15 08:00:00 UTC, arbitrer
+    private fun jamLalu(n: Long) = utcString(now - n * 60 * 60 * 1000L)
+
+    private fun utcString(millis: Long) = java.text.SimpleDateFormat(
+        "yyyy-MM-dd HH:mm:ss", java.util.Locale.US
+    ).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        .format(java.util.Date(millis))
+
+    @Test
+    fun `SPK baru langsung terhitung walau belum 24 jam`() {
+        val r = spkGantungRingkas(listOf(jamLalu(1), jamLalu(5)), nowMillis = now)
+        assertEquals(2, r.total)
+        assertEquals(0, r.lewatTenggat)
+        // Belum ada yang lewat tenggat → kartu memakai subtitle biasa.
+        assertEquals(null, spkGantungAlert(r))
+    }
+
+    @Test
+    fun `yang lewat 24 jam dipisahkan sebagai penanda mendesak`() {
+        val r = spkGantungRingkas(listOf(jamLalu(1), jamLalu(30), jamLalu(72)), nowMillis = now)
+        assertEquals(3, r.total)
+        assertEquals(2, r.lewatTenggat)
+        assertEquals("2 lewat tenggat 24 jam", spkGantungAlert(r))
+    }
+
+    @Test
+    fun `tepat di ambang belum dianggap lewat tenggat`() {
+        val tepat = spkGantungRingkas(listOf(jamLalu(24)), nowMillis = now)
+        assertEquals(0, tepat.lewatTenggat)
+        val lewat = spkGantungRingkas(listOf(utcString(now - GANTUNG_TENGGAT_MS - 1000)), nowMillis = now)
+        assertEquals(1, lewat.lewatTenggat)
+    }
+
+    @Test
+    fun `deliveredAt kosong atau rusak tetap dihitung tapi tak dituduh telat`() {
+        val r = spkGantungRingkas(listOf(null, "", "bukan tanggal", jamLalu(48)), nowMillis = now)
+        // Pekerjaannya nyata — jangan hilang dari angka cuma karena timestamp tak terbaca.
+        assertEquals(4, r.total)
+        assertEquals(1, r.lewatTenggat)
+    }
+
+    @Test
+    fun `daftar kosong berperilaku seperti kartu antrian lain`() {
+        val r = spkGantungRingkas(emptyList(), nowMillis = now)
+        assertEquals(0, r.total)
+        assertEquals(null, spkGantungAlert(r))
+        // Nol = kartu redup yang tetap tampil, bukan kartu yang dipaksa muncul.
+        val cards = buildQueueCards(
+            items = listOf(item("spk_gantung")),
+            counts = mapOf(ActivitySource.DLV_PENDING_PAYMENT to r.total),
+            failed = emptySet(),
+            effectiveRoles = setOf("kasir"),
+        )
+        assertEquals(0, cards.single().count)
+        assertEquals(null, cards.single().alert)
+    }
+
+    /**
+     * Parser TIDAK boleh memakai `java.time`: minSdk 24 tanpa
+     * `coreLibraryDesugaring` → `NoClassDefFoundError` (turunan `Error`, tetap
+     * tertangkap `runCatching`) di Android 7.0/7.1, hitungannya nol senyap.
+     * Test ini menjaga formatnya tetap terbaca; penjaga API-nya ada di
+     * komentar `deliveredAtUtcMillis`.
+     */
+    @Test
+    fun `format kontrak delivery terbaca dengan dan tanpa sufiks Z`() {
+        val spasi = deliveredAtUtcMillis("2027-01-14 08:00:00")
+        val isoZ = deliveredAtUtcMillis("2027-01-14T08:00:00Z")
+        val pecahan = deliveredAtUtcMillis("2027-01-14T08:00:00.123Z")
+        assertEquals(spasi, isoZ)
+        assertEquals(spasi, pecahan)
+        assertEquals(null, deliveredAtUtcMillis(null))
+        assertEquals(null, deliveredAtUtcMillis("   "))
+    }
+
+    @Test
+    fun `alert kartu dirender dari sumbernya dan tak menimpa kartu gagal`() {
+        val alerts = mapOf(ActivitySource.DLV_PENDING_PAYMENT to "2 lewat tenggat 24 jam")
+        val ok = buildQueueCards(
+            items = listOf(item("spk_gantung")),
+            counts = mapOf(ActivitySource.DLV_PENDING_PAYMENT to 3),
+            failed = emptySet(),
+            effectiveRoles = setOf("kasir"),
+            alerts = alerts,
+        )
+        assertEquals(3, ok.single().count)
+        assertEquals("2 lewat tenggat 24 jam", ok.single().alert)
+
+        val gagal = buildQueueCards(
+            items = listOf(item("spk_gantung")),
+            counts = emptyMap(),
+            failed = setOf(ActivitySource.DLV_PENDING_PAYMENT),
+            effectiveRoles = setOf("kasir"),
+            alerts = alerts,
+        )
+        // Baris subtitle sudah dipakai pesan "ketuk untuk coba lagi".
+        assertEquals(null, gagal.single().alert)
+    }
+
     @Test
     fun `tugas antar disembunyikan saat kosong untuk non-driver`() {
         val items = listOf(item("tugas_antar"))
