@@ -53,6 +53,22 @@ class ActivityNavHostRouteTest {
         )
     }
 
+    /**
+     * Nilai `route` yang dikirim backend pada notif channel `approval`
+     * (`delivery_notif::route_for_kind`, kind `indent_submitted`/
+     * `indent_decided`). Deep-link tap-notif di `MainActivity` memetakannya
+     * lewat fungsi yang sama dengan kartu Activity — kalau kunci ini berubah
+     * nama, notif inden tetap tampil tapi tap-nya cuma membuka app dan tak ada
+     * satu pun error yang muncul.
+     */
+    @Test
+    fun `route notif inden dikenali peta route`() {
+        assertNotNull(
+            "route 'indent' dari notif approval tak dikenali — tap notif inden jadi buntu",
+            routeForNavKey("indent")
+        )
+    }
+
     @Test
     fun `navKey yang tak dikenal tetap null`() {
         assertNull(routeForNavKey("panduan"))

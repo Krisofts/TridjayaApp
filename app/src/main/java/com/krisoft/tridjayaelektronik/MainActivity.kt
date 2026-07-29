@@ -76,6 +76,7 @@ import com.krisoft.tridjayaelektronik.ui.activity.ACTIVITY_ROUTE_ROOT
 import com.krisoft.tridjayaelektronik.ui.activity.ActivityNavHost
 import com.krisoft.tridjayaelektronik.ui.activity.HOME_ROUTE_DASHBOARD
 import com.krisoft.tridjayaelektronik.ui.activity.landsOnSummary
+import com.krisoft.tridjayaelektronik.ui.activity.routeForNavKey
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
 import com.krisoft.tridjayaelektronik.ui.inventory.InventoryNavHost
 import com.krisoft.tridjayaelektronik.ui.inventory.SEARCH_ROUTE_ROOT
@@ -492,6 +493,19 @@ private fun MainScreen(
                     else -> null
                 }
                 if (sub != null) activityNav.navigate(sub) { launchSingleTop = true }
+            }
+            // Notif persetujuan (absen/izin, dan sejak 2026-07-29 inden). Backend
+            // mengirim `route` = navKey layar tujuan (`delivery_notif::route_for_kind`,
+            // mis. "indent"), dipetakan lewat `routeForNavKey` — peta yang SAMA
+            // dengan kartu Activity, jadi navKey baru dari server tak menuntut
+            // cabang `when` baru di sini. Tanpa `route` yang dikenal: notif tetap
+            // tampil, tap-nya cuma membuka app (perilaku lama channel ini).
+            "approval" -> {
+                val sub = pendingNotifRoute?.let { routeForNavKey(it) }
+                if (sub != null) {
+                    selected = AppDestination.ACTIVITY
+                    activityNav.navigate(sub) { launchSingleTop = true }
+                }
             }
             // Tab CRM sudah tak ada di bottom nav; buka layarnya lewat jalur yang
             // sama dengan tap kartu "Input prospek" di Activity. `onQuickAccessLeads()`
