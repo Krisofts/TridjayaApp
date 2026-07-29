@@ -34,6 +34,26 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
+/** Keadaan foto bukti aki satu form. `Kosong` = `photoUrl` null/blank (form
+ *  sebelum fitur foto, atau PDI tak mengunggah); `Gagal` = URL ada tapi
+ *  file/jaringannya tidak menjawab — dua hal yang WAJIB terlihat berbeda oleh
+ *  approver. */
+/** Form mana yang fotonya perlu diambil. Dipisah jadi fungsi murni supaya
+ *  invarian intinya bisa dikunci tanpa memalsukan repository: form BER-URL
+ *  selalu dapat entri di peta status (jadi kartunya menampilkan Memuat/Ada/
+ *  Gagal, tak pernah diam), form tanpa URL sengaja TIDAK dapat entri — itulah
+ *  yang dibaca kartu sebagai "tanpa foto bukti". */
+internal fun akiFormsNeedingPhoto(
+    forms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>
+): List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> =
+    forms.filter { !it.photoUrl.isNullOrBlank() }
+
+sealed interface AkiPhotoState {
+    data object Memuat : AkiPhotoState
+    data class Ada(val bitmap: Bitmap) : AkiPhotoState
+    data object Gagal : AkiPhotoState
+}
+
 data class DeliveryFlowUiState(
     val loading: Boolean = false,
     val items: List<DeliveryJobDto> = emptyList(),
@@ -74,8 +94,13 @@ data class DeliveryFlowUiState(
     val jobDiscounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
     /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
     val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
-    /** Foto bukti aki ter-autentikasi per form id (2026-07-24) — key = form.id. */
-    val akiPhotos: Map<String, Bitmap> = emptyMap(),
+    /** Status foto bukti aki per form id (key = form.id). Sengaja BUKAN
+     *  `Map<String, Bitmap>` lagi: peta bitmap tak bisa membedakan "PDI memang
+     *  tak memotret" dari "filenya gagal diambil", sehingga approver hanya
+     *  melihat kartu kosong dan tak tahu harus menagih siapa. Insiden
+     *  2026-07-29: 5 foto raib dari server, gejalanya identik dengan form lama
+     *  yang wajar tanpa foto. */
+    val akiPhotos: Map<String, AkiPhotoState> = emptyMap(),
     /** Preview foto (sudah ber-watermark geotag+jam) — pola sama [AttendanceUiState.selfie]:
      *  bitmap dipegang di state, BUKAN dibaca ulang dari file (hindari cache-basi/race preview). */
     /** Hasil `POST /delivery` terakhir (2026-07-26) — dipakai `CreateSpkScreen` buat
@@ -602,14 +627,25 @@ class DeliveryFlowViewModel @Inject constructor(
     /** Muat foto bukti aki ter-autentikasi per form — fail-soft per foto (pola
      *  sama [loadJobPhotos]). */
     private fun loadAkiPhotos(forms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>) {
-        forms.forEach { form ->
-            val url = form.photoUrl?.takeIf { it.isNotBlank() } ?: return@forEach
+        akiFormsNeedingPhoto(forms).forEach { form ->
+            val url = form.photoUrl.orEmpty()
+            _state.update { it.copy(akiPhotos = it.akiPhotos + (form.id to AkiPhotoState.Memuat)) }
             viewModelScope.launch {
-                val bytes = repository.fetchPhoto(url) ?: return@launch
-                val bmp = withContext(Dispatchers.Default) {
-                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                } ?: return@launch
-                _state.update { it.copy(akiPhotos = it.akiPhotos + (form.id to bmp)) }
+                // Gagal di tahap MANA pun berakhir sama bagi approver: fotonya
+                // tak bisa dilihat. Yang penting ia tahu itu kegagalan, bukan
+                // ketiadaan — dulu keduanya sama-sama senyap.
+                val bytes = repository.fetchPhoto(url)
+                val bmp = bytes?.let {
+                    withContext(Dispatchers.Default) {
+                        android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)
+                    }
+                }
+                _state.update {
+                    it.copy(
+                        akiPhotos = it.akiPhotos +
+                            (form.id to (bmp?.let(AkiPhotoState::Ada) ?: AkiPhotoState.Gagal))
+                    )
+                }
             }
         }
     }
