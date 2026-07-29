@@ -69,6 +69,18 @@ class ActivityNavHostRouteTest {
         )
     }
 
+    /**
+     * Dua layar bukti chat harian. Iterasi di atas sudah menjaganya lewat
+     * registri, tapi kunci ini ditulis literal juga di `routeForNavKey` — disebut
+     * eksplisit supaya salah ketik nama kunci ketahuan di test yang menyebut
+     * fiturnya, bukan cuma di pesan gagal iterasi yang generik.
+     */
+    @Test
+    fun `navKey bukti chat dan antrian reviewnya dikenali peta route`() {
+        assertNotNull(routeForNavKey("bukti_chat"))
+        assertNotNull(routeForNavKey("review_bukti_chat"))
+    }
+
     @Test
     fun `navKey yang tak dikenal tetap null`() {
         assertNull(routeForNavKey("panduan"))
