@@ -114,6 +114,11 @@ class AktivitasChatRepository @Inject constructor(
             if (!response.isSuccessful || body == null) return@withContext null
             dir.mkdirs()
             val file = File(dir, namaBerkas)
+            // ponytail: sapu video lain SEBELUM mengunduh — kepala cabang memeriksa
+            // belasan bukti sehari dan tiap berkasnya s/d 50MB, jadi tanpa ini cache
+            // app membengkak ratusan MB dalam sepekan. Menghapus SETELAH memutar tidak
+            // bisa: berkasnya masih dibaca aplikasi pemutar bawaan HP.
+            dir.listFiles()?.forEach { lama -> if (lama.name != namaBerkas) lama.delete() }
             body.byteStream().use { input -> file.outputStream().use { output -> input.copyTo(output) } }
             file
         } catch (e: Exception) {
