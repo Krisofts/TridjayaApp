@@ -134,6 +134,7 @@ private fun filterColor(filter: LeadFilter, fallback: Color): Color = when (filt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LeadsListScreen(
+    onBack: () -> Unit,
     onAddClick: () -> Unit,
     onLeadClick: (Long) -> Unit,
     viewModel: LeadsListViewModel = hiltViewModel()
@@ -187,6 +188,7 @@ fun LeadsListScreen(
 
     TridjayaCollapsibleHeader(
         title = "CRM",
+        onBack = onBack,
         actions = {
             ExpressiveFilledIconButton(
                 onClick = {

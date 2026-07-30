@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -30,6 +31,10 @@ import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryQueueScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkHubScreen
 import com.krisoft.tridjayaelektronik.ui.kpi.KpiScreen
+import com.krisoft.tridjayaelektronik.ui.leads.AddLeadScreen
+import com.krisoft.tridjayaelektronik.ui.leads.LeadDetailScreen
+import com.krisoft.tridjayaelektronik.ui.leads.LeadsListScreen
+import com.krisoft.tridjayaelektronik.ui.leads.LeadsListViewModel
 import com.krisoft.tridjayaelektronik.ui.mutasi.MutasiHistoriScreen
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
@@ -65,6 +70,13 @@ private const val ROUTE_SERIAL_INPUT = "home_serial_input"
 private const val ROUTE_DEADSTOCK = "home_deadstock"
 private const val ROUTE_MUTASI_HISTORI = "home_mutasi_histori"
 private const val ROUTE_PANDUAN_ALUR = "home_panduan_alur"
+// Prospek/CRM — dulu NavHost sejajar tab (LeadsNavHost) tanpa pill/back yang
+// benar (destination-nya sengaja tak masuk bottomNavItems, jadi pill tetap
+// tampil tanpa yang menyala). Pindah ke tabel ini supaya mewarisi header +
+// pop-back + hilangnya pill yang sama seperti sibling home_* lain.
+private const val ROUTE_LEADS_LIST = "home_leads_list"
+private const val ROUTE_LEADS_ADD = "home_leads_add"
+private const val ROUTE_LEADS_DETAIL = "home_leads_detail/{leadId}"
 // Public (bukan private lagi) — MainActivity deep-link tap-notif buka langsung
 // halaman tahap terkait (akses cepat, route dari payload FCM delivery_notif).
 const val ROUTE_DLV_CREATE = "home_dlv_create"
@@ -112,7 +124,7 @@ private fun deliveryStageRoute(key: String): String? = when (key) {
  * tabel ini. Fungsi MURNI (tanpa Compose) supaya bisa diuji JUnit biasa —
  * `navKey` adalah kontrak stringly-typed tanpa pemeriksa kompiler, jadi satu
  * salah ketik di sini berarti kartu yang diam tak melakukan apa-apa. `null`
- * berarti `navKey` tak dikenal (typo) — KECUALI `"crm"`, `"inventory"` dan
+ * berarti `navKey` tak dikenal (typo) — KECUALI `"inventory"` dan
  * `"cari_semua"`, yang sengaja tak masuk peta ini karena punya NavHost/tab sendiri
  * dan dibuka lewat callback pindah-tab, bukan navigasi di tabel route ini (lihat
  * pemanggil di [ActivityNavHost]). Diuji di `ActivityNavHostRouteTest`.
@@ -130,6 +142,9 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "spk_input" -> ROUTE_DLV_CREATE
     "spk_history" -> ROUTE_DLV_HISTORY
     "spk_gantung" -> ROUTE_DLV_PENDING_PAYMENT
+    // Prospek/CRM: dulu dispesialkan lewat callback pindah-tab (LeadsNavHost
+    // sejajar tab), kini route biasa di tabel ini seperti sibling lain.
+    "crm" -> ROUTE_LEADS_LIST
     else -> deliveryStageRoute(navKey)
 }
 
@@ -150,7 +165,6 @@ fun ActivityNavHost(
     onQuickAccessInventory: () -> Unit = {},
     /** Ubin "Cari Semua" → SEARCH_ROUTE_ROOT (`GlobalSearchScreen`), bukan daftar barang. */
     onQuickAccessSearch: () -> Unit = {},
-    onQuickAccessLeads: () -> Unit = {},
     // Sisa I1: dinaikkan MainScreen tiap tab terpilih berubah JADI Activity (lihat
     // `activityTabSelectedTrigger` di MainActivity.kt) — diteruskan apa adanya ke
     // ActivityScreen, cuma dipakai di root Activity (bukan tab Operasional yang juga
@@ -182,13 +196,13 @@ fun ActivityNavHost(
                 onOpenAllMenus = onOpenSummaryTab,
                 tabSelectedSignal = activityTabSelectedSignal,
                 onOpen = { navKey ->
-                    // "crm", "inventory" & "cari_semua" sengaja tak masuk `routeForNavKey`:
-                    // ketiganya punya NavHost/tab sendiri (LeadsNavHost, InventoryNavHost),
-                    // jadi dibuka lewat callback pindah-tab, bukan route di tabel ini.
-                    // "inventory" dan "cari_semua" berbagi tab yang sama tapi BERBEDA
-                    // tujuan — daftar barang vs pencarian gabungan; jangan disatukan.
+                    // "inventory" & "cari_semua" sengaja tak masuk `routeForNavKey`: keduanya
+                    // punya NavHost/tab sendiri (InventoryNavHost), jadi dibuka lewat callback
+                    // pindah-tab, bukan route di tabel ini. Mereka berbagi tab yang sama tapi
+                    // BERBEDA tujuan — daftar barang vs pencarian gabungan; jangan disatukan.
+                    // "crm" TIDAK lagi di sini sejak Prospek pindah jadi route biasa — jatuh
+                    // ke cabang `else` seperti sibling lain.
                     when (navKey) {
-                        "crm" -> onQuickAccessLeads()
                         "inventory" -> onQuickAccessInventory()
                         "cari_semua" -> onQuickAccessSearch()
                         else -> routeForNavKey(navKey)?.let { route ->
@@ -216,7 +230,11 @@ fun ActivityNavHost(
                 },
                 onOpenNotifications = { navController.navigate(ROUTE_NOTIFICATIONS) { launchSingleTop = true } },
                 onQuickAccessInventory = onQuickAccessInventory,
-                onQuickAccessLeads = onQuickAccessLeads,
+                // Sendiri (bukan diteruskan dari luar) — beda dari sebelumnya, karena
+                // ActivityNavHost DIPASANG DUA KALI (Activity & Operasional) dengan
+                // NavHostController masing-masing; hanya host ini yang tahu controller
+                // mana yang harus dipakai.
+                onQuickAccessLeads = { navController.navigate(ROUTE_LEADS_LIST) { launchSingleTop = true } },
                 onQuickAccessIndent = { navController.navigate(ROUTE_INDENT) { launchSingleTop = true } },
                 onQuickAccessSales = { navController.navigate(ROUTE_SALES) { launchSingleTop = true } },
                 onQuickAccessOpname = { navController.navigate(ROUTE_OPNAME) { launchSingleTop = true } },
@@ -274,7 +292,7 @@ fun ActivityNavHost(
                     }
                     navController.navigate(route) { launchSingleTop = true }
                 },
-                onOpenLeads = onQuickAccessLeads
+                onOpenLeads = { navController.navigate(ROUTE_LEADS_LIST) { launchSingleTop = true } }
             )
         }
         composable(ROUTE_INDENT) {
@@ -412,6 +430,35 @@ fun ActivityNavHost(
                     navController.navigate(salesTransactionsRoute(sales.sourceCode, sales.name)) { launchSingleTop = true }
                 }
             )
+        }
+        composable(ROUTE_LEADS_LIST) { entry ->
+            val listViewModel: LeadsListViewModel = hiltViewModel(entry)
+            LeadsListScreen(
+                viewModel = listViewModel,
+                onBack = { navController.popBackStack() },
+                onAddClick = { navController.navigate(ROUTE_LEADS_ADD) { launchSingleTop = true } },
+                onLeadClick = { id -> navController.navigate("home_leads_detail/$id") { launchSingleTop = true } }
+            )
+        }
+        composable(ROUTE_LEADS_ADD) {
+            // ViewModel MILIK layar daftar, bukan instance baru — refresh() di bawah harus
+            // menyegarkan cache yang sama yang ditampilkan daftar, kalau tidak lead baru
+            // tak pernah muncul sampai layar daftar di-restart sendiri.
+            val listEntry = remember { navController.getBackStackEntry(ROUTE_LEADS_LIST) }
+            val listViewModel: LeadsListViewModel = hiltViewModel(listEntry)
+            AddLeadScreen(
+                onBack = { navController.popBackStack() },
+                onLeadCreated = {
+                    listViewModel.refresh()
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(
+            route = ROUTE_LEADS_DETAIL,
+            arguments = listOf(navArgument("leadId") { type = NavType.LongType })
+        ) {
+            LeadDetailScreen(onBack = { navController.popBackStack() })
         }
     }
 }
