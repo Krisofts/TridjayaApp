@@ -42,13 +42,12 @@ class ActivityRegistryTest {
     }
 
     @Test
-    fun `hanya raport, inventory dan cari semua yang boleh tanpa kunci kemampuan`() {
+    fun `hanya raport yang boleh tanpa kunci kemampuan`() {
         // raport: hak `upsert_raport` belum punya kunci di /api/me/capabilities.
-        // inventory: backend memang tak ber-gate role (cermin QUICK_ACCESS_MENUS).
-        // cari_semua: layarnya baca cache Room lokal, tak memanggil backend sama sekali.
-        // Item ber-gate lain WAJIB punya kunci supaya ikut sumber tunggal.
+        // inventory/cari_semua PINDAH ke QUICK_ACCESS_MENUS 2026-07-30 (lihat
+        // MenuAccessGateTest.kt) — bukan lagi milik registri ini.
         val tanpaKunci = ACTIVITY_ITEMS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("raport", "inventory", "cari_semua"), tanpaKunci)
+        assertEquals(listOf("raport"), tanpaKunci)
     }
 
     // ── Gate dua arah per persona ────────────────────────────────────────────
@@ -164,14 +163,13 @@ class ActivityRegistryTest {
         assertTrue("daftar_spk" in ids("karyawan", caps = null))
     }
 
-    // ── Inventory tetap terjangkau setelah tombol Cari dihapus (2026-07-29) ──
+    // ── Inventory/Cari Semua: pintu masuknya kini di Operasional, bukan di sini
+    // ── (2026-07-30) — lihat `ajukan inden dan cari semua kini terjangkau dari
+    // ── Operasional` di MenuAccessGateTest.kt. INVENTORY tetap bukan bottom-nav
+    // ── item (itu bagian yang TIDAK berubah oleh pemindahan ini).
 
     @Test
-    fun `inventory punya pintu masuk di Activity dan tak lagi di bottom nav`() {
-        // Tab "Cari" adalah HOST `InventoryNavHost` — root-nya GlobalSearchScreen
-        // dan jelajah barang (INVENTORY_ROUTE_LIST) sub-layar di dalamnya. Melepas
-        // tabnya dari bottom nav TANPA pintu masuk pengganti akan mematikan seluruh
-        // menu Inventory (jelajah barang, detail produk, flyer).
+    fun `inventory tetap bukan item bottom nav`() {
         assertFalse(
             "Tombol Cari sudah dihapus — INVENTORY tak boleh kembali ke bottom nav " +
                 "tanpa keputusan sadar",
@@ -179,39 +177,6 @@ class ActivityRegistryTest {
         )
         // Destination-nya sendiri WAJIB tetap ada: ia yang meng-host InventoryNavHost.
         assertTrue(AppDestination.INVENTORY.route.isNotBlank())
-        // Dan harus ada pintu masuknya di layar pertama.
-        val inventory = ACTIVITY_ITEMS.first { it.id == "inventory" }
-        assertEquals(ActivityKind.AKSI, inventory.kind)
-        assertEquals("inventory", inventory.navKey)
-        assertTrue("inventory" in ids("karyawan"))
-        assertTrue("inventory" in ids("manager"))
-        // Bahkan tanpa peta kemampuan server (offline) — backend memang tak ber-gate.
-        assertTrue("inventory" in ids("driver", caps = null))
-    }
-
-    @Test
-    fun `cari semua adalah pintu kedua yang terpisah dari cari barang`() {
-        // 41f570d menaruh Inventory di ubin "Cari Barang", tapi pintu itu selalu
-        // menaikkan `inventoryOpenListSignal` yang mem-pop SEARCH_ROUTE_ROOT —
-        // `GlobalSearchScreen` (produk + prospek sekaligus) jadi tak terjangkau.
-        // Ubin ini mengembalikannya. Menyamakan `navKey` keduanya = mengulang bug itu.
-        val cariSemua = ACTIVITY_ITEMS.first { it.id == "cari_semua" }
-        val cariBarang = ACTIVITY_ITEMS.first { it.id == "inventory" }
-        assertEquals(ActivityKind.AKSI, cariSemua.kind)
-        assertEquals("cari_semua", cariSemua.navKey)
-        assertTrue(
-            "dua ubin pencarian tak boleh berbagi navKey — tujuannya beda layar",
-            cariSemua.navKey != cariBarang.navKey,
-        )
-        assertTrue("label kedua ubin tak boleh sama", cariSemua.label != cariBarang.label)
-
-        // Terbuka untuk siapa pun yang sudah login: layarnya cuma membaca cache lokal.
-        assertTrue("cari_semua" in ids("karyawan"))
-        assertTrue("cari_semua" in ids("manager"))
-        // Termasuk saat peta kemampuan server tak termuat (offline) — tak ada guard
-        // backend yang bisa dilanggar, jadi ubinnya tak boleh hilang diam-diam.
-        assertTrue("cari_semua" in ids("driver", caps = null))
-        assertTrue("cari_semua" in ids("kasir", caps = null))
     }
 
     @Test
