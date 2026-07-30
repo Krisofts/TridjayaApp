@@ -63,10 +63,15 @@ class ActivityPlanTest {
     private val now = 1_800_000_000_000L // 2027-01-15 08:00:00 UTC, arbitrer
     private fun jamLalu(n: Long) = utcString(now - n * 60 * 60 * 1000L)
 
+    /**
+     * Bentuk yang BENAR-BENAR dikirim backend sejak 2026-07-30: jam dinding
+     * WIB tanpa penanda zona. Sengaja TIDAK di-pin ke UTC seperti dulu —
+     * helper ber-UTC membuat seluruh uji umur di berkas ini menghitung selisih
+     * yang tak pernah terjadi di lapangan (meleset sebesar offset device).
+     */
     private fun utcString(millis: Long) = java.text.SimpleDateFormat(
         "yyyy-MM-dd HH:mm:ss", java.util.Locale.US
-    ).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-        .format(java.util.Date(millis))
+    ).format(java.util.Date(millis))
 
     @Test
     fun `SPK baru langsung terhitung walau belum 24 jam`() {
@@ -126,11 +131,18 @@ class ActivityPlanTest {
      */
     @Test
     fun `format kontrak delivery terbaca dengan dan tanpa sufiks Z`() {
+        // Sejak 2026-07-30 backend mengirim WIB POLOS tanpa penanda. Bentuk polos
+        // dan bentuk ber-`Z` karena itu SENGAJA menghasilkan instan yang BERBEDA:
+        // polos = jam dinding device (WIB), ber-`Z` = UTC. Menyamakan keduanya —
+        // seperti kontrak lama — membuat tiap nilai baru mundur 7 jam.
         val spasi = deliveredAtUtcMillis("2027-01-14 08:00:00")
+        val isoPolos = deliveredAtUtcMillis("2027-01-14T08:00:00")
         val isoZ = deliveredAtUtcMillis("2027-01-14T08:00:00Z")
         val pecahan = deliveredAtUtcMillis("2027-01-14T08:00:00.123Z")
-        assertEquals(spasi, isoZ)
-        assertEquals(spasi, pecahan)
+        assertEquals("spasi dan 'T' sama-sama polos", spasi, isoPolos)
+        assertEquals("dua bentuk ber-Z sama", isoZ, pecahan)
+        val offsetDevice = java.util.TimeZone.getDefault().getOffset(isoZ!!).toLong()
+        assertEquals("polos = ber-Z digeser offset device", isoZ - offsetDevice, spasi)
         assertEquals(null, deliveredAtUtcMillis(null))
         assertEquals(null, deliveredAtUtcMillis("   "))
     }

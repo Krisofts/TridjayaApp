@@ -2,7 +2,7 @@ package com.krisoft.tridjayaelektronik.ui.activity
 
 import com.krisoft.tridjayaelektronik.data.model.AktivitasChatTodayDto
 import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
-import com.krisoft.tridjayaelektronik.data.model.parseIsoUtcMillis
+import com.krisoft.tridjayaelektronik.data.model.parseTimestampMillis
 import com.krisoft.tridjayaelektronik.ui.chatactivity.statusLabel
 
 /**
@@ -90,7 +90,7 @@ internal data class SpkGantungRingkas(val total: Int, val lewatTenggat: Int)
  * hitungannya nol selamanya di HP tersebut.
  */
 internal fun deliveredAtUtcMillis(raw: String?): Long? =
-    parseIsoUtcMillis(raw?.trim()?.takeIf { it.isNotEmpty() }?.replace(' ', 'T'))
+    parseTimestampMillis(raw?.trim()?.takeIf { it.isNotEmpty() }?.replace(' ', 'T'))
 
 /**
  * Aturan hitung kartu SPK Gantung.
