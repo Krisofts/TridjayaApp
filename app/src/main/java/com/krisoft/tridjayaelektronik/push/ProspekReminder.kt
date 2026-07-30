@@ -11,6 +11,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -130,9 +131,15 @@ fun scheduleProspekReminder(context: Context) {
             .build()
     )
     // ponytail: pemicu langsung khusus build debug — tanpa ini satu-satunya cara melihat
-    // notifikasinya adalah menunggu jam 09:00. Hapus kalau debug jadi terlalu berisik.
+    // notifikasinya adalah menunggu jam 09:00. Nama-uniknya sendiri (`WORK_NAME + "_debug"`)
+    // + REPLACE supaya tiap restart proses menimpa permintaan lama, bukan menumpuknya.
+    // Hapus kalau debug jadi terlalu berisik.
     if (BuildConfig.DEBUG) {
-        work.enqueue(OneTimeWorkRequestBuilder<ProspekStaleWorker>().build())
+        work.enqueueUniqueWork(
+            WORK_NAME + "_debug",
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<ProspekStaleWorker>().build()
+        )
     }
 }
 
@@ -220,8 +227,13 @@ private fun postReminder(context: Context, stale: List<LeadEntity>, nowMillis: L
         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
         .setAutoCancel(true)
         .setContentIntent(pending)
-        // Satu grup dengan notifikasi CRM dari server; ringkasan grupnya sudah dibuat FcmService.
-        .setGroup(FcmService.CHANNEL_CRM)
+        // SENGAJA tidak ikut grup "crm": ringkasannya dimiliki & dihitung ulang oleh
+        // FcmService dari notifikasi yang SUDAH ada di tray saat itu — kalau pengingat ini
+        // ikut nimbrung, dia jadi anak yang lahir setelah hitungan itu dibuat: ringkasan
+        // under-report, judul/isi pengingat ini sendiri tersembunyi sampai user expand
+        // grupnya, dan push CRM berikutnya dari server malah ikut menghitungnya sebagai
+        // anak lama. Berdiri di luar grup, teks pengingat ini selalu langsung terbaca.
+        // Channel tetap "crm".
         .build()
     NotificationManagerCompat.from(context).notify(NOTIF_ID, notif)
 }

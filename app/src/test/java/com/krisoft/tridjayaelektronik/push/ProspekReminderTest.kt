@@ -188,5 +188,21 @@ class ProspekReminderTest {
         assertEquals(9, cal.get(java.util.Calendar.HOUR_OF_DAY))
         assertEquals(0, cal.get(java.util.Calendar.MINUTE))
         assertEquals(0, cal.get(java.util.Calendar.SECOND))
+        assertEquals(0, cal.get(java.util.Calendar.MILLISECOND))
+    }
+
+    @Test
+    fun `saat ini PERSIS jam kirim, jeda melompat ke besok bukan nol`() {
+        // Tanpa test ini, mengubah `<=` menjadi `<` pada millisUntilNextRun tetap
+        // lolos: tak ada kasus lain yang jatuh tepat di jam target, dan `0` jeda
+        // berarti WorkManager menjalankannya seketika alih-alih besok pagi.
+        val tepatJam = java.util.Calendar.getInstance().apply {
+            timeInMillis = now
+            set(java.util.Calendar.HOUR_OF_DAY, 9)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        assertEquals(days(1), millisUntilNextRun(tepatJam, hour = 9))
     }
 }
