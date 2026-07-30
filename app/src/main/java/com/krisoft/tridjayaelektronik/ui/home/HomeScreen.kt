@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Notifications
@@ -128,7 +129,6 @@ fun HomeScreen(
     onViewMoreSales: () -> Unit = {},
     onBranchClick: (LeaderboardBranchItemDto) -> Unit = {},
     onSalesClick: (LeaderboardSalesItemDto) -> Unit = {},
-    onSettingsClick: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
@@ -137,6 +137,7 @@ fun HomeScreen(
     onQuickAccessOpname: () -> Unit = {},
     onQuickAccessAbsen: () -> Unit = {},
     onQuickAccessGaji: () -> Unit = {},
+    onQuickAccessKpi: () -> Unit = {},
     onQuickAccessHargaGs: () -> Unit = {},
     onQuickAccessSerialInput: () -> Unit = {},
     onQuickAccessDeadstock: () -> Unit = {},
@@ -180,10 +181,6 @@ fun HomeScreen(
             ) {
                 Icon(Icons.Rounded.Tune, contentDescription = "Atur tampilan Home")
             }
-            Spacer(modifier = Modifier.size(8.dp))
-            ExpressiveFilledIconButton(onClick = onSettingsClick) {
-                Icon(Icons.Rounded.Settings, contentDescription = "Pengaturan")
-            }
         }
     ) { contentModifier ->
         Box(modifier = contentModifier) {
@@ -215,7 +212,8 @@ fun HomeScreen(
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessHargaGs,
+                                onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessKpi,
+                                onQuickAccessHargaGs,
                                 onQuickAccessSerialInput, onQuickAccessDeadstock, onQuickAccessMutasiHistori,
                                 onSpkMenu
                             )
@@ -253,6 +251,7 @@ private fun LazyListScope.homeSection(
     onQuickAccessOpname: () -> Unit,
     onQuickAccessAbsen: () -> Unit,
     onQuickAccessGaji: () -> Unit,
+    onQuickAccessKpi: () -> Unit,
     onQuickAccessHargaGs: () -> Unit,
     onQuickAccessSerialInput: () -> Unit,
     onQuickAccessDeadstock: () -> Unit,
@@ -276,6 +275,7 @@ private fun LazyListScope.homeSection(
                     onOpname = onQuickAccessOpname,
                     onAbsen = onQuickAccessAbsen,
                     onGaji = onQuickAccessGaji,
+                    onKpi = onQuickAccessKpi,
                     onHargaGs = onQuickAccessHargaGs,
                     onSerialInput = onQuickAccessSerialInput,
                     onDeadstock = onQuickAccessDeadstock,
@@ -471,10 +471,18 @@ internal fun canAccessSpk(roles: Set<String>): Boolean =
     roles.any { it in setOf("admin", "superadmin", "manager") } ||
         (roles.isNotEmpty() && roles != setOf("ai-engineer"))
 
-/** Siapa yang benar-benar dilayani `crm-service`: `karyawan` (input + lead
- *  miliknya sendiri, lewat `karyawan_scope`) dan `crm-manager`/admin (`CRM_FULL`).
- *  Manager, kepala-cabang, owner, ai-engineer dapat 403 di `/crm/leads`. */
-internal val CRM_MENU_ROLES = setOf("karyawan", "crm-manager", "admin", "superadmin")
+/** Siapa yang benar-benar dilayani `crm-service`: `karyawan` & `kepala-cabang`
+ *  (input + lead miliknya sendiri, lewat `karyawan_scope`) dan
+ *  `crm-manager`/admin (`CRM_FULL`). Manager, owner, ai-engineer dapat 403 di
+ *  `/crm/leads`.
+ *
+ *  `kepala-cabang` masuk 2026-07-29 mengikuti `CRM_INPUT_ROLES` di rust-shared
+ *  (laporan user: kepala cabang ber-`is_sales` punya target prospek harian tapi
+ *  tak punya menu untuk mengisinya). Daftar ini cuma CADANGAN saat peta
+ *  `/api/me/capabilities` belum termuat — lihat `gateAllows`; saat online
+ *  server yang memutuskan, jadi perbaikan backend berlaku tanpa APK baru. */
+internal val CRM_MENU_ROLES =
+    setOf("karyawan", "kepala-cabang", "crm-manager", "admin", "superadmin")
 
 /** Role EFEKTIF: role utama + `roles` (multi-role) + `divisi` (folding
  *  divisi-driven access), semuanya lowercase. Backend menilai hak dari daftar
@@ -503,6 +511,7 @@ private fun QuickAccessRow(
     onOpname: () -> Unit,
     onAbsen: () -> Unit,
     onGaji: () -> Unit,
+    onKpi: () -> Unit,
     onHargaGs: () -> Unit,
     onSerialInput: () -> Unit,
     onDeadstock: () -> Unit,
@@ -529,6 +538,7 @@ private fun QuickAccessRow(
                     when (menu.id) {
                         "absen" -> onAbsen()
                         "gaji" -> onGaji()
+                        "kpi" -> onKpi()
                         "spk" -> onSpkMenu("hub")
                         "pdi_queue" -> onSpkMenu("pdi")
                         "inventory" -> onInventory()
@@ -554,6 +564,7 @@ private fun QuickAccessRow(
 private fun quickAccessVisual(id: String): Pair<androidx.compose.ui.graphics.vector.ImageVector, Color> = when (id) {
     "absen" -> Pair(Icons.Rounded.Fingerprint, Color(0xFF0E9384))
     "gaji" -> Pair(Icons.Rounded.Payments, Color(0xFF7A5AF8))
+    "kpi" -> Pair(Icons.Rounded.Insights, Color(0xFF0BA5EC))
     "spk" -> Pair(Icons.Rounded.LocalShipping, Color(0xFF1E63E9))
     "pdi_queue" -> Pair(Icons.Rounded.FactCheck, Color(0xFF6941C6))
     "inventory" -> Pair(Icons.Rounded.Inventory2, MaterialTheme.colorScheme.primary)

@@ -25,6 +25,7 @@ import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,26 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
+
+/** Keadaan foto bukti aki satu form. `Kosong` = `photoUrl` null/blank (form
+ *  sebelum fitur foto, atau PDI tak mengunggah); `Gagal` = URL ada tapi
+ *  file/jaringannya tidak menjawab — dua hal yang WAJIB terlihat berbeda oleh
+ *  approver. */
+/** Form mana yang fotonya perlu diambil. Dipisah jadi fungsi murni supaya
+ *  invarian intinya bisa dikunci tanpa memalsukan repository: form BER-URL
+ *  selalu dapat entri di peta status (jadi kartunya menampilkan Memuat/Ada/
+ *  Gagal, tak pernah diam), form tanpa URL sengaja TIDAK dapat entri — itulah
+ *  yang dibaca kartu sebagai "tanpa foto bukti". */
+internal fun akiFormsNeedingPhoto(
+    forms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>
+): List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> =
+    forms.filter { !it.photoUrl.isNullOrBlank() }
+
+sealed interface AkiPhotoState {
+    data object Memuat : AkiPhotoState
+    data class Ada(val bitmap: Bitmap) : AkiPhotoState
+    data object Gagal : AkiPhotoState
+}
 
 data class DeliveryFlowUiState(
     val loading: Boolean = false,
@@ -52,6 +73,15 @@ data class DeliveryFlowUiState(
     val deliveryContext: com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto? = null,
     /** Hasil autocomplete stok GS (Input SPK). */
     val stokResults: List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow> = emptyList(),
+    /**
+     * Cabang ASAL [stokResults] — baris stok tak membawa kodeDealer sendiri,
+     * jadi tanpa penanda ini daftar di layar tak bisa dibedakan milik cabang
+     * mana. Layar Input SPK hanya menampilkan hasil yang cabangnya sama dengan
+     * "Cabang SPK" saat itu (insiden DLV-M84149DA0, 2026-07-29: barang Pagaden
+     * ter-submit dengan kode dealer Soklat, unitnya masuk antrian PDI cabang
+     * yang tak memegang barangnya).
+     */
+    val stokDealer: String = "",
     val stokLoading: Boolean = false,
     val stokAttempted: Boolean = false,
     /** Hasil autocomplete broker KBK (Input SPK section 3). */
@@ -74,8 +104,13 @@ data class DeliveryFlowUiState(
     val jobDiscounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
     /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
     val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
-    /** Foto bukti aki ter-autentikasi per form id (2026-07-24) — key = form.id. */
-    val akiPhotos: Map<String, Bitmap> = emptyMap(),
+    /** Status foto bukti aki per form id (key = form.id). Sengaja BUKAN
+     *  `Map<String, Bitmap>` lagi: peta bitmap tak bisa membedakan "PDI memang
+     *  tak memotret" dari "filenya gagal diambil", sehingga approver hanya
+     *  melihat kartu kosong dan tak tahu harus menagih siapa. Insiden
+     *  2026-07-29: 5 foto raib dari server, gejalanya identik dengan form lama
+     *  yang wajar tanpa foto. */
+    val akiPhotos: Map<String, AkiPhotoState> = emptyMap(),
     /** Preview foto (sudah ber-watermark geotag+jam) — pola sama [AttendanceUiState.selfie]:
      *  bitmap dipegang di state, BUKAN dibaca ulang dari file (hindari cache-basi/race preview). */
     /** Hasil `POST /delivery` terakhir (2026-07-26) — dipakai `CreateSpkScreen` buat
@@ -491,19 +526,32 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Pencarian stok yang sedang berjalan — dibatalkan tiap pencarian baru.
+     *  Tanpa ini respons cabang LAMA mendarat setelah user pindah cabang dan
+     *  mengisi ulang daftar (lihat [DeliveryFlowUiState.stokDealer]). */
+    private var stokJob: Job? = null
+
     /** Autocomplete barang — dipanggil UI setelah debounce. `query` < 2 char atau
      *  `kodeDealer` kosong → kosongkan hasil tanpa panggil server. */
     fun searchStok(query: String, kodeDealer: String) {
+        stokJob?.cancel()
         val term = query.trim()
-        if (term.length < 2 || kodeDealer.isBlank()) {
-            _state.update { it.copy(stokResults = emptyList(), stokLoading = false, stokAttempted = false) }
+        val dealer = kodeDealer.trim()
+        if (term.length < 2 || dealer.isBlank()) {
+            _state.update {
+                it.copy(stokResults = emptyList(), stokDealer = dealer, stokLoading = false, stokAttempted = false)
+            }
             return
         }
         _state.update { it.copy(stokLoading = true) }
-        viewModelScope.launch {
-            when (val res = repository.stokCabang(term, kodeDealer)) {
-                is AuthResult.Success -> _state.update { it.copy(stokLoading = false, stokResults = res.data, stokAttempted = true) }
-                is AuthResult.Failure -> _state.update { it.copy(stokLoading = false, stokResults = emptyList(), stokAttempted = true) }
+        stokJob = viewModelScope.launch {
+            when (val res = repository.stokCabang(term, dealer)) {
+                is AuthResult.Success -> _state.update {
+                    it.copy(stokLoading = false, stokResults = res.data, stokDealer = dealer, stokAttempted = true)
+                }
+                is AuthResult.Failure -> _state.update {
+                    it.copy(stokLoading = false, stokResults = emptyList(), stokDealer = dealer, stokAttempted = true)
+                }
             }
         }
     }
@@ -602,14 +650,25 @@ class DeliveryFlowViewModel @Inject constructor(
     /** Muat foto bukti aki ter-autentikasi per form — fail-soft per foto (pola
      *  sama [loadJobPhotos]). */
     private fun loadAkiPhotos(forms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>) {
-        forms.forEach { form ->
-            val url = form.photoUrl?.takeIf { it.isNotBlank() } ?: return@forEach
+        akiFormsNeedingPhoto(forms).forEach { form ->
+            val url = form.photoUrl.orEmpty()
+            _state.update { it.copy(akiPhotos = it.akiPhotos + (form.id to AkiPhotoState.Memuat)) }
             viewModelScope.launch {
-                val bytes = repository.fetchPhoto(url) ?: return@launch
-                val bmp = withContext(Dispatchers.Default) {
-                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                } ?: return@launch
-                _state.update { it.copy(akiPhotos = it.akiPhotos + (form.id to bmp)) }
+                // Gagal di tahap MANA pun berakhir sama bagi approver: fotonya
+                // tak bisa dilihat. Yang penting ia tahu itu kegagalan, bukan
+                // ketiadaan — dulu keduanya sama-sama senyap.
+                val bytes = repository.fetchPhoto(url)
+                val bmp = bytes?.let {
+                    withContext(Dispatchers.Default) {
+                        android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)
+                    }
+                }
+                _state.update {
+                    it.copy(
+                        akiPhotos = it.akiPhotos +
+                            (form.id to (bmp?.let(AkiPhotoState::Ada) ?: AkiPhotoState.Gagal))
+                    )
+                }
             }
         }
     }

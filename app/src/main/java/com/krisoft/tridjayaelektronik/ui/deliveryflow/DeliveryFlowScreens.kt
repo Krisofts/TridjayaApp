@@ -1846,15 +1846,23 @@ fun CreateSpkScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 if (spkCabang.isNotBlank()) {
+                    // Cabang barang dilekatkan saat SUBMIT dari `spkCabang`, bukan dibawa
+                    // tiap baris — jadi daftar milik cabang lain WAJIB tak bisa ditap sama
+                    // sekali. Respons pencarian cabang sebelumnya bisa mendarat setelah
+                    // selektor pindah (insiden DLV-M84149DA0: barang Pagaden ter-submit
+                    // sebagai Soklat, unitnya masuk antrian PDI cabang yang tak
+                    // memegangnya). ViewModel juga membatalkan pencarian lama; penyaring
+                    // ini yang membuat invariannya tak bergantung pada urutan balapan.
+                    val stokRows = stokRowsForCabang(state.stokResults, state.stokDealer, spkCabang)
                     ExpressiveTextField(barangSearch, { barangSearch = it }, label = "Cari & tambah barang (min. 2 karakter)", modifier = Modifier.fillMaxWidth())
                     when {
                         state.stokLoading -> Text("Mencari…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                        state.stokAttempted && state.stokResults.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                        state.stokAttempted && stokRows.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                     }
-                    if (state.stokResults.isNotEmpty()) {
+                    if (stokRows.isNotEmpty()) {
                         Spacer(Modifier.height(6.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            state.stokResults.forEach { row ->
+                            stokRows.forEach { row ->
                                 Surface(
                                     onClick = {
                                         // Prepend + collapse kartu lain (baru = fokus)
@@ -2007,13 +2015,19 @@ private fun SpkSection(title: String, expanded: Boolean, onToggle: () -> Unit, c
 }
 
 /** Selektor Cabang SPK — wajib, tanpa opsi kosong. Pola visual mirror
- *  `OptionDropdownField` (`ui/leads/AddLeadScreen.kt`), grouped per region. */
+ *  `OptionDropdownField` (`ui/leads/AddLeadScreen.kt`), grouped per region.
+ *  `internal` + [label] sejak layar Input Serial Number ikut memilih cabang
+ *  (registry SN terpusat) — daftar 13 cabang cukup punya SATU selektor. */
 @Composable
-private fun CabangSelector(selected: String, onSelect: (String) -> Unit) {
+internal fun CabangSelector(
+    selected: String,
+    onSelect: (String) -> Unit,
+    label: String = "Cabang SPK *"
+) {
     var expanded by remember { mutableStateOf(false) }
     val currentLabel = BranchRegions.DEALER_LABEL[selected] ?: ""
     Column {
-        Text("Cabang SPK *", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         Box {
             Row(

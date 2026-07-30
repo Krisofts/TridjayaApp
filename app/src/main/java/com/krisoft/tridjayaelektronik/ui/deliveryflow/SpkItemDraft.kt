@@ -158,6 +158,23 @@ fun spkSubmitBlocker(
     else -> null
 }
 
+/**
+ * Baris stok yang boleh ditampilkan/ditap untuk `spkCabang` sekarang.
+ *
+ * `StokCabangRow` tak membawa kode dealer, dan cabang barang baru dilekatkan
+ * saat submit dari `spkCabang` — jadi daftar yang berasal dari cabang lain
+ * harus hilang, bukan sekadar "kemungkinan basi". Respons pencarian cabang
+ * sebelumnya bisa mendarat setelah selektor pindah (insiden DLV-M84149DA0,
+ * 2026-07-29: barang Pagaden ter-submit sebagai Soklat).
+ */
+fun stokRowsForCabang(
+    rows: List<StokCabangRow>,
+    stokDealer: String,
+    spkCabang: String,
+): List<StokCabangRow> =
+    if (spkCabang.isNotBlank() && stokDealer.trim().equals(spkCabang.trim(), ignoreCase = true)) rows
+    else emptyList()
+
 /** Baris baru dari hasil picker stok (mirror web `pickBarang`+`emptySaleItem`). */
 fun newSpkItemDraft(row: StokCabangRow): SpkItemDraft = SpkItemDraft(
     kodeBarang = row.kode.trim(),

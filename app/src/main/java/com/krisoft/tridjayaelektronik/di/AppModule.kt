@@ -14,6 +14,8 @@ import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
 import com.krisoft.tridjayaelektronik.data.remote.ApkApi
 import com.krisoft.tridjayaelektronik.data.remote.AuthApi
 import com.krisoft.tridjayaelektronik.data.remote.AbsensiApi
+import com.krisoft.tridjayaelektronik.data.remote.AktivitasChatApi
+import com.krisoft.tridjayaelektronik.data.remote.AktivitasChatUploadApi
 import com.krisoft.tridjayaelektronik.data.remote.DeadstockApi
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import com.krisoft.tridjayaelektronik.data.remote.CrmApi
@@ -24,6 +26,7 @@ import com.krisoft.tridjayaelektronik.data.remote.RaportApi
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import com.krisoft.tridjayaelektronik.data.remote.NetworkModule
 import com.krisoft.tridjayaelektronik.data.remote.NotificationsApi
+import com.krisoft.tridjayaelektronik.data.remote.KpiApi
 import com.krisoft.tridjayaelektronik.data.remote.PayrollApi
 import com.krisoft.tridjayaelektronik.data.remote.SalesApi
 import dagger.Module
@@ -81,6 +84,17 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideAktivitasChatApi(tokenStore: TokenStore): AktivitasChatApi =
+        NetworkModule.createAktivitasChatApi(tokenStore)
+
+    /** Client sendiri (timeout unggah panjang) — lihat NetworkModule.createAktivitasChatUploadApi. */
+    @Provides
+    @Singleton
+    fun provideAktivitasChatUploadApi(tokenStore: TokenStore): AktivitasChatUploadApi =
+        NetworkModule.createAktivitasChatUploadApi(tokenStore)
+
+    @Provides
+    @Singleton
     fun provideOffApi(tokenStore: TokenStore): OffApi =
         NetworkModule.createOffApi(tokenStore)
 
@@ -108,6 +122,11 @@ object AppModule {
     @Singleton
     fun providePayrollApi(tokenStore: TokenStore): PayrollApi =
         NetworkModule.createPayrollApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideKpiApi(tokenStore: TokenStore): KpiApi =
+        NetworkModule.createKpiApi(tokenStore)
 
     @Provides
     @Singleton

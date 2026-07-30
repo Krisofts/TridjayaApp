@@ -15,12 +15,14 @@ import org.junit.Test
  */
 class ActivityNavHostRouteTest {
 
-    // "crm", "inventory" & "cari_semua" SENGAJA tak masuk `routeForNavKey`: ketiganya
-    // punya NavHost/tab sendiri (LeadsNavHost / InventoryNavHost) dan dibuka lewat
-    // callback pindah-tab (onQuickAccessLeads / onQuickAccessInventory /
-    // onQuickAccessSearch di ActivityNavHost), bukan route di tabel route home_*.
-    // Pengecualian sah, bukan typo.
-    private val bukanRouteTabel = setOf("crm", "inventory", "cari_semua")
+    // "inventory" & "cari_semua" SENGAJA tak masuk `routeForNavKey`: keduanya
+    // punya NavHost/tab sendiri (InventoryNavHost) dan dibuka lewat callback
+    // pindah-tab (onQuickAccessInventory / onQuickAccessSearch di
+    // ActivityNavHost), bukan route di tabel route home_*. Pengecualian sah,
+    // bukan typo. "crm" TIDAK lagi di sini sejak Prospek pindah jadi route
+    // biasa (`ROUTE_LEADS_LIST`, 2026-07-30) — sekarang ditegakkan oleh
+    // iterasi di bawah seperti navKey lain.
+    private val bukanRouteTabel = setOf("inventory", "cari_semua")
 
     @Test
     fun `setiap navKey non-kosong dikenali peta route`() {
@@ -51,6 +53,34 @@ class ActivityNavHostRouteTest {
             "navKey 'panduan_alur' tak dikenali routeForNavKey — tombol di baris PINTASAN jadi bisu",
             routeForNavKey("panduan_alur")
         )
+    }
+
+    /**
+     * Nilai `route` yang dikirim backend pada notif channel `approval`
+     * (`delivery_notif::route_for_kind`, kind `indent_submitted`/
+     * `indent_decided`). Deep-link tap-notif di `MainActivity` memetakannya
+     * lewat fungsi yang sama dengan kartu Activity — kalau kunci ini berubah
+     * nama, notif inden tetap tampil tapi tap-nya cuma membuka app dan tak ada
+     * satu pun error yang muncul.
+     */
+    @Test
+    fun `route notif inden dikenali peta route`() {
+        assertNotNull(
+            "route 'indent' dari notif approval tak dikenali — tap notif inden jadi buntu",
+            routeForNavKey("indent")
+        )
+    }
+
+    /**
+     * Dua layar bukti chat harian. Iterasi di atas sudah menjaganya lewat
+     * registri, tapi kunci ini ditulis literal juga di `routeForNavKey` — disebut
+     * eksplisit supaya salah ketik nama kunci ketahuan di test yang menyebut
+     * fiturnya, bukan cuma di pesan gagal iterasi yang generik.
+     */
+    @Test
+    fun `navKey bukti chat dan antrian reviewnya dikenali peta route`() {
+        assertNotNull(routeForNavKey("bukti_chat"))
+        assertNotNull(routeForNavKey("review_bukti_chat"))
     }
 
     @Test

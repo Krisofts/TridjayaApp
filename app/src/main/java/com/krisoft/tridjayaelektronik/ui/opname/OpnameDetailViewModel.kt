@@ -7,16 +7,22 @@ import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.OpnameRepository
 import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
 import com.krisoft.tridjayaelektronik.data.KONDISI_TIDAK_LAYAK
+import com.krisoft.tridjayaelektronik.data.SerialInputRepository
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
+import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
+import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import javax.inject.Inject
 
 data class OpnameDetailUiState(
@@ -35,13 +41,62 @@ data class OpnameDetailUiState(
     val isSaving: Boolean = false,
     val saveError: String? = null,
     val isMutatingStatus: Boolean = false,
-    val statusError: String? = null
+    val statusError: String? = null,
+    /**
+     * Boleh mengusulkan pendaftaran SN (`serial.propose`). Fail-soft `true`
+     * saat peta kemampuan gagal dimuat — sama seperti gate menu: server tetap
+     * menolak 403, jadi salah tebak di sini paling jauh berujung pesan error,
+     * bukan petugas yang diam-diam kehilangan satu-satunya jalan melaporkan
+     * unit tak terdaftar.
+     */
+    val canPropose: Boolean = true,
+    /** Usulan yang sedang disusun; `null` = dialog tertutup. */
+    val proposal: SerialProposalDraft? = null,
+    val proposalMessage: String? = null,
+    /** Panel status usulan terbuka (dimuat saat dibuka, bukan saat layar dimuat). */
+    val requestsOpen: Boolean = false,
+    val requestsLoading: Boolean = false,
+    val requests: List<SerialRequestDto> = emptyList(),
+    val requestsError: String? = null
 )
+
+/** Foto mana yang sedang diambil — dua-duanya wajib, dan bukan foto yang sama. */
+enum class SerialPhotoKind { SERIAL, BARANG }
+
+/**
+ * Usulan pendaftaran SN yang sedang disusun petugas di lapangan.
+ *
+ * Dua foto WAJIB: foto serialnya sendiri membuktikan nomornya terbaca, foto
+ * barangnya membuktikan serial itu menempel pada unit yang benar-benar ada di
+ * gudang. Satu foto saja tak bisa membuktikan keduanya, dan admin-stok yang
+ * memutuskan tak sedang berdiri di depan barangnya.
+ */
+data class SerialProposalDraft(
+    val kodeBarang: String,
+    val namaBarang: String?,
+    val serialNumber: String,
+    val fotoSnUrl: String? = null,
+    val fotoBarangUrl: String? = null,
+    val catatan: String = "",
+    val uploading: Boolean = false,
+    val submitting: Boolean = false,
+    val error: String? = null
+) {
+    val isValid: Boolean
+        get() = serialNumber.isNotBlank() &&
+            !fotoSnUrl.isNullOrBlank() &&
+            !fotoBarangUrl.isNullOrBlank()
+
+    val busy: Boolean get() = uploading || submitting
+}
 
 @HiltViewModel
 class OpnameDetailViewModel @Inject constructor(
     private val repository: OpnameRepository,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    /** Registry SN — dipakai di sini HANYA untuk mengusulkan, tak pernah menulis
+     *  registry: penulisnya admin-stok saat menyetujui. */
+    private val serialRepository: SerialInputRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OpnameDetailUiState())
@@ -54,6 +109,12 @@ class OpnameDetailViewModel @Inject constructor(
         sessionId = id
         observeUnits(id)
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        // Coroutine terpisah: gate usulan tak boleh menahan detail sesi tampil.
+        viewModelScope.launch {
+            authRepository.capabilities()?.let { caps ->
+                _uiState.update { it.copy(canPropose = caps["serial.propose"] == true) }
+            }
+        }
         viewModelScope.launch {
             when (val result = repository.detail(id)) {
                 is AuthResult.Success -> {
@@ -157,6 +218,138 @@ class OpnameDetailViewModel @Inject constructor(
         }
     }
 
+    // ── Usulan pendaftaran SN (unit ber-temuan `tidak_terdaftar`) ───────────
+
+    fun startProposal(unit: OpnameUnitEntity) {
+        _uiState.update {
+            it.copy(
+                proposal = SerialProposalDraft(
+                    kodeBarang = unit.kodeBarang,
+                    namaBarang = unit.namaBarang,
+                    serialNumber = unit.serialNumber
+                ),
+                proposalMessage = null
+            )
+        }
+    }
+
+    fun cancelProposal() = _uiState.update { it.copy(proposal = null) }
+
+    fun onProposalCatatan(text: String) = updateProposal { it.copy(catatan = text, error = null) }
+
+    fun clearProposalMessage() = _uiState.update { it.copy(proposalMessage = null) }
+
+    /**
+     * Foto dikompres + di-watermark (jam & nama, pola bukti foto lain) SEBELUM
+     * diunggah. Tanpa kompresi, foto kamera 8-12MP menembus batas 5MB server
+     * dan ditolak justru di lapangan yang sinyalnya paling buruk.
+     */
+    fun uploadProposalPhoto(file: File, kind: SerialPhotoKind) {
+        val draft = _uiState.value.proposal ?: return
+        updateProposal { it.copy(uploading = true, error = null) }
+        viewModelScope.launch {
+            val judul = if (kind == SerialPhotoKind.SERIAL) "TRIDJAYA · FOTO SN" else "TRIDJAYA · FOTO BARANG"
+            val bytes = withContext(Dispatchers.Default) {
+                PhotoWatermark.prepareWatermarkedJpeg(
+                    file = file,
+                    lat = null,
+                    lng = null,
+                    title = judul,
+                    subtitle = draft.serialNumber
+                )
+            }?.first
+            if (bytes == null) {
+                updateProposal { it.copy(uploading = false, error = "Foto tidak terbaca, ambil ulang") }
+                return@launch
+            }
+            val nama = "sn_${if (kind == SerialPhotoKind.SERIAL) "serial" else "barang"}_${System.currentTimeMillis()}.jpg"
+            when (val up = serialRepository.uploadPhoto(bytes, nama)) {
+                is AuthResult.Success -> updateProposal {
+                    if (kind == SerialPhotoKind.SERIAL) {
+                        it.copy(uploading = false, fotoSnUrl = up.data)
+                    } else {
+                        it.copy(uploading = false, fotoBarangUrl = up.data)
+                    }
+                }
+                // Usulan SENGAJA tidak diantre offline seperti scan unit: foto
+                // 2MB × 2 per usulan akan menumpuk di HP tanpa batas, dan usulan
+                // yang "terkirim" menurut petugas tapi belum sampai jauh lebih
+                // menyesatkan daripada penolakan yang jelas di depan.
+                is AuthResult.Failure -> updateProposal {
+                    it.copy(
+                        uploading = false,
+                        error = if (up.code == "network_error") {
+                            "Butuh koneksi untuk mengirim foto usulan — coba lagi saat sinyal kembali"
+                        } else {
+                            up.message
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    fun submitProposal() {
+        val draft = _uiState.value.proposal ?: return
+        val dealer = _uiState.value.detail?.dealerCode.orEmpty()
+        if (!draft.isValid || dealer.isBlank()) {
+            updateProposal { it.copy(error = "Dua foto wajib diambil sebelum mengirim usulan") }
+            return
+        }
+        updateProposal { it.copy(submitting = true, error = null) }
+        viewModelScope.launch {
+            val result = serialRepository.proposeSerial(
+                kodeDealer = dealer,
+                kodeBarang = draft.kodeBarang,
+                namaBarang = draft.namaBarang,
+                serialNumberRaw = draft.serialNumber,
+                fotoSnUrl = draft.fotoSnUrl.orEmpty(),
+                fotoBarangUrl = draft.fotoBarangUrl.orEmpty(),
+                // Merunut keputusan admin-stok ke sesi tempat temuannya muncul.
+                opnameSessionId = sessionId.ifBlank { null },
+                catatan = draft.catatan.trim().ifBlank { null }
+            )
+            when (result) {
+                is AuthResult.Success -> _uiState.update {
+                    it.copy(
+                        proposal = null,
+                        proposalMessage = "Usulan ${draft.serialNumber} terkirim, menunggu admin-stok"
+                    )
+                }
+                is AuthResult.Failure -> updateProposal { it.copy(submitting = false, error = result.message) }
+            }
+        }
+    }
+
+    /**
+     * Status usulan yang sudah dikirim. Tanpa panel ini pengusul buta: satu-
+     * satunya tanda usulannya disetujui adalah temuan "belum terdaftar" yang
+     * berhenti muncul pada scan berikutnya — dan yang DITOLAK tak pernah
+     * memberi tanda apa pun.
+     */
+    fun openRequests() {
+        _uiState.update { it.copy(requestsOpen = true, requestsLoading = true, requestsError = null) }
+        val dealer = _uiState.value.detail?.dealerCode
+        viewModelScope.launch {
+            when (val res = serialRepository.serialRequests(dealer)) {
+                is AuthResult.Success -> _uiState.update {
+                    it.copy(requestsLoading = false, requests = res.data)
+                }
+                is AuthResult.Failure -> _uiState.update {
+                    it.copy(requestsLoading = false, requestsError = res.message)
+                }
+            }
+        }
+    }
+
+    fun closeRequests() = _uiState.update { it.copy(requestsOpen = false) }
+
+    private fun updateProposal(block: (SerialProposalDraft) -> SerialProposalDraft) {
+        _uiState.update { state ->
+            state.proposal?.let { state.copy(proposal = block(it)) } ?: state
+        }
+    }
+
     /** Kirim ulang antrean yang tertinggal saat sinyal hilang. */
     fun retryPending() {
         viewModelScope.launch {
@@ -202,6 +395,22 @@ class OpnameDetailViewModel @Inject constructor(
         }
     }
 }
+
+/** Temuan server: serial tak ada di registry cabang mana pun. */
+const val TEMUAN_TIDAK_TERDAFTAR = "tidak_terdaftar"
+
+/**
+ * Unit yang layak diusulkan pendaftarannya.
+ *
+ * Tiga syarat, semuanya perlu: (a) pemakainya boleh mengusulkan
+ * (`serial.propose`); (b) server memvonis serialnya belum terdaftar — temuan
+ * LAIN (`cabang_lain`, `sudah_terjual`) bukan urusan pendaftaran dan usulannya
+ * pasti ditolak; (c) unitnya SUDAH terkirim. Unit yang masih mengantre belum
+ * punya vonis temuan sama sekali, jadi `temuan == null` di sana berarti "belum
+ * tahu", bukan "terdaftar".
+ */
+fun bolehUsulkanSn(unit: OpnameUnitEntity, canPropose: Boolean): Boolean =
+    canPropose && unit.temuan == TEMUAN_TIDAK_TERDAFTAR && unit.syncedAtMillis != null
 
 /** Label temuan dalam Bahasa Indonesia; nilai tak dikenal ditampilkan apa adanya. */
 fun temuanLabel(temuan: String): String = when (temuan) {

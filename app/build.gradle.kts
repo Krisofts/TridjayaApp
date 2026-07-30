@@ -27,8 +27,8 @@ android {
         applicationId = "com.krisoft.tridjayaelektronik"
         minSdk = 24
         targetSdk = 35
-        versionCode = 49
-        versionName = "2.38"
+        versionCode = 55
+        versionName = "2.44"
 
         // Gateway Rust tridjaya, deployed at tridjaya.com (HTTPS, no emulator/LAN
         // workaround needed since it's a public domain). Migrated 2026-07-13 from
@@ -125,6 +125,13 @@ dependencies {
     // Paging
     implementation("androidx.paging:paging-runtime:3.3.2")
     implementation("androidx.paging:paging-compose:3.3.2")
+
+    // Penjadwal pengingat prospek mandek (push/ProspekReminder.kt) — periodik harian, selamat
+    // dari reboot & force-stop tanpa receiver BOOT_COMPLETED atau izin exact-alarm Android 12+
+    // yang dituntut AlarmManager. SENGAJA tanpa androidx.hilt:hilt-work: worker ini cuma butuh
+    // dua singleton, jadi EntryPointAccessors sudah cukup dan tak menambah KSP processor
+    // maupun memaksa TridjayaApplication mengimplementasi Configuration.Provider.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // XLSX export (Inventory "Export ke Excel") — lightweight pure-Java writer, no POI/reflection
     // baggage, small enough for Android; supports styled cells + embedded row images.

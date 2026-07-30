@@ -76,11 +76,10 @@ import com.krisoft.tridjayaelektronik.ui.activity.ACTIVITY_ROUTE_ROOT
 import com.krisoft.tridjayaelektronik.ui.activity.ActivityNavHost
 import com.krisoft.tridjayaelektronik.ui.activity.HOME_ROUTE_DASHBOARD
 import com.krisoft.tridjayaelektronik.ui.activity.landsOnSummary
+import com.krisoft.tridjayaelektronik.ui.activity.routeForNavKey
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
 import com.krisoft.tridjayaelektronik.ui.inventory.InventoryNavHost
 import com.krisoft.tridjayaelektronik.ui.inventory.SEARCH_ROUTE_ROOT
-import com.krisoft.tridjayaelektronik.ui.leads.LEADS_ROUTE_LIST
-import com.krisoft.tridjayaelektronik.ui.leads.LeadsNavHost
 import com.krisoft.tridjayaelektronik.ui.login.ChangePasswordScreen
 import com.krisoft.tridjayaelektronik.ui.login.ForgotPasswordScreen
 import com.krisoft.tridjayaelektronik.ui.login.LoginScreen
@@ -327,38 +326,31 @@ private fun TridjayaNavHost(
 @Composable
 private fun DestinationContent(
     destination: AppDestination,
-    onSettingsClick: () -> Unit,
     onSettingsBack: () -> Unit,
     onCloseSearch: () -> Unit,
     onQuickAccessInventory: () -> Unit,
     onQuickAccessSearch: () -> Unit,
-    onQuickAccessLeads: () -> Unit,
     onOpenSummaryTab: () -> Unit,
     inventoryOpenListSignal: Int,
     inventoryOpenSearchSignal: Int,
     activityTabSelectedSignal: Int,
     activityNav: NavHostController,
     summaryNav: NavHostController,
-    inventoryNav: NavHostController,
-    leadsNav: NavHostController
+    inventoryNav: NavHostController
 ) {
     when (destination) {
         AppDestination.ACTIVITY -> ActivityNavHost(
             startDestination = ACTIVITY_ROUTE_ROOT,
-            onSettingsClick = onSettingsClick,
             onOpenSummaryTab = onOpenSummaryTab,
             onQuickAccessInventory = onQuickAccessInventory,
             onQuickAccessSearch = onQuickAccessSearch,
-            onQuickAccessLeads = onQuickAccessLeads,
             activityTabSelectedSignal = activityTabSelectedSignal,
             navController = activityNav
         )
         AppDestination.SUMMARY -> ActivityNavHost(
             startDestination = HOME_ROUTE_DASHBOARD,
-            onSettingsClick = onSettingsClick,
             onQuickAccessInventory = onQuickAccessInventory,
             onQuickAccessSearch = onQuickAccessSearch,
-            onQuickAccessLeads = onQuickAccessLeads,
             navController = summaryNav
         )
         AppDestination.INVENTORY -> InventoryNavHost(
@@ -370,7 +362,6 @@ private fun DestinationContent(
             // quick-access entries where there's nothing left in this tab's own back stack to pop.
             onExitToHome = onCloseSearch
         )
-        AppDestination.LEADS -> LeadsNavHost(navController = leadsNav)
         AppDestination.SETTINGS -> SettingsScreen(onBack = onSettingsBack)
     }
 }
@@ -456,10 +447,8 @@ private fun MainScreen(
     val activityNav = rememberNavController()
     val summaryNav = rememberNavController()
     val inventoryNav = rememberNavController()
-    val leadsNav = rememberNavController()
     // "Semua menu →" di Activity = pindah tab, bukan navigasi dalam tab.
     val onOpenSummaryTab: () -> Unit = { selected = AppDestination.SUMMARY }
-    val onQuickAccessLeads: () -> Unit = { selected = AppDestination.LEADS }
     val onQuickAccessInventory: () -> Unit = {
         selected = AppDestination.INVENTORY
         inventoryOpenListTrigger++
@@ -496,12 +485,31 @@ private fun MainScreen(
                 }
                 if (sub != null) activityNav.navigate(sub) { launchSingleTop = true }
             }
-            // Tab CRM sudah tak ada di bottom nav; buka layarnya lewat jalur yang
-            // sama dengan tap kartu "Input prospek" di Activity. `onQuickAccessLeads()`
-            // sendiri sudah men-set `selected = AppDestination.LEADS` (Minor 3 audit
-            // final-fix-2: baris `selected = AppDestination.ACTIVITY` sebelumnya di
-            // sini mati — langsung ditimpa panggilan berikut).
-            "crm" -> onQuickAccessLeads()
+            // Notif persetujuan (absen/izin, dan sejak 2026-07-29 inden). Backend
+            // mengirim `route` = navKey layar tujuan (`delivery_notif::route_for_kind`,
+            // mis. "indent"), dipetakan lewat `routeForNavKey` — peta yang SAMA
+            // dengan kartu Activity, jadi navKey baru dari server tak menuntut
+            // cabang `when` baru di sini. Tanpa `route` yang dikenal: notif tetap
+            // tampil, tap-nya cuma membuka app (perilaku lama channel ini).
+            "approval" -> {
+                val sub = pendingNotifRoute?.let { routeForNavKey(it) }
+                if (sub != null) {
+                    selected = AppDestination.ACTIVITY
+                    activityNav.navigate(sub) { launchSingleTop = true }
+                }
+            }
+            // Prospek/CRM (dulu tab LEADS sendiri) kini route biasa di ActivityNavHost —
+            // pola SAMA dengan cabang "approval" di atas: `routeForNavKey` yang sama
+            // dipakai kartu Activity, jadi jalur ini otomatis ikut kalau navKey-nya
+            // berubah nama, tanpa `!!` (route tak dikenal → notif tetap tampil, tap-nya
+            // cuma membuka app, bukan crash).
+            "crm" -> {
+                val sub = routeForNavKey("crm")
+                if (sub != null) {
+                    selected = AppDestination.ACTIVITY
+                    activityNav.navigate(sub) { launchSingleTop = true }
+                }
+            }
             null -> return@LaunchedEffect
         }
         onConsumeNotifChannel()
@@ -510,7 +518,6 @@ private fun MainScreen(
     val activityEntry by activityNav.currentBackStackEntryAsState()
     val summaryEntry by summaryNav.currentBackStackEntryAsState()
     val inventoryEntry by inventoryNav.currentBackStackEntryAsState()
-    val leadsEntry by leadsNav.currentBackStackEntryAsState()
 
     // Show the bottom nav only on each tab's root list screen — hide it on any pushed detail
     // (product/lead/ranking/add) and on Settings, so those full-screen sub-pages own the frame.
@@ -521,8 +528,10 @@ private fun MainScreen(
         // sebagai layar penuh dari Activity/Operasional, jadi nav-nya tetap disembunyikan.
         // Back tetap punya jalan keluar: BackHandler di bawah memulangkan ke Activity.
         AppDestination.INVENTORY -> false
-        AppDestination.LEADS -> leadsEntry?.destination?.route == LEADS_ROUTE_LIST
-        AppDestination.SETTINGS -> false
+        // Settings kini salah satu tab pill — pill-nya HARUS ikut tampil di sana,
+        // kalau tidak tab yang baru dipilih langsung menyembunyikan alat untuk
+        // pindah tab lagi (hanya tombol back yang tersisa).
+        AppDestination.SETTINGS -> true
     }
 
     // Tab switching here is driven by `selected` state, not a NavController, so system back has
@@ -535,14 +544,12 @@ private fun MainScreen(
         AppDestination.ACTIVITY -> activityNav
         AppDestination.SUMMARY -> summaryNav
         AppDestination.INVENTORY -> inventoryNav
-        AppDestination.LEADS -> leadsNav
         AppDestination.SETTINGS -> null
     }
     val selectedEntry = when (selected) {
         AppDestination.ACTIVITY -> activityEntry
         AppDestination.SUMMARY -> summaryEntry
         AppDestination.INVENTORY -> inventoryEntry
-        AppDestination.LEADS -> leadsEntry
         AppDestination.SETTINGS -> null
     }
     val canPopSelected = selectedEntry != null && selectedNav?.previousBackStackEntry != null
@@ -610,20 +617,17 @@ private fun MainScreen(
                         ) {
                             DestinationContent(
                                 destination = destination,
-                                onSettingsClick = { selected = AppDestination.SETTINGS },
                                 onSettingsBack = { selected = AppDestination.ACTIVITY },
                                 onCloseSearch = { selected = AppDestination.ACTIVITY },
                                 onQuickAccessInventory = onQuickAccessInventory,
                                 onQuickAccessSearch = onQuickAccessSearch,
-                                onQuickAccessLeads = onQuickAccessLeads,
                                 onOpenSummaryTab = onOpenSummaryTab,
                                 inventoryOpenListSignal = inventoryOpenListTrigger,
                                 inventoryOpenSearchSignal = inventoryOpenSearchTrigger,
                                 activityTabSelectedSignal = activityTabSelectedTrigger,
                                 activityNav = activityNav,
                                 summaryNav = summaryNav,
-                                inventoryNav = inventoryNav,
-                                leadsNav = leadsNav
+                                inventoryNav = inventoryNav
                             )
                         }
                     }
@@ -662,8 +666,7 @@ private fun tabOrder(destination: AppDestination): Int = when (destination) {
     AppDestination.ACTIVITY -> 0
     AppDestination.SUMMARY -> 1
     AppDestination.INVENTORY -> 2
-    AppDestination.LEADS -> 3
-    AppDestination.SETTINGS -> 4
+    AppDestination.SETTINGS -> 3
 }
 
 /** Swallows all pointer input for this subtree so an off-screen (alpha=0) kept-alive tab can't steal touches from the active one. */

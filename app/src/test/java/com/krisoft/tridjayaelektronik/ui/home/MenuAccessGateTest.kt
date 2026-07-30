@@ -39,9 +39,11 @@ class MenuAccessGateTest {
         assertTrue(canAccessCrm(rolesOf("karyawan", divisi = "sales")))
         assertTrue(canAccessCrm(rolesOf("crm-manager")))
         assertTrue(canAccessCrm(rolesOf("superadmin")))
+        // 2026-07-29: kepala cabang dilayani ter-scope ke lead sendiri
+        // (`CRM_INPUT_ROLES` rust-shared) — ia punya target prospek harian.
+        assertTrue(canAccessCrm(rolesOf("kepala-cabang")))
         // Semua ini dijawab 403 oleh crm-service → menunya tak boleh muncul.
         assertFalse(canAccessCrm(rolesOf("manager")))
-        assertFalse(canAccessCrm(rolesOf("kepala-cabang")))
         assertFalse(canAccessCrm(rolesOf("owner")))
         assertFalse(canAccessCrm(rolesOf("ai-engineer")))
     }
@@ -236,7 +238,23 @@ class CapabilityDrivenMenuTest {
     fun `setiap menu ber-gate menyebut kunci kemampuan`() {
         // Menu baru wajib punya kunci supaya ikut sumber tunggal; hanya menu
         // yang backend-nya benar-benar terbuka boleh `null`.
+        // `kpi` ikut daftar ini: `GET /kpi/me` sama sekali tak memanggil
+        // `ensure_role` (scope-nya diri sendiri lewat user_id token), jadi tak
+        // ada kunci kemampuan yang bisa dicerminkan. Daftar karyawan di dalam
+        // layar itulah yang ber-gate (`kpi.manage`), dan itu dinilai di
+        // KpiViewModel, bukan oleh gate menu ini.
         val tanpaKunci = QUICK_ACCESS_MENUS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("inventory"), tanpaKunci)
+        assertEquals(listOf("kpi", "inventory"), tanpaKunci)
+    }
+
+    @Test
+    fun `kpi terlihat semua role yang login`() {
+        // Semua orang punya KPI-nya sendiri — termasuk role yang ditolak menu
+        // lain (crm-manager/ai-engineer), sebab endpoint-nya tak ber-gate.
+        assertTrue(visibleQuickAccessMenus(setOf("karyawan")).any { it.id == "kpi" })
+        assertTrue(visibleQuickAccessMenus(setOf("crm-manager")).any { it.id == "kpi" })
+        assertTrue(visibleQuickAccessMenus(setOf("ai-engineer")).any { it.id == "kpi" })
+        // Profil belum termuat tetap fail-closed.
+        assertFalse(visibleQuickAccessMenus(emptySet()).any { it.id == "kpi" })
     }
 }

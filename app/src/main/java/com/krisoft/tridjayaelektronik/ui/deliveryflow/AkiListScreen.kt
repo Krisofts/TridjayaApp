@@ -139,8 +139,15 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
     }
 }
 
+/** Baris keterangan pengganti gambar — dibuat menonjol seukuran satu baris teks
+ *  supaya kartu tidak terlihat "kosong biasa" saat fotonya bermasalah. */
 @Composable
-private fun AkiCard(form: AkiFormDto, submitting: Boolean, photo: android.graphics.Bitmap?, canApprove: Boolean, canReturn: Boolean, onApprove: () -> Unit, onReject: () -> Unit, onMarkReturned: () -> Unit) {
+private fun AkiPhotoNotice(text: String, color: androidx.compose.ui.graphics.Color) {
+    Text(text, style = MaterialTheme.typography.labelSmall, color = color)
+}
+
+@Composable
+private fun AkiCard(form: AkiFormDto, submitting: Boolean, photo: com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiPhotoState?, canApprove: Boolean, canReturn: Boolean, onApprove: () -> Unit, onReject: () -> Unit, onMarkReturned: () -> Unit) {
     val sudah = form.akiBekasStatus == "sudah"
     val approved = form.approvalStatus == "approved"
     val rejected = form.approvalStatus == "rejected"
@@ -164,13 +171,30 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, photo: android.graphi
                 "${form.merkTipe} · ${form.jumlahPcs} pcs",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // Foto bukti aki (2026-07-24, wajib form baru) — form lama tanpa foto skip.
-            if (photo != null) {
-                Spacer(Modifier.height(8.dp))
-                androidx.compose.foundation.Image(
-                    bitmap = photo.asImageBitmap(), contentDescription = "Foto bukti aki",
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp))
+            // Foto bukti aki (2026-07-24). TIGA keadaan sengaja dibedakan: ada,
+            // gagal dimuat, dan memang tak ada. Sebelum 2026-07-29 ketiganya
+            // sama-sama menghasilkan kartu tanpa gambar, sehingga approver tak
+            // bisa tahu apakah PDI lalai memotret atau filenya hilang dari
+            // server — dan 5 foto memang benar-benar hilang.
+            Spacer(Modifier.height(8.dp))
+            when (photo) {
+                is com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiPhotoState.Ada ->
+                    androidx.compose.foundation.Image(
+                        bitmap = photo.bitmap.asImageBitmap(), contentDescription = "Foto bukti aki",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp))
+                    )
+                is com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiPhotoState.Memuat ->
+                    AkiPhotoNotice("Memuat foto bukti…", MaterialTheme.colorScheme.onSurfaceVariant)
+                is com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiPhotoState.Gagal ->
+                    AkiPhotoNotice(
+                        "Foto bukti gagal dimuat — file tidak ada di server atau jaringan putus.",
+                        MaterialTheme.colorScheme.error
+                    )
+                // Tak ada entri = form ini memang tanpa photoUrl.
+                null -> AkiPhotoNotice(
+                    "Tanpa foto bukti (form dibuat sebelum foto diwajibkan).",
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             // Status approver pusat (redesain 2026-07-24, dulu 3 slot).

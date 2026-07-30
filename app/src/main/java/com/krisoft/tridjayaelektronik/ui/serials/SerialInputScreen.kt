@@ -30,12 +30,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.CabangSelector
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
@@ -62,7 +65,9 @@ fun SerialInputScreen(
             state = state,
             onTextChange = viewModel::onTextChange,
             onSave = viewModel::save,
-            onBack = viewModel::clearSelection
+            onBack = viewModel::clearSelection,
+            onGenerateCountChange = viewModel::onGenerateCountChange,
+            onGenerate = viewModel::generateSerials
         )
         return
     }
@@ -76,11 +81,18 @@ fun SerialInputScreen(
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         Column(modifier = contentModifier.fillMaxSize()) {
             Text(
-                text = "Pilih produk, lalu masukkan serial number satu per baris.",
+                text = "Pilih cabang & produk, lalu masukkan serial number satu per baris.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp)
             )
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                CabangSelector(
+                    selected = state.dealerCode.orEmpty(),
+                    onSelect = viewModel::changeCabang,
+                    label = "Cabang"
+                )
+            }
             ExpressiveTextField(
                 value = state.search,
                 onValueChange = viewModel::onSearchChange,
@@ -145,7 +157,9 @@ private fun SerialInputFormScreen(
     state: SerialInputUiState,
     onTextChange: (String) -> Unit,
     onSave: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onGenerateCountChange: (String) -> Unit,
+    onGenerate: () -> Unit
 ) {
     // State-swap di dalam route ini (bukan nav destination sendiri) — pola PayrollScreen/IndentDetailScreen.
     BackHandler(onBack = onBack)
@@ -227,6 +241,66 @@ private fun SerialInputFormScreen(
                                 result.skipped.joinToString(", ") { "${it.serialNumber} (${it.reason.ifBlank { "dilewati" }})" },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Barang tanpa serial pabrik (sofa, kursi): kodenya dibuat sistem,
+            // ditempel ke unitnya, lalu discan seperti serial biasa saat opname.
+            ClayCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Barang tanpa nomor seri pabrik",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Buat kode pengganti (GEN-…) lalu tempel labelnya ke tiap unit. " +
+                            "Kode langsung tercatat di registry begitu dibuat.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ExpressiveTextField(
+                            value = state.generateCount,
+                            onValueChange = onGenerateCountChange,
+                            modifier = Modifier.weight(1f),
+                            placeholder = "Jumlah unit",
+                            keyboardType = KeyboardType.Number
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ExpressiveFilledButton(
+                            onClick = onGenerate,
+                            enabled = !state.generating && state.generateCount.isNotBlank()
+                        ) {
+                            if (state.generating) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Buat Kode")
+                            }
+                        }
+                    }
+                    if (state.generated.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "${state.generated.size} kode dibuat:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = state.generated.joinToString("\n"),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                        Text(
+                            text = "Cetak labelnya lewat web (menu Buat Kode Serial) — HP tak terhubung printer label.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }

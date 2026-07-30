@@ -291,6 +291,64 @@ data class MutasiContextDto(
     val sourceDealerName: String? = null
 )
 
+/**
+ * Body `POST /inventory/serial-numbers/requests` — cabang MENGUSULKAN SN, tidak
+ * mendaftarkannya. Registry tetap ditulis admin-stok saat menyetujui; kalau app
+ * menulis registry langsung, temuan `tidak_terdaftar` pada opname berikutnya
+ * hilang dan sinyalnya ikut hilang.
+ */
+@Serializable
+data class CreateSerialRequestBody(
+    val kodeDealer: String,
+    val kodeBarang: String,
+    val namaBarang: String? = null,
+    val serialNumber: String,
+    val fotoSnUrl: String,
+    val fotoBarangUrl: String,
+    val opnameSessionId: String? = null,
+    val catatan: String? = null
+)
+
+/** Satu usulan pendaftaran SN. Field keputusan (`decided*`) kosong selama `pending`. */
+@Serializable
+data class SerialRequestDto(
+    val id: String = "",
+    val kodeDealer: String = "",
+    val kodeBarang: String = "",
+    val namaBarang: String? = null,
+    val serialNumber: String = "",
+    val status: String = "pending",
+    val catatan: String? = null,
+    val alasanTolak: String? = null,
+    val requestedByName: String? = null,
+    val requestedAt: String? = null,
+    val decidedByName: String? = null,
+    val decidedAt: String? = null
+)
+
+@Serializable
+data class SerialRequestListData(
+    val count: Int = 0,
+    /** Cabang yang di-scope server, atau "all" untuk pemutus/pengawas. */
+    val kodeDealer: String = "",
+    val items: List<SerialRequestDto> = emptyList()
+)
+
+/**
+ * Body `POST /inventory/serial-numbers/generate` — kode pengganti SN untuk
+ * barang tanpa serial pabrik (sofa, kursi). `jumlah` dibatasi 1–500 server.
+ */
+@Serializable
+data class GenerateSerialBody(
+    val kodeDealer: String,
+    val kodeBarang: String,
+    val namaBarang: String? = null,
+    val jumlah: Int
+)
+
+@Serializable
+data class GenerateSerialData(val generated: List<String> = emptyList())
+
 /** Body `POST /inventory/serial-numbers` — input manual admin-stok (dipaksa dealer sendiri di backend). */
 @Serializable
 data class CreateSerialNumbersBody(

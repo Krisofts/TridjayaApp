@@ -6,4 +6,5 @@
     <cache-path name="delivery" path="delivery/" />
     <cache-path name="raport" path="raport/" />
     <cache-path name="update" path="update/" />
+    <cache-path name="aktivitas_chat" path="aktivitas-chat/" />
 </paths>

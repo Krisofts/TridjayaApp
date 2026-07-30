@@ -92,6 +92,33 @@ object NetworkModule {
     fun createAbsensiApi(tokenStore: TokenStore): AbsensiApi =
         authenticatedRetrofit(tokenStore).create(AbsensiApi::class.java)
 
+    fun createAktivitasChatApi(tokenStore: TokenStore): AktivitasChatApi =
+        authenticatedRetrofit(tokenStore).create(AktivitasChatApi::class.java)
+
+    /**
+     * Client TERPISAH untuk unggah video bukti chat. Client bersama ber-write/readTimeout
+     * 20 detik — video sampai 20MB di jaringan cabang butuh MENIT, jadi lewat client itu
+     * unggahan besar SELALU mati timeout dan di layar terlihat seperti "server error".
+     *
+     * Diturunkan lewat `newBuilder()` dari client bersama (BUKAN client baru dari nol) supaya
+     * AuthHeaderInterceptor + TokenRefreshAuthenticator IKUT — tanpa itu request unggah
+     * berangkat tanpa header Authorization dan selalu 401. `callTimeout(0)` = tanpa batas
+     * menyeluruh; batas nyata tetap dipegang write/read timeout per-blok, yang justru bisa
+     * membedakan "jaringan lambat tapi jalan" dari "jaringan mati".
+     */
+    fun createAktivitasChatUploadApi(tokenStore: TokenStore): AktivitasChatUploadApi {
+        val base = authenticatedRetrofit(tokenStore)
+        val uploadClient = (base.callFactory() as OkHttpClient).newBuilder()
+            .writeTimeout(300, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .build()
+        return base.newBuilder()
+            .client(uploadClient)
+            .build()
+            .create(AktivitasChatUploadApi::class.java)
+    }
+
     fun createOffApi(tokenStore: TokenStore): OffApi =
         authenticatedRetrofit(tokenStore).create(OffApi::class.java)
 
@@ -109,6 +136,9 @@ object NetworkModule {
 
     fun createPayrollApi(tokenStore: TokenStore): PayrollApi =
         authenticatedRetrofit(tokenStore).create(PayrollApi::class.java)
+
+    fun createKpiApi(tokenStore: TokenStore): KpiApi =
+        authenticatedRetrofit(tokenStore).create(KpiApi::class.java)
 
     fun createErpPriceChangesApi(tokenStore: TokenStore): ErpPriceChangesApi =
         authenticatedRetrofit(tokenStore).create(ErpPriceChangesApi::class.java)

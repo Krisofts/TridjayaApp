@@ -318,9 +318,52 @@ class ActivityRegistryTest {
     fun `prospek hanya untuk yang benar-benar dilayani crm-service`() {
         assertTrue("prospek" in ids("karyawan"))
         assertTrue("prospek" in ids("crm-manager"))
+        // 2026-07-29: kepala cabang ikut `CRM_INPUT_ROLES` (rust-shared) —
+        // dilayani ter-scope ke lead sendiri, dan `hr_roster` memberinya target
+        // prospek harian. Menahannya di sini = target tanpa pintu input.
+        assertTrue("prospek" in ids("kepala-cabang"))
         assertFalse("prospek" in ids("manager"))
-        assertFalse("prospek" in ids("kepala-cabang"))
         assertFalse("prospek" in ids("owner"))
+    }
+
+    // ── Bukti chat harian (syarat absen pulang) ─────────────────────────────
+
+    @Test
+    fun `kartu bukti chat tampil untuk staff`() {
+        val caps = mapOf("aktivitas_chat.submit" to true, "aktivitas_chat.review" to false)
+        assertTrue("bukti_chat" in ids("karyawan", caps = caps))
+        assertTrue("bukti_chat" in ids("driver", caps = caps))
+        // Siapa yang bisa absen, dia yang wajib kirim bukti — cadangan offline
+        // harus sepakat dengan peta kemampuan server.
+        assertTrue("bukti_chat" in ids("kasir", caps = null))
+    }
+
+    @Test
+    fun `kartu review bukti chat hanya untuk pemutus`() {
+        assertTrue(
+            "review_bukti_chat" in ids(
+                "kepala-cabang",
+                caps = mapOf("aktivitas_chat.review" to true),
+            )
+        )
+        assertFalse(
+            "review_bukti_chat" in ids(
+                "karyawan",
+                caps = mapOf("aktivitas_chat.submit" to true, "aktivitas_chat.review" to false),
+            )
+        )
+        // Cadangan offline: karyawan biasa tak boleh memeriksa bukti orang lain.
+        assertFalse("review_bukti_chat" in ids("karyawan", caps = null))
+        assertFalse("review_bukti_chat" in ids("driver", caps = null))
+    }
+
+    @Test
+    fun `bukti chat duduk tepat setelah absen pulang`() {
+        // Urutan daftar = urutan tampil di seksi HARI INI, dan bukti chat adalah
+        // SYARAT absen pulang — memisahkannya membuat karyawan menekan tombol
+        // pulang yang mati tanpa melihat tugas yang membukanya.
+        val harian = ACTIVITY_ITEMS.filter { it.kind == ActivityKind.TUGAS_HARIAN }.map { it.id }
+        assertEquals(harian.indexOf("absen_pulang") + 1, harian.indexOf("bukti_chat"))
     }
 
     @Test
