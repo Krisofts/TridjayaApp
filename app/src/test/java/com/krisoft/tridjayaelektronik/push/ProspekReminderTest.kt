@@ -24,7 +24,10 @@ class ProspekReminderTest {
         nama: String,
         status: String = "open",
         agoMillis: Long = 0L,
-        updatedAtRaw: String? = null
+        updatedAtRaw: String? = null,
+        assignedTo: String? = null,
+        createdBy: String? = null,
+        pendingSync: Boolean = false
     ): LeadEntity = LeadEntity(
         id = id,
         nama = nama,
@@ -32,20 +35,31 @@ class ProspekReminderTest {
         pipelineId = 1,
         stageId = 1,
         status = status,
-        assignedTo = null,
+        assignedTo = assignedTo,
+        createdBy = createdBy,
         estimatedValue = 0.0,
         source = null,
         lokasi = null,
         lostReason = null,
         catatan = null,
         createdAt = isoUtc(now - agoMillis),
-        updatedAt = updatedAtRaw ?: isoUtc(now - agoMillis)
+        updatedAt = updatedAtRaw ?: isoUtc(now - agoMillis),
+        pendingSync = pendingSync
     )
 
     private fun isoUtc(millis: Long): String =
         java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")
         }.format(java.util.Date(millis))
+
+    /**
+     * Format PERSIS `CrmRepository.nowTimestamp()`: `SimpleDateFormat` TANPA `timeZone`
+     * di-set (jam dinding device, pemisah spasi) — bukan `isoUtc` di atas. Dipakai untuk
+     * membuktikan skew zona waktu tidak menyembunyikan baris yang sungguh sudah lama.
+     */
+    private fun localWallClock(millis: Long): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+            .format(java.util.Date(millis))
 
     private fun hours(n: Long) = TimeUnit.HOURS.toMillis(n)
     private fun days(n: Long) = TimeUnit.DAYS.toMillis(n)
@@ -110,6 +124,18 @@ class ProspekReminderTest {
         val baru = isoUtc(now - TimeUnit.MINUTES.toMillis(1)).replace('T', ' ')
         val hasil = staleProspek(listOf(lead(1, "Baru Diubah", updatedAtRaw = baru)), now)
         assertTrue(hasil.isEmpty())
+    }
+
+    @Test
+    fun `baris jam-dinding-lokal yang sungguh tua tetap terdeteksi mandek walau skew zona waktu`() {
+        // nowTimestamp() format-nya PERSIS ini: SimpleDateFormat tanpa timeZone di-set (jam
+        // dinding device, pemisah spasi). Untuk zona UTC+ ini bikin umur under-report sebesar
+        // offset-nya (lihat catatan skew di updatedAtMillis) — tapi 3 hari jauh melewati
+        // ambang 24 jam bahkan setelah dipotong offset zona waktu manapun yang wajar, jadi
+        // skew itu TIDAK BOLEH membuat baris yang genuinely tua ini malah lolos tak terlihat.
+        val tua = localWallClock(now - days(3))
+        val hasil = staleProspek(listOf(lead(1, "Lama Sekali", updatedAtRaw = tua)), now)
+        assertEquals(listOf("Lama Sekali"), hasil.map { it.nama })
     }
 
     @Test
@@ -204,5 +230,58 @@ class ProspekReminderTest {
             set(java.util.Calendar.MILLISECOND, 0)
         }.timeInMillis
         assertEquals(days(1), millisUntilNextRun(tepatJam, hour = 9))
+    }
+
+    // --- milikSaya: saringan kepemilikan (Fix 1, cegah bocor lintas-akun di HP bersama) ---
+
+    @Test
+    fun `milikSaya menyimpan baris yang assignedTo-nya aku`() {
+        val hasil = milikSaya(listOf(lead(1, "Punyaku", assignedTo = "user-a")), "user-a")
+        assertEquals(listOf("Punyaku"), hasil.map { it.nama })
+    }
+
+    @Test
+    fun `milikSaya menyimpan baris yang createdBy-nya aku walau assignedTo orang lain`() {
+        // Prospek yang kuinput lalu kulempar ke sales lain tetap jadi tanggung jawabku
+        // untuk diingatkan — bukan cuma yang assigned ke aku.
+        val hasil = milikSaya(
+            listOf(lead(1, "Kuinput Kulempar", assignedTo = "user-b", createdBy = "user-a")),
+            "user-a"
+        )
+        assertEquals(listOf("Kuinput Kulempar"), hasil.map { it.nama })
+    }
+
+    @Test
+    fun `milikSaya membuang baris yang sepenuhnya milik id lain`() {
+        val hasil = milikSaya(
+            listOf(lead(1, "Bukan Punyaku", assignedTo = "user-b", createdBy = "user-b")),
+            "user-a"
+        )
+        assertTrue(hasil.isEmpty())
+    }
+
+    @Test
+    fun `milikSaya membuang baris pendingSync tanpa pemilik — tradeoff sengaja, bukan celah`() {
+        // Baris create-offline yang belum tersinkron tak punya assignedTo/createdBy sama
+        // sekali (CrmRepository.createLead tak menulis createdBy), jadi tak bisa dibedakan
+        // antara "punyaku, belum sempat terkirim" vs "sisa akun sebelumnya di HP ini".
+        // Keputusan user 2026-07-30: lebih murah kehilangan pengingat untuk baris ini
+        // (self-heals begitu tersinkron) daripada berisiko membocorkan data akun lain.
+        val hasil = milikSaya(
+            listOf(lead(1, "Belum Sinkron", assignedTo = null, createdBy = null, pendingSync = true)),
+            "user-a"
+        )
+        assertTrue(hasil.isEmpty())
+    }
+
+    @Test
+    fun `milikSaya membuang baris server tanpa pemilik — defensif, bukan diasumsikan milikku`() {
+        // Baris dari server SELALU punya assignedTo/createdBy; kalau ada yang ternyata
+        // kosong (data cacat/kasus tak terduga), jangan diasumsikan itu milikku.
+        val hasil = milikSaya(
+            listOf(lead(1, "Yatim", assignedTo = null, createdBy = null, pendingSync = false)),
+            "user-a"
+        )
+        assertTrue(hasil.isEmpty())
     }
 }
