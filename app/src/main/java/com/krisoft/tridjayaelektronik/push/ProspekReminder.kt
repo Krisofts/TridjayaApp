@@ -1,7 +1,35 @@
 package com.krisoft.tridjayaelektronik.push
 
+import android.Manifest
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import com.krisoft.tridjayaelektronik.BuildConfig
+import com.krisoft.tridjayaelektronik.R
+import com.krisoft.tridjayaelektronik.data.TokenStore
+import com.krisoft.tridjayaelektronik.data.local.LeadDao
 import com.krisoft.tridjayaelektronik.data.local.LeadEntity
+import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
+import com.krisoft.tridjayaelektronik.data.local.SyncMetaEntity
 import com.krisoft.tridjayaelektronik.data.model.parseIsoUtcMillis
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 /**
@@ -69,4 +97,131 @@ private fun updatedAtMillis(updatedAt: String): Long? =
 private fun ageLabel(updatedAt: String, nowMillis: Long): String {
     val updated = updatedAtMillis(updatedAt) ?: return "lama"
     return "${(nowMillis - updated) / TimeUnit.DAYS.toMillis(1)} hari"
+}
+
+/** Jam dinding device saat pengingat dikirim. */
+private const val REMINDER_HOUR = 9
+
+/** Nama unik pekerjaan periodik — dipakai `enqueueUniquePeriodicWork`. */
+private const val WORK_NAME = "prospek_stale_reminder"
+
+/**
+ * ID notifikasi STABIL (bukan timestamp): kiriman hari ini menimpa kiriman kemarin, jadi
+ * tray tak menumpuk pengingat lama yang isinya sudah salah. Dipakai juga sebagai
+ * `requestCode` PendingIntent — angkanya sengaja jauh dari ID milik [FcmService]
+ * (timestamp) dan dari ringkasan grupnya (`"crm".hashCode()` = 98782).
+ */
+private const val NOTIF_ID = 910_001
+
+/**
+ * Jadwalkan pengingat harian. Idempoten: [ExistingPeriodicWorkPolicy.KEEP] menjaga jadwal
+ * yang sudah berjalan, supaya membuka app tidak menggeser jam bunyinya tiap kali.
+ *
+ * Dipanggil dari `TridjayaApplication.onCreate` — TANPA hook login/logout: worker sendiri
+ * berhenti kalau sesi kosong, jadi tak ada tempat kedua yang bisa lupa diperbarui.
+ */
+fun scheduleProspekReminder(context: Context) {
+    val work = WorkManager.getInstance(context)
+    work.enqueueUniquePeriodicWork(
+        WORK_NAME,
+        ExistingPeriodicWorkPolicy.KEEP,
+        PeriodicWorkRequestBuilder<ProspekStaleWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(millisUntilNextRun(System.currentTimeMillis()), TimeUnit.MILLISECONDS)
+            .build()
+    )
+    // ponytail: pemicu langsung khusus build debug — tanpa ini satu-satunya cara melihat
+    // notifikasinya adalah menunggu jam 09:00. Hapus kalau debug jadi terlalu berisik.
+    if (BuildConfig.DEBUG) {
+        work.enqueue(OneTimeWorkRequestBuilder<ProspekStaleWorker>().build())
+    }
+}
+
+/**
+ * Jeda millis dari [nowMillis] ke pukul [hour]:00 waktu device berikutnya. Selalu > 0:
+ * kalau jamnya hari ini sudah lewat (atau tepat sekarang), lompat ke besok.
+ *
+ * `Calendar`, bukan `java.time` — modul ini minSdk 24 tanpa `coreLibraryDesugaring`.
+ */
+internal fun millisUntilNextRun(nowMillis: Long, hour: Int = REMINDER_HOUR): Long {
+    val target = Calendar.getInstance().apply {
+        timeInMillis = nowMillis
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        if (timeInMillis <= nowMillis) add(Calendar.DAY_OF_MONTH, 1)
+    }
+    return target.timeInMillis - nowMillis
+}
+
+/**
+ * Pembaca cache + pemosting notifikasi. NOL request jaringan — permintaan eksplisit user
+ * (jangan bebani server). Konsekuensi yang diterima sadar: kalau app tak dibuka berhari-hari,
+ * cache basi dan notifikasinya bisa menyebut prospek yang sudah digerakkan lewat web.
+ *
+ * Dependensi diambil lewat [EntryPointAccessors], bukan `@HiltWorker` — lihat catatan di
+ * `app/build.gradle.kts`.
+ */
+class ProspekStaleWorker(
+    appContext: Context,
+    params: WorkerParameters
+) : CoroutineWorker(appContext, params) {
+
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface Deps {
+        fun leadDao(): LeadDao
+        fun syncMetaDao(): SyncMetaDao
+        fun tokenStore(): TokenStore
+    }
+
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val deps = EntryPointAccessors.fromApplication(applicationContext, Deps::class.java)
+        // Belum login: tak ada prospek milik siapa pun untuk diingatkan.
+        if (!deps.tokenStore().isLoggedIn) return@withContext Result.success()
+        // Cache belum pernah disinkron sama sekali → tabelnya kosong atau masih sisa akun
+        // sebelumnya. Diam lebih baik daripada mengingatkan berdasarkan data yang bukan miliknya.
+        val lastSync = deps.syncMetaDao().get(SyncMetaEntity.KEY_LEADS)?.lastSyncMillis ?: 0L
+        if (lastSync == 0L) return@withContext Result.success()
+
+        val now = System.currentTimeMillis()
+        val stale = staleProspek(deps.leadDao().all(), now)
+        // Nol prospek mandek → tidak posting apa pun (bukan notifikasi "0 prospek").
+        if (stale.isNotEmpty()) postReminder(applicationContext, stale, now)
+        Result.success()
+    }
+}
+
+private fun postReminder(context: Context, stale: List<LeadEntity>, nowMillis: Long) {
+    // Channel "crm" milik FcmService — bukan channel baru. Dipastikan ada dulu: Android 8+
+    // membuang notifikasi yang channel-nya belum terdaftar.
+    FcmService.ensureChannels(context)
+    // API 33+: tanpa POST_NOTIFICATIONS, notify() tidak menampilkan apa pun dan kegagalannya
+    // tak terlihat sama sekali. Pola persis FcmService.showNotification.
+    if (Build.VERSION.SDK_INT >= 33 &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    ) {
+        return
+    }
+    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        // MainActivity SUDAH membaca extra ini dan membuka tab CRM — tak ada perubahan di sana.
+        putExtra(FcmService.EXTRA_NOTIF_CHANNEL, FcmService.CHANNEL_CRM)
+    }
+    val pending = PendingIntent.getActivity(
+        context, NOTIF_ID, launch ?: Intent(),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    val notif = NotificationCompat.Builder(context, FcmService.CHANNEL_CRM)
+        .setSmallIcon(R.mipmap.ic_launcher)
+        .setContentTitle(REMINDER_TITLE)
+        .setContentText("${stale.size} prospek perlu ditindaklanjuti")
+        .setStyle(NotificationCompat.BigTextStyle().bigText(reminderBody(stale, nowMillis)))
+        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        .setAutoCancel(true)
+        .setContentIntent(pending)
+        // Satu grup dengan notifikasi CRM dari server; ringkasan grupnya sudah dibuat FcmService.
+        .setGroup(FcmService.CHANNEL_CRM)
+        .build()
+    NotificationManagerCompat.from(context).notify(NOTIF_ID, notif)
 }

@@ -167,4 +167,26 @@ class ProspekReminderTest {
         val stale = staleProspek(listOf(lead(1, "   ", agoMillis = days(2))), now)
         assertTrue(reminderBody(stale, now).contains("• (tanpa nama) — 2 hari"))
     }
+
+    @Test
+    fun `jeda ke jam kirim berikutnya selalu di dalam satu hari ke depan`() {
+        // Nilai persisnya bergantung zona waktu device, jadi yang dikunci sifatnya:
+        // selalu positif (jangan pernah menjadwalkan di masa lalu) dan tak pernah
+        // melewati satu hari (jangan sampai pengingat pertama tertunda dua hari).
+        listOf(now, now + hours(7), now + hours(13), now + hours(23)).forEach { saat ->
+            val jeda = millisUntilNextRun(saat)
+            assertTrue("jeda harus > 0, dapat $jeda", jeda > 0)
+            assertTrue("jeda harus <= 24 jam, dapat $jeda", jeda <= days(1))
+        }
+    }
+
+    @Test
+    fun `jeda dihitung ke jam yang diminta, bukan jam bulat sembarang`() {
+        val jeda = millisUntilNextRun(now, hour = 9)
+        val target = now + jeda
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = target }
+        assertEquals(9, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(0, cal.get(java.util.Calendar.MINUTE))
+        assertEquals(0, cal.get(java.util.Calendar.SECOND))
+    }
 }

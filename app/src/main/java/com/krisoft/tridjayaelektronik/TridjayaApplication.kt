@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.krisoft.tridjayaelektronik.data.TokenStore
 import com.krisoft.tridjayaelektronik.push.FcmService
+import com.krisoft.tridjayaelektronik.push.scheduleProspekReminder
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +28,9 @@ class TridjayaApplication : Application(), ImageLoaderFactory {
         // Buat channel notifikasi ("approval" + "crm") lebih awal, supaya push FCM saat app
         // di background sudah punya channel yang cocok (Android 8+ butuh channel ada dulu).
         FcmService.ensureChannels(this)
+        // Pengingat harian prospek mandek — dihitung di device dari cache Room, nol request.
+        // Idempoten (KEEP), dan worker-nya sendiri diam kalau belum login.
+        scheduleProspekReminder(this)
     }
 
     /** ImageLoader terpusat untuk semua AsyncImage (foto produk list/detail/flyer, bukti indent):

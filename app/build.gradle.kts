@@ -126,6 +126,13 @@ dependencies {
     implementation("androidx.paging:paging-runtime:3.3.2")
     implementation("androidx.paging:paging-compose:3.3.2")
 
+    // Penjadwal pengingat prospek mandek (push/ProspekReminder.kt) — periodik harian, selamat
+    // dari reboot & force-stop tanpa receiver BOOT_COMPLETED atau izin exact-alarm Android 12+
+    // yang dituntut AlarmManager. SENGAJA tanpa androidx.hilt:hilt-work: worker ini cuma butuh
+    // dua singleton, jadi EntryPointAccessors sudah cukup dan tak menambah KSP processor
+    // maupun memaksa TridjayaApplication mengimplementasi Configuration.Provider.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+
     // XLSX export (Inventory "Export ke Excel") — lightweight pure-Java writer, no POI/reflection
     // baggage, small enough for Android; supports styled cells + embedded row images.
     implementation("org.dhatim:fastexcel:0.20.2")
