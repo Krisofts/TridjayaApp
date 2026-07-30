@@ -38,6 +38,8 @@ data class OpnameDetailUiState(
     val errorMessage: String? = null,
     /** Draft session owned by the current user → counting/complete/cancel controls show. */
     val canManage: Boolean = false,
+    /** Sesi dibatalkan + milik sendiri → tombol Hapus Sesi muncul. */
+    val canDelete: Boolean = false,
     val isSaving: Boolean = false,
     val saveError: String? = null,
     val isMutatingStatus: Boolean = false,
@@ -147,7 +149,11 @@ class OpnameDetailViewModel @Inject constructor(
         val isOwner = detail.createdByUserId.isNotBlank() &&
             detail.createdByUserId == authRepository.currentUserId
         _uiState.update {
-            it.copy(detail = detail, canManage = isOwner && detail.status == "draft")
+            it.copy(
+                detail = detail,
+                canManage = isOwner && detail.status == "draft",
+                canDelete = isOwner && detail.status == "cancelled",
+            )
         }
     }
 
@@ -379,6 +385,22 @@ class OpnameDetailViewModel @Inject constructor(
     fun complete() = mutateStatus { repository.finalize(sessionId) }
 
     fun cancel() = mutateStatus { repository.cancel(sessionId) }
+
+    /** Hapus permanen. `onDeleted` dipanggil hanya setelah server benar-benar mengonfirmasi. */
+    fun deleteSession(onDeleted: () -> Unit) {
+        _uiState.update { it.copy(isMutatingStatus = true, statusError = null) }
+        viewModelScope.launch {
+            when (val result = repository.deleteSession(sessionId)) {
+                is AuthResult.Success -> {
+                    _uiState.update { it.copy(isMutatingStatus = false) }
+                    onDeleted()
+                }
+                is AuthResult.Failure -> _uiState.update {
+                    it.copy(isMutatingStatus = false, statusError = result.message)
+                }
+            }
+        }
+    }
 
     private fun mutateStatus(block: suspend () -> AuthResult<OpnameDetailDto>) {
         _uiState.update { it.copy(isMutatingStatus = true, statusError = null) }

@@ -10,6 +10,7 @@ import com.krisoft.tridjayaelektronik.data.model.IndentListData
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameContextDto
+import com.krisoft.tridjayaelektronik.data.model.OpnameDeleteData
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameListData
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockData
@@ -100,6 +101,9 @@ interface InventoryApi {
 
     @POST("api/inventory/opname/{id}/cancel")
     suspend fun cancelOpname(@Path("id") id: String): Response<ApiResponse<OpnameDetailDto>>
+
+    @DELETE("api/inventory/opname/{id}")
+    suspend fun deleteOpname(@Path("id") id: String): Response<ApiResponse<OpnameDeleteData>>
 
     // ---- Mutasi histori (arsip GS, read-only) — dipakai buat cek barang "dalam perjalanan"
     // saat search stok kosong (lihat InventoryRepository.findInTransitHint) ----

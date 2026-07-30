@@ -12,6 +12,7 @@ import com.krisoft.tridjayaelektronik.data.model.IndentListData
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameContextDto
+import com.krisoft.tridjayaelektronik.data.model.OpnameDeleteData
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameListData
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockData
@@ -292,6 +293,8 @@ private open class StubInventoryApi : InventoryApi {
     override suspend fun completeOpname(id: String): Response<ApiResponse<OpnameDetailDto>> = nope()
 
     override suspend fun cancelOpname(id: String): Response<ApiResponse<OpnameDetailDto>> = nope()
+
+    override suspend fun deleteOpname(id: String): Response<ApiResponse<OpnameDeleteData>> = nope()
 
     override suspend fun mutasiHistori(dealer: String?, arah: String?, from: String?, limit: Int?):
         Response<ApiResponse<MutasiHistoriListDto>> = nope()

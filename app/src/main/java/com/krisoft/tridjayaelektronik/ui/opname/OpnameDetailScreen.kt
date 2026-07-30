@@ -422,6 +422,25 @@ fun OpnameDetailScreen(
                             }
                         }
                     }
+
+                    if (state.canDelete) {
+                        item(key = "delete_action") {
+                            TextButton(
+                                onClick = { confirmAction = "delete" },
+                                enabled = !state.isMutatingStatus,
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Hapus Sesi", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -479,25 +498,42 @@ fun OpnameDetailScreen(
 
     confirmAction?.let { action ->
         val isComplete = action == "complete"
+        val isDelete = action == "delete"
         AlertDialog(
             onDismissRequest = { confirmAction = null },
-            title = { Text(if (isComplete) "Selesaikan sesi opname?" else "Batalkan sesi opname?") },
+            title = {
+                Text(
+                    when {
+                        isComplete -> "Selesaikan sesi opname?"
+                        isDelete -> "Hapus sesi opname?"
+                        else -> "Batalkan sesi opname?"
+                    }
+                )
+            },
             text = {
                 Text(
-                    if (isComplete) {
-                        "Sisa antrean (${state.units.count { it.syncedAtMillis == null }} unit) akan dikirim dulu, lalu sesi ditutup. Setelah selesai, hitungan tidak bisa diubah lagi dan selisih vs stok sistem dihitung."
-                    } else {
-                        "Sesi yang dibatalkan tidak bisa dilanjutkan lagi. Unit yang tersimpan di HP juga akan dihapus."
+                    when {
+                        isComplete -> "Sisa antrean (${state.units.count { it.syncedAtMillis == null }} unit) akan dikirim dulu, lalu sesi ditutup. Setelah selesai, hitungan tidak bisa diubah lagi dan selisih vs stok sistem dihitung."
+                        isDelete -> "Sesi dan seluruh data hitungannya akan dihapus PERMANEN. Tindakan ini tidak bisa dibatalkan."
+                        else -> "Sesi yang dibatalkan tidak bisa dilanjutkan lagi. Unit yang tersimpan di HP juga akan dihapus."
                     }
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmAction = null
-                    if (isComplete) viewModel.complete() else viewModel.cancel()
+                    when {
+                        isComplete -> viewModel.complete()
+                        isDelete -> viewModel.deleteSession(onDeleted = onBack)
+                        else -> viewModel.cancel()
+                    }
                 }) {
                     Text(
-                        if (isComplete) "Kirim & Selesaikan" else "Ya, batalkan",
+                        when {
+                            isComplete -> "Kirim & Selesaikan"
+                            isDelete -> "Ya, hapus"
+                            else -> "Ya, batalkan"
+                        },
                         color = if (isComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                     )
                 }

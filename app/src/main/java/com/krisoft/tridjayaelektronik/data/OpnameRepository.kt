@@ -8,6 +8,7 @@ import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsData
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameRequest
 import com.krisoft.tridjayaelektronik.data.model.OpnameContextDto
+import com.krisoft.tridjayaelektronik.data.model.OpnameDeleteData
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameSessionDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
@@ -239,6 +240,18 @@ class OpnameRepository @Inject constructor(
             unitDao.clearSession(id)
         }
         return result
+    }
+
+    /** Hapus permanen sesi yang sudah dibatalkan. Server menegakkan status; klien cuma menampilkan tombolnya. */
+    suspend fun deleteSession(id: String): AuthResult<Unit> {
+        val result = call<OpnameDeleteData>("Gagal menghapus sesi") { api.deleteOpname(id) }
+        if (result is AuthResult.Success) {
+            unitDao.clearSession(id)
+        }
+        return when (result) {
+            is AuthResult.Success -> AuthResult.Success(Unit)
+            is AuthResult.Failure -> result
+        }
     }
 
     private suspend fun <T> call(

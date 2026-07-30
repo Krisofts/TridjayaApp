@@ -173,3 +173,9 @@ data class CreateOpnameUnitsData(
 data class OpnameUnitListData(
     val items: List<OpnameUnitDto> = emptyList()
 )
+
+/** `DELETE /api/inventory/opname/{id}` — sesi sudah lenyap, cuma id yg dikonfirmasi. */
+@Serializable
+data class OpnameDeleteData(
+    val id: String = ""
+)
