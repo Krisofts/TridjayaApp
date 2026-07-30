@@ -63,6 +63,7 @@ import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PlaylistAddCheck
 import androidx.compose.material.icons.rounded.PriceChange
 import androidx.compose.material.icons.rounded.Receipt
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -131,6 +132,7 @@ fun HomeScreen(
     onSalesClick: (LeaderboardSalesItemDto) -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     onQuickAccessInventory: () -> Unit = {},
+    onQuickAccessSearch: () -> Unit = {},
     onQuickAccessLeads: () -> Unit = {},
     onQuickAccessIndent: () -> Unit = {},
     onQuickAccessSales: () -> Unit = {},
@@ -211,7 +213,7 @@ fun HomeScreen(
                         layout.visibleOrdered.forEach { section ->
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
-                                onQuickAccessInventory, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
+                                onQuickAccessInventory, onQuickAccessSearch, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
                                 onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessKpi,
                                 onQuickAccessHargaGs,
                                 onQuickAccessSerialInput, onQuickAccessDeadstock, onQuickAccessMutasiHistori,
@@ -245,6 +247,7 @@ private fun LazyListScope.homeSection(
     onBranchClick: (LeaderboardBranchItemDto) -> Unit,
     onSalesClick: (LeaderboardSalesItemDto) -> Unit,
     onQuickAccessInventory: () -> Unit,
+    onQuickAccessSearch: () -> Unit,
     onQuickAccessLeads: () -> Unit,
     onQuickAccessIndent: () -> Unit,
     onQuickAccessSales: () -> Unit,
@@ -269,6 +272,7 @@ private fun LazyListScope.homeSection(
                     effectiveRoles = effectiveRoles(state.user),
                     capabilities = state.capabilities,
                     onInventory = onQuickAccessInventory,
+                    onCariSemua = onQuickAccessSearch,
                     onLeads = onQuickAccessLeads,
                     onIndent = onQuickAccessIndent,
                     onSales = onQuickAccessSales,
@@ -405,7 +409,7 @@ private fun EmptyRankRow(message: String) {
  * Inventory/Prospek/Sales are open to every logged-in role. A null role (profile not loaded
  * yet) hides the gated tiles — they appear as soon as the cached profile lands.
  */
-internal val INDENT_MENU_ROLES = setOf("admin", "owner", "indent-approver", "manager", "kepala-cabang")
+internal val INDENT_MENU_ROLES = setOf("admin", "superadmin", "kepala-cabang", "manager")
 internal val OPNAME_MENU_ROLES = setOf("admin", "admin-stok", "kepala-cabang", "manager", "owner")
 
 /** `require_price_changes_reader` gateway guard (baca tanpa `force`) — lihat gateway/src/lib.rs. */
@@ -505,6 +509,7 @@ private fun QuickAccessRow(
     effectiveRoles: Set<String>,
     capabilities: Map<String, Boolean>?,
     onInventory: () -> Unit,
+    onCariSemua: () -> Unit,
     onLeads: () -> Unit,
     onIndent: () -> Unit,
     onSales: () -> Unit,
@@ -542,6 +547,7 @@ private fun QuickAccessRow(
                         "spk" -> onSpkMenu("hub")
                         "pdi_queue" -> onSpkMenu("pdi")
                         "inventory" -> onInventory()
+                        "cari_semua" -> onCariSemua()
                         "crm" -> onLeads()
                         "indent" -> onIndent()
                         "klasemen" -> onSales()
@@ -568,6 +574,7 @@ private fun quickAccessVisual(id: String): Pair<androidx.compose.ui.graphics.vec
     "spk" -> Pair(Icons.Rounded.LocalShipping, Color(0xFF1E63E9))
     "pdi_queue" -> Pair(Icons.Rounded.FactCheck, Color(0xFF6941C6))
     "inventory" -> Pair(Icons.Rounded.Inventory2, MaterialTheme.colorScheme.primary)
+    "cari_semua" -> Pair(Icons.Rounded.Search, Color(0xFF0086C9))
     "crm" -> Pair(Icons.Rounded.Groups, MaterialTheme.colorScheme.tertiary)
     "indent" -> Pair(Icons.Rounded.PlaylistAddCheck, MaterialTheme.colorScheme.secondary)
     "klasemen" -> Pair(Icons.Rounded.BarChart, Color(0xFF12B76A))

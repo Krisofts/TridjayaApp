@@ -98,10 +98,17 @@ class MenuAccessGateTest {
     }
 
     @Test
-    fun `indent tampil untuk pemegang page-grant indent-approver`() {
-        // `indent-approver` = implied role dari page grant, tak pernah jadi role utama.
-        assertTrue(canAccessIndent(rolesOf("karyawan", listOf("indent-approver"))))
+    fun `indent submit untuk admin-ish, bukan approver`() {
+        // indent.submit (require_indent_submitter_role) != indent.approve.
+        // indent-approver TIDAK otomatis dapat tombol ajukan — mirror
+        // INDENT_SUBMIT_ROLES di ActivityRegistry.kt, dan test yang sama
+        // ("approver inden tak mendapat tombol ajukan inden") di
+        // ActivityRegistryTest.kt.
         assertTrue(canAccessIndent(rolesOf("manager")))
+        assertTrue(canAccessIndent(rolesOf("superadmin")))
+        assertFalse(
+            canAccessIndent(rolesOf("karyawan", listOf("indent-approver"))),
+        )
         assertFalse(canAccessIndent(rolesOf("karyawan")))
     }
 
@@ -187,6 +194,25 @@ class QuickAccessRegistryTest {
         assertTrue("opname" in terlihatStok)
         assertTrue("deadstock" in terlihatStok)
     }
+
+    @Test
+    fun `ajukan inden dan cari semua kini terjangkau dari Operasional`() {
+        // 2026-07-30: dipindah dari Activity ke sini — pintu masuknya harus
+        // tetap ada SATU tempat, bukan hilang total.
+        val terlihat = visibleQuickAccessMenus(setOf("manager")).map { it.id }
+        assertTrue("indent" in terlihat)
+        assertTrue("cari_semua" in terlihat)
+
+        // Cari Semua terbuka untuk siapa pun yang login — layarnya baca cache
+        // lokal, tak ada guard backend yang bisa dilanggar.
+        assertTrue("cari_semua" in visibleQuickAccessMenus(setOf("driver")).map { it.id })
+        assertTrue(
+            "cari_semua" in visibleQuickAccessMenus(setOf("driver"), null).map { it.id },
+        )
+
+        // Ajukan Inden tetap ber-gate: karyawan biasa tak boleh.
+        assertFalse("indent" in visibleQuickAccessMenus(setOf("karyawan")).map { it.id })
+    }
 }
 
 /**
@@ -244,7 +270,7 @@ class CapabilityDrivenMenuTest {
         // layar itulah yang ber-gate (`kpi.manage`), dan itu dinilai di
         // KpiViewModel, bukan oleh gate menu ini.
         val tanpaKunci = QUICK_ACCESS_MENUS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("kpi", "inventory"), tanpaKunci)
+        assertEquals(listOf("kpi", "inventory", "cari_semua"), tanpaKunci)
     }
 
     @Test

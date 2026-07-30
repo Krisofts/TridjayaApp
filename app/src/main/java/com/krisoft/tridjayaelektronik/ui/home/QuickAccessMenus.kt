@@ -101,11 +101,14 @@ internal val SPK_MENU_ROLES: Set<String> = KNOWN_ROLES - "ai-engineer"
  * meniru guard itu. Kalau backend tak mengecek role sama sekali, tulis
  * [ALL_LOGGED_IN] dan sebutkan itu di `backendGuard`.
  */
-// Absen, CRM, SPK, Antrian PDI, dan Indent SENGAJA tak ada di sini sejak
-// 2026-07-28: kelimanya sudah jadi kartu di layar Activity (tab pertama), dan
-// menampilkannya di dua tempat membuat user ragu mana yang "benar". Grid ini
-// menyisakan menu yang TIDAK diwakili Activity. Gate-nya tidak hilang — pindah
-// ke `ui/activity/ActivityRegistry.kt` beserta test dua-arahnya.
+// Absen, CRM, SPK, dan Antrian PDI SENGAJA tak ada di sini sejak 2026-07-28:
+// keempatnya sudah jadi kartu di layar Activity (tab pertama), dan
+// menampilkannya di dua tempat membuat user ragu mana yang "benar". Indent
+// PINDAH KEMBALI ke sini 2026-07-30 (bersama Cari Barang/inventory yang
+// sudah lebih dulu ada di grid ini, dan Cari Semua yang baru) — permintaan
+// user memisahkan tugas harian (Activity) dari akses cepat (Operasional).
+// Gate-nya tidak pernah hilang — cek `ui/activity/ActivityRegistry.kt` kalau
+// menu lain juga pindah lagi nanti.
 internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
     QuickAccessMenu(
         id = "gaji",
@@ -131,6 +134,20 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
         label = "Inventory",
         allowedRoles = ALL_LOGGED_IN,
         backendGuard = "gateway grup protected — stok cabang tanpa gate role tambahan",
+    ),
+    QuickAccessMenu(
+        id = "indent",
+        capability = "indent.submit",
+        label = "Ajukan Inden",
+        allowedRoles = INDENT_MENU_ROLES,
+        backendGuard = "inventory-service indent.rs require_indent_submitter_role",
+    ),
+    QuickAccessMenu(
+        id = "cari_semua",
+        capability = null,
+        label = "Cari Semua",
+        allowedRoles = ALL_LOGGED_IN,
+        backendGuard = "tidak ada — layar baca cache Room lokal (branch_stock + leads), tanpa panggilan backend",
     ),
     QuickAccessMenu(
         id = "klasemen",

@@ -230,6 +230,7 @@ fun ActivityNavHost(
                 },
                 onOpenNotifications = { navController.navigate(ROUTE_NOTIFICATIONS) { launchSingleTop = true } },
                 onQuickAccessInventory = onQuickAccessInventory,
+                onQuickAccessSearch = onQuickAccessSearch,
                 // Sendiri (bukan diteruskan dari luar) — beda dari sebelumnya, karena
                 // ActivityNavHost DIPASANG DUA KALI (Activity & Operasional) dengan
                 // NavHostController masing-masing; hanya host ini yang tahu controller
