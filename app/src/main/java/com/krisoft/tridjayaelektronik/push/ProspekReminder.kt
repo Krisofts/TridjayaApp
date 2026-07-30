@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -126,18 +127,57 @@ internal fun reminderBody(stale: List<LeadEntity>, nowMillis: Long): String {
 }
 
 /**
- * `updatedAt` → epoch millis. Backend mengirim RFC3339 (`...T...Z`), tapi baris cache lama
- * bisa ber-separator spasi — dinormalkan dulu, pola sama `ui/activity/ActivityPlan.kt`.
+ * `updatedAt` → epoch millis, ditafsirkan MENURUT BENTUKNYA karena di app ini ada DUA
+ * penulis dengan dua konvensi berbeda:
  *
- * CATATAN skew: baris yang diubah lokal (mis. lewat `CrmRepository.nowTimestamp()`) ditulis
- * sebagai jam dinding device TANPA `timeZone` di-set (`SimpleDateFormat` default), lalu
- * dibaca balik di sini seolah UTC. Untuk zona UTC+ (WIB = +7), umurnya jadi UNDER-REPORTED
- * sebesar offset itu — arahnya tak berbahaya (baris itu baru saja disentuh user) dan
- * membetulkan diri sendiri begitu sinkron server berikutnya sukses menimpanya dgn RFC3339.
- * JANGAN ubah `nowTimestamp()` — itu kode bersama di luar fitur ini.
+ * 1. **Ada penanda zona** (`...Z` atau `+07:00`) → memang UTC/ber-offset → [parseIsoUtcMillis].
+ * 2. **Tanpa penanda zona** (`"2026-07-30 13:41:08"`) → **jam dinding LOKAL**, bukan UTC.
+ *    Dua-duanya penulis yang bentuknya ini menulis jam lokal:
+ *    - crm-service `domain.rs::now_string()` memakai `chrono::Local::now()` — BUKAN
+ *      `Utc::now()` seperti service lain — dan VPS-nya ber-TZ Asia/Jakarta, jadi
+ *      `crm_leads.updated_at` berisi WIB lalu dikirim apa adanya oleh `fmt_dt`.
+ *    - `CrmRepository.nowTimestamp()` di app ini: `SimpleDateFormat` TANPA `timeZone`
+ *      di-set = jam dinding device.
+ *
+ * **Kenapa ini penting dan bukan sekadar rapi-rapi:** sampai 2026-07-30 fungsi ini
+ * membaca bentuk (2) sebagai UTC. Di WIB (UTC+7) itu menggeser nilainya 7 jam ke DEPAN,
+ * sehingga `now - updated` jadi NEGATIF dan `staleProspek` tak pernah menganggapnya
+ * mandek — pengingatnya bisu total untuk baris yang disentuh dalam 7 jam terakhir, dan
+ * untuk baris `keepLocal` yang belum tersinkron: bisu selamanya. Terbukti di HP produksi:
+ * `raw='2026-07-30 13:41:08'` pada pukul 14:50 WIB menghasilkan `umurMs=-21027204`.
+ * Catatan lama di sini yang menyebut arahnya "tak berbahaya, membetulkan diri sendiri"
+ * SALAH — under-report dan negatif bukan hal yang sama.
+ *
+ * Konsekuensi yang diterima: kalau TZ server dan TZ device berbeda, tafsir bentuk (2)
+ * ikut melenceng sebesar selisihnya. Seluruh armada dan VPS ber-WIB, dan hasil terburuknya
+ * (umur bergeser beberapa jam) jauh lebih ringan daripada umur negatif = fitur mati.
+ * JANGAN "membetulkan" ini dengan mengubah `nowTimestamp()` atau `now_string()` — keduanya
+ * kode bersama; nilai LAMA di DB tetap WIB, jadi mengubah penulisnya justru membuat data
+ * campur dua konvensi.
  */
-private fun updatedAtMillis(updatedAt: String): Long? =
-    parseIsoUtcMillis(updatedAt.trim().takeIf { it.isNotEmpty() }?.replace(' ', 'T'))
+private fun updatedAtMillis(updatedAt: String): Long? {
+    val raw = updatedAt.trim().takeIf { it.isNotEmpty() } ?: return null
+    val iso = raw.replace(' ', 'T')
+    return if (berzona(raw)) parseIsoUtcMillis(iso) else parseLocalWallClockMillis(iso)
+}
+
+/** `Z` di ujung atau offset `±HH:MM`/`±HHMM` setelah bagian jam = penanda zona eksplisit. */
+private fun berzona(raw: String): Boolean =
+    raw.endsWith("Z", ignoreCase = true) || Regex("""\d[+-]\d{2}:?\d{2}$""").containsMatchIn(raw)
+
+/**
+ * Kembaran [parseIsoUtcMillis] untuk bentuk tanpa penanda zona: `SimpleDateFormat` TANPA
+ * `timeZone` di-set, jadi ia memakai zona device — persis kebalikan cara nilainya ditulis.
+ * Sengaja `SimpleDateFormat`, bukan `java.time`: modul ini `minSdk 24` tanpa
+ * `coreLibraryDesugaring`, dan `java.time` di sana melempar `NoClassDefFoundError`.
+ */
+private fun parseLocalWallClockMillis(iso: String): Long? {
+    if (iso.length < 19) return null
+    return runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            .parse(iso.substring(0, 19))?.time
+    }.getOrNull()
+}
 
 private fun ageLabel(updatedAt: String, nowMillis: Long): String {
     val updated = updatedAtMillis(updatedAt) ?: return "lama"
@@ -240,10 +280,10 @@ class ProspekStaleWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val deps = EntryPointAccessors.fromApplication(applicationContext, Deps::class.java)
         // Belum login: tak ada prospek milik siapa pun untuk diingatkan.
-        if (!deps.tokenStore().isLoggedIn) return@withContext Result.success()
+        if (!deps.tokenStore().isLoggedIn) return@withContext bisu("belum login")
         // Cache bisa berisi baris akun sebelumnya di HP bersama (lihat milikSaya) — tanpa id,
         // tak ada yang bisa disaring dengan aman, jadi diam saja.
-        val myId = deps.tokenStore().userId ?: return@withContext Result.success()
+        val myId = deps.tokenStore().userId ?: return@withContext bisu("userId kosong")
         // SATU `now` dipakai untuk staleProspek MAUPUN postReminder di bawah: ageLabel/
         // reminderBody menghitung umur relatif terhadap `now` yang sama persis dengan yang
         // dipakai staleProspek memutuskan "mandek" — kalau dua nilai `now` berbeda dipakai,
@@ -254,12 +294,43 @@ class ProspekStaleWorker(
         // CRM berhari-hari, lihat doc konstantanya) — dua alasan beda, sama-sama berarti diam
         // lebih baik daripada mengingatkan berdasarkan data yang basi/bukan miliknya.
         val lastSync = deps.syncMetaDao().get(SyncMetaEntity.KEY_LEADS)?.lastSyncMillis ?: 0L
-        if (lastSync == 0L || now - lastSync >= MAX_CACHE_AGE_MILLIS) return@withContext Result.success()
+        if (lastSync == 0L) return@withContext bisu("cache belum pernah disinkron")
+        if (now - lastSync >= MAX_CACHE_AGE_MILLIS) {
+            return@withContext bisu("cache basi ${(now - lastSync) / 3_600_000} jam")
+        }
 
-        val stale = staleProspek(milikSaya(deps.leadDao().all(), myId), now)
+        val semua = deps.leadDao().all()
+        val milik = milikSaya(semua, myId)
+        val stale = staleProspek(milik, now)
         // Nol prospek mandek → tidak posting apa pun (bukan notifikasi "0 prospek").
-        if (stale.isNotEmpty()) postReminder(applicationContext, stale, now)
+        if (stale.isEmpty()) {
+            return@withContext bisu("nol mandek (cache=${semua.size} milik=${milik.size})")
+        }
+        postReminder(applicationContext, stale, now)
+        Log.i(TAG, "terkirim: ${stale.size} prospek mandek (cache=${semua.size} milik=${milik.size})")
         Result.success()
+    }
+
+    /**
+     * Satu-satunya jalan keluar "tak jadi mengirim", DENGAN alasannya di log.
+     *
+     * Tanpa ini fitur ini tak bisa diamati sama sekali: tiga penjaga senyap + fail-soft
+     * membuat "tak terjadi apa-apa" terlihat IDENTIK dengan "semuanya jalan, memang tak ada
+     * yang perlu dilaporkan" — dan keduanya sama-sama `Result.success()` di logcat. Persoalan
+     * nyata saat verifikasi di HP 2026-07-30: worker SUCCESS berulang kali tanpa notifikasi
+     * dan tak ada cara menebak penjaga mana yang berbunyi. Pola sama `notify_user_on` di
+     * kinerja-service, yang menulis INFO saat user tak punya device token justru karena push
+     * yang tak pernah terkirim terlihat sama dengan yang sukses.
+     *
+     * Sengaja HANYA jumlah, bukan nama konsumen — logcat terbaca app lain di device lama.
+     */
+    private fun bisu(alasan: String): Result {
+        Log.i(TAG, "tak mengirim: $alasan")
+        return Result.success()
+    }
+
+    private companion object {
+        const val TAG = "ProspekReminder"
     }
 }
 

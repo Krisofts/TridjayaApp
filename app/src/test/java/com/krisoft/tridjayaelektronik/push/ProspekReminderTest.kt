@@ -1,8 +1,10 @@
 package com.krisoft.tridjayaelektronik.push
 
 import com.krisoft.tridjayaelektronik.data.local.LeadEntity
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.TimeUnit
 
@@ -18,7 +20,30 @@ class ProspekReminderTest {
 
     private val now = 1_800_000_000_000L // titik acuan tetap; jangan pakai System.currentTimeMillis()
 
-    /** `updatedAt` sebagai ISO UTC sejauh [agoMillis] sebelum [now]. */
+    private lateinit var zonaAsli: java.util.TimeZone
+
+    /**
+     * Pin zona default JVM ke WIB sebelum tiap test. Yang diuji di sini adalah penafsiran
+     * jam LOKAL (`parseLocalWallClockMillis` baca `TimeZone.getDefault()`) — TANPA pin ini
+     * hasilnya bergantung zona mesin yang kebetulan menjalankan test: di CI ber-TZ UTC
+     * (offset 0), jam lokal == UTC sehingga bug skew WIB (offset 7 jam) TIDAK PERNAH
+     * terdeteksi walau kodenya masih rusak — suite tetap hijau, bug tetap lolos ke produksi
+     * persis seperti yang sudah terjadi. Dipulihkan di [pulihkanZona] (JUnit4 membuat
+     * instance baru tiap `@Test`, tapi `TimeZone.setDefault` itu state JVM-wide, bisa bocor
+     * ke test class lain kalau dijalankan dalam satu JVM yang sama).
+     */
+    @Before
+    fun pinZonaWIB() {
+        zonaAsli = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Jakarta"))
+    }
+
+    @After
+    fun pulihkanZona() {
+        java.util.TimeZone.setDefault(zonaAsli)
+    }
+
+    /** `updatedAt` sebagai jam-lokal sejauh [agoMillis] sebelum [now] (lihat [localWallClock]). */
     private fun lead(
         id: Long,
         nama: String,
@@ -42,20 +67,29 @@ class ProspekReminderTest {
         lokasi = null,
         lostReason = null,
         catatan = null,
-        createdAt = isoUtc(now - agoMillis),
-        updatedAt = updatedAtRaw ?: isoUtc(now - agoMillis),
+        createdAt = localWallClock(now - agoMillis),
+        updatedAt = updatedAtRaw ?: localWallClock(now - agoMillis),
         pendingSync = pendingSync
     )
 
+    /**
+     * Format UTC TANPA penanda zona — pemanggil yang menambahkan `Z`/offset kalau perlu
+     * bentuk ber-zona. BUKAN lagi default `lead()` (lihat [localWallClock]); dipakai di sini
+     * murni untuk membangun fixture ber-zona (test cabang [parseIsoUtcMillis]).
+     */
     private fun isoUtc(millis: Long): String =
         java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")
         }.format(java.util.Date(millis))
 
     /**
-     * Format PERSIS `CrmRepository.nowTimestamp()`: `SimpleDateFormat` TANPA `timeZone`
-     * di-set (jam dinding device, pemisah spasi) — bukan `isoUtc` di atas. Dipakai untuk
-     * membuktikan skew zona waktu tidak menyembunyikan baris yang sungguh sudah lama.
+     * Format PERSIS `CrmRepository.nowTimestamp()` DAN `crm-service::now_string()`:
+     * `SimpleDateFormat` TANPA `timeZone` di-set (jam dinding device, pemisah spasi) — inilah
+     * yang SUNGGUH dikirim server dan ditulis app, jadi ini default `lead()` di bawah sejak
+     * perbaikan skew WIB (dulu defaultnya `isoUtc`, bentuk yang justru mencerminkan parser
+     * yang keliru — lihat brief tugas ini). Karena penulis fixture dan pembaca kode kini
+     * memakai zona yang sama (JVM di-pin WIB via [pinZonaWIB]), round-trip-nya persis:
+     * `agoMillis` yang diminta = umur yang dihitung `updatedAtMillis`.
      */
     private fun localWallClock(millis: Long): String =
         java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
@@ -120,8 +154,11 @@ class ProspekReminderTest {
     fun `separator spasi tetap terbaca, bukan dianggap paling tua`() {
         // Kalau perbandingan dilakukan sebagai string di SQL, baris ber-separator
         // spasi akan SELALU tampak paling tua (' ' 0x20 < 'T' 0x54) dan ikut
-        // dilaporkan mandek walau baru diubah semenit lalu.
-        val baru = isoUtc(now - TimeUnit.MINUTES.toMillis(1)).replace('T', ' ')
+        // dilaporkan mandek walau baru diubah semenit lalu. `localWallClock` (format
+        // produksi asli) sudah ber-separator spasi — dulu di sini dipakai `isoUtc`
+        // (T-separator) lalu diganti manual jadi spasi; sekarang tak perlu lagi karena
+        // itulah default fixture-nya.
+        val baru = localWallClock(now - TimeUnit.MINUTES.toMillis(1))
         val hasil = staleProspek(listOf(lead(1, "Baru Diubah", updatedAtRaw = baru)), now)
         assertTrue(hasil.isEmpty())
     }
@@ -151,6 +188,67 @@ class ProspekReminderTest {
         val tepatLewatAmbang = localWallClock(now - umurAsli)
         val hasil = staleProspek(listOf(lead(1, "Baru Lewat Ambang", updatedAtRaw = tepatLewatAmbang)), now)
         assertEquals(listOf("Baru Lewat Ambang"), hasil.map { it.nama })
+    }
+
+    // --- Regresi bug produksi 2026-07-30: updatedAt jam-lokal ditafsir sebagai UTC ---
+
+    @Test
+    fun `updatedAt 25 jam lalu bentuk jam-lokal HARUS mandek — regresi bug skew WIB`() {
+        // Test PALING PENTING di file ini — lihat laporan tugas untuk bukti RED (implementasi
+        // lama) lalu GREEN (perbaikan) yang dijalankan manual terhadap test ini.
+        // Dengan implementasi LAMA (updatedAtMillis SELALU membaca sebagai UTC, tanpa peduli
+        // bentuknya), di zona WIB (+7) umur yang terbaca = 25 jam − 7 jam = 18 jam, di BAWAH
+        // ambang 24 jam → baris ini tak dianggap mandek, padahal umur sungguhannya 25 jam.
+        // `lead()` sudah memakai bentuk jam-lokal (`localWallClock`) sebagai default sejak
+        // perbaikan, jadi cukup panggil seperti biasa — tak perlu fixture eksplisit.
+        val hasil = staleProspek(listOf(lead(1, "Skew 25 Jam", agoMillis = hours(25))), now)
+        assertEquals(listOf("Skew 25 Jam"), hasil.map { it.nama })
+    }
+
+    @Test
+    fun `updatedAt 2 jam lalu bentuk jam-lokal TIDAK mandek — persis gejala produksi`() {
+        // Reproduksi gejala produksi 2026-07-30 14:50 WIB: raw='2026-07-30 13:41:08'
+        // (~1 jam sebelumnya) menghasilkan umurMs NEGATIF di implementasi lama, karena
+        // nilainya bergeser 7 jam ke DEPAN (lihat KDoc updatedAtMillis). Baris yang baru
+        // saja disentuh tak boleh muncul di daftar mandek. Untuk umur sekecil ini, bahkan
+        // implementasi lama pun kebetulan tak memunculkannya (umur negatif tetap < ambang)
+        // — tapi untuk ALASAN YANG SALAH; test ini mengunci hasil benar untuk umur yang
+        // benar-benar dihitung positif (~2 jam), bukan kebetulan negatif yang lolos ambang.
+        val hasil = staleProspek(listOf(lead(1, "Baru Disentuh", agoMillis = hours(2))), now)
+        assertTrue(hasil.isEmpty())
+    }
+
+    @Test
+    fun `bentuk ber-Z tetap dibaca sebagai UTC, tak ikut ditafsir jam-lokal`() {
+        // Buktikan perbaikan TIDAK mematahkan bentuk RFC3339 yang sudah benar (mis. createdAt
+        // server via chrono DateTime-Utc, lihat NotificationModels.kt). Dengan default TZ WIB
+        // aktif ([pinZonaWIB]), hasil ini HANYA benar kalau cabang UTC ([berzona] →
+        // [parseIsoUtcMillis]) yang dipakai — kalau salah ditafsir sebagai jam lokal, umur
+        // bergeser 7 jam: baris "25 jam" jadi terbaca 32 jam (masih mandek, tak ketahuan
+        // salahnya) sedangkan baris "2 jam" jadi terbaca 9 jam (masih tak mandek, juga tak
+        // ketahuan) — makanya dicek berdua sekaligus lewat daftar hasil yang PERSIS.
+        val hasil = staleProspek(
+            listOf(
+                lead(1, "UTC 25 Jam", updatedAtRaw = isoUtc(now - hours(25)) + "Z"),
+                lead(2, "UTC 2 Jam", updatedAtRaw = isoUtc(now - hours(2)) + "Z")
+            ),
+            now
+        )
+        assertEquals(listOf("UTC 25 Jam"), hasil.map { it.nama })
+    }
+
+    @Test
+    fun `offset eksplisit diperlakukan sebagai ber-zona, bukan jam lokal (berzona lewat perilaku publik)`() {
+        // berzona() harus mengenali offset eksplisit "+07:00" sebagai penanda zona dan
+        // merutekannya ke parseIsoUtcMillis, BUKAN parseLocalWallClockMillis. Kedua
+        // interpretasi itu beda PERSIS 7 jam untuk raw ber-offset "+07:00" saat TZ WIB
+        // di-pin — sengaja dipilih umur 20 jam (benar, lewat cabang UTC, < ambang 24 jam)
+        // vs 27 jam (salah, seandainya lolos ke cabang lokal, >= ambang) supaya keduanya
+        // jatuh di SISI BERLAWANAN ambang: kalau berzona salah klasifikasi (mengira ini jam
+        // lokal), baris ini muncul di hasil dan test merah.
+        val raw = isoUtc(now - hours(20)) + "+07:00"
+        val hasil = staleProspek(listOf(lead(1, "Ber-Offset", updatedAtRaw = raw)), now)
+        assertTrue(hasil.isEmpty())
     }
 
     @Test
