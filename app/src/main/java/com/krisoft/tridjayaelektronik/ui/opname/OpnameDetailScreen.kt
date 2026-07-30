@@ -80,6 +80,32 @@ private fun formatRupiah(value: Double): String {
     return (if (negative) "-Rp " else "Rp ") + digits
 }
 
+internal enum class StockFilter { SEMUA, BELUM, SUDAH }
+
+/**
+ * Saring snapshot barang sesi ini menurut status scan lalu (opsional) teks
+ * cari — dua langkah TERPISAH supaya "cari di dalam Belum" tetap bisa
+ * dijawab dari satu kolom cari yang sama, bukan dua UI berbeda.
+ */
+internal fun filterOpnameStock(
+    stock: List<OpnameStockItemDto>,
+    unitsByCode: Map<String, List<OpnameUnitEntity>>,
+    filter: StockFilter,
+    search: String,
+): List<OpnameStockItemDto> {
+    val byStatus = when (filter) {
+        StockFilter.SEMUA -> stock
+        StockFilter.BELUM -> stock.filter { !unitsByCode.containsKey(it.kodeBarang.uppercase()) }
+        StockFilter.SUDAH -> stock.filter { unitsByCode.containsKey(it.kodeBarang.uppercase()) }
+    }
+    val term = search.trim()
+    if (term.isBlank()) return byStatus
+    return byStatus.filter {
+        it.kodeBarang.contains(term, ignoreCase = true) ||
+            (it.namaBarang ?: "").contains(term, ignoreCase = true)
+    }
+}
+
 /**
  * One opname session. Counting is BLIND (system stock is never shown while counting — matches
  * the physical-count discipline and the backend's own coverage endpoint) and per-UNIT: satu
@@ -99,6 +125,7 @@ fun OpnameDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var search by remember { mutableStateOf("") }
+    var stockFilter by remember { mutableStateOf(StockFilter.BELUM) }
     var scanSheetOpen by remember { mutableStateOf(false) }
     var confirmAction by remember { mutableStateOf<String?>(null) } // "complete" | "cancel"
     var isExportingPdf by remember { mutableStateOf(false) }
@@ -124,6 +151,9 @@ fun OpnameDetailScreen(
             .sortedBy { unitsByCode.containsKey(it.kodeBarang.uppercase()) }
             .take(20)
             .toList()
+    }
+    val coverageList = remember(state.stock, stockFilter, unitsByCode) {
+        filterOpnameStock(state.stock, unitsByCode, stockFilter, search = "").take(200)
     }
 
     TridjayaCollapsibleHeader(
@@ -338,6 +368,55 @@ fun OpnameDetailScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(vertical = 10.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (!completed && state.stock.isNotEmpty()) {
+                        item(key = "coverage_header") {
+                            Column(modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)) {
+                                Text(
+                                    text = "Daftar Barang",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    StockFilterChip("Belum (${state.stock.size - unitsByCode.size})", stockFilter == StockFilter.BELUM) {
+                                        stockFilter = StockFilter.BELUM
+                                    }
+                                    StockFilterChip("Sudah (${unitsByCode.size})", stockFilter == StockFilter.SUDAH) {
+                                        stockFilter = StockFilter.SUDAH
+                                    }
+                                    StockFilterChip("Semua (${state.stock.size})", stockFilter == StockFilter.SEMUA) {
+                                        stockFilter = StockFilter.SEMUA
+                                    }
+                                }
+                            }
+                        }
+                        if (coverageList.isEmpty()) {
+                            item(key = "coverage_empty") {
+                                Text(
+                                    text = "Tidak ada barang di kelompok ini",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 10.dp)
+                                )
+                            }
+                        } else {
+                            items(coverageList, key = { "coverage_${it.kodeBarang}" }) { stockItem ->
+                                StockSearchRow(
+                                    item = stockItem,
+                                    unitCount = unitsByCode[stockItem.kodeBarang.uppercase()]?.size ?: 0,
+                                    onClick = if (state.canManage) {
+                                        {
+                                            viewModel.selectItem(stockItem)
+                                            scanSheetOpen = true
+                                        }
+                                    } else {
+                                        {}
+                                    }
                                 )
                             }
                         }
@@ -574,6 +653,23 @@ private fun OpnameStat(label: String, value: String, highlight: Boolean = false)
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun StockFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
 }
