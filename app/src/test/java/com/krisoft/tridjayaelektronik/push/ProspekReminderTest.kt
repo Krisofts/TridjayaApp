@@ -127,15 +127,30 @@ class ProspekReminderTest {
     }
 
     @Test
-    fun `baris jam-dinding-lokal yang sungguh tua tetap terdeteksi mandek walau skew zona waktu`() {
+    fun `baris jam-dinding-lokal 3 hari lewat sanity check parse separator-spasi, bukan bukti batas skew`() {
         // nowTimestamp() format-nya PERSIS ini: SimpleDateFormat tanpa timeZone di-set (jam
-        // dinding device, pemisah spasi). Untuk zona UTC+ ini bikin umur under-report sebesar
-        // offset-nya (lihat catatan skew di updatedAtMillis) — tapi 3 hari jauh melewati
-        // ambang 24 jam bahkan setelah dipotong offset zona waktu manapun yang wajar, jadi
-        // skew itu TIDAK BOLEH membuat baris yang genuinely tua ini malah lolos tak terlihat.
+        // dinding device, pemisah spasi). 3 hari punya margin ≥34 jam di atas ambang 24 jam
+        // untuk zona manapun yang wajar (±14 jam) — jauh dari titik di mana skew benar-benar
+        // memutuskan hasilnya. Test ini cuma membuktikan jalur parse separator-spasi jalan;
+        // lihat test batas di bawah untuk properti "skew tak pernah menyembunyikan baris tua".
         val tua = localWallClock(now - days(3))
         val hasil = staleProspek(listOf(lead(1, "Lama Sekali", updatedAtRaw = tua)), now)
         assertEquals(listOf("Lama Sekali"), hasil.map { it.nama })
+    }
+
+    @Test
+    fun `skew zona waktu tak pernah menyembunyikan baris yang baru saja melewati ambang mandek`() {
+        // Titik BAHAYA sungguhan: baris jam-dinding-lokal terbaca umurnya sebagai
+        // (umur asli − offset zona device — lihat catatan skew di updatedAtMillis), jadi
+        // fixture ini dibuat supaya umur TERBACA jatuh tepat sedikit di atas ambang 24 jam
+        // — offset dihitung LIVE (bukan +7 hardcode) supaya test ini benar juga di CI
+        // ber-zona UTC atau UTC−, dan arah aljabarnya (+/-) tetap benar untuk offset negatif.
+        val offset = java.util.TimeZone.getDefault().getOffset(now).toLong()
+        val margin = TimeUnit.MINUTES.toMillis(1)
+        val umurAsli = STALE_THRESHOLD_MILLIS + margin + offset
+        val tepatLewatAmbang = localWallClock(now - umurAsli)
+        val hasil = staleProspek(listOf(lead(1, "Baru Lewat Ambang", updatedAtRaw = tepatLewatAmbang)), now)
+        assertEquals(listOf("Baru Lewat Ambang"), hasil.map { it.nama })
     }
 
     @Test
@@ -261,12 +276,29 @@ class ProspekReminderTest {
     }
 
     @Test
-    fun `milikSaya membuang baris pendingSync tanpa pemilik — tradeoff sengaja, bukan celah`() {
-        // Baris create-offline yang belum tersinkron tak punya assignedTo/createdBy sama
-        // sekali (CrmRepository.createLead tak menulis createdBy), jadi tak bisa dibedakan
-        // antara "punyaku, belum sempat terkirim" vs "sisa akun sebelumnya di HP ini".
-        // Keputusan user 2026-07-30: lebih murah kehilangan pengingat untuk baris ini
-        // (self-heals begitu tersinkron) daripada berisiko membocorkan data akun lain.
+    fun `prospek offline (pendingSync) milikku yang sudah mandek tetap lolos milikSaya sampai ke daftar pengingat`() {
+        // Properti yang SUNGGUH dijanjikan ke user, koreksi framing lama (2026-07-30): baris
+        // create-offline BUKAN pengecualian dari saringan milikSaya. CreateLeadUseCase.kt:61
+        // mengisi assignedTo draft dengan id PEMBUAT sendiri kalau form tak memilih assignee
+        // lain (kasus normal "buat untuk diri sendiri"), dan CrmRepository.createLead
+        // (baris 361) menyalin nilai itu apa adanya ke baris lokal — jadi baris ini lolos
+        // lewat cabang assignedTo==myId yang sama persis dengan baris dari server, lalu tetap
+        // dianggap mandek oleh staleProspek seperti biasa.
+        val offlineLama = lead(
+            1, "Offline Mandek",
+            assignedTo = "user-a", createdBy = null, pendingSync = true, agoMillis = days(2)
+        )
+        val hasil = staleProspek(milikSaya(listOf(offlineLama), "user-a"), now)
+        assertEquals(listOf("Offline Mandek"), hasil.map { it.nama })
+    }
+
+    @Test
+    fun `milikSaya membuang baris pendingSync tanpa pemilik di kedua kolom — defensif dan tak tercapai dari alur manapun`() {
+        // Bukan tradeoff yang pernah disetujui siapa pun: assignedTo dan createdBy null
+        // SEKALIGUS bukan skenario yang tercapai dari alur create manapun sekarang (lihat
+        // test di atas — createLead SELALU mengisi assignedTo). Ini pagar defensif untuk
+        // data cacat/masa depan: baris tak-teratribusi tak boleh dibacakan ke siapa pun yang
+        // kebetulan sedang login, walau ia menyandang pendingSync.
         val hasil = milikSaya(
             listOf(lead(1, "Belum Sinkron", assignedTo = null, createdBy = null, pendingSync = true)),
             "user-a"

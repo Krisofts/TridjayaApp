@@ -80,12 +80,19 @@ private const val MAX_NAMES = 3
  * token yang ini. Tanpa saringan ini, penjaga `lastSync` lolos dan nama konsumen
  * akun sebelumnya terbaca di lock screen pemakai baru.
  *
- * Baris `pendingSync` (create offline yang belum terkirim) SENGAJA ikut tersaring
- * keluar: `CrmRepository.createLead` tak menulis `createdBy`, jadi baris lokal tak
- * punya pemilik yang bisa dibedakan antara milik sendiri dan milik akun sebelumnya.
- * Konsekuensi yang diterima (keputusan user 2026-07-30): prospek yang dibuat offline
- * dan belum tersinkron tak ikut diingatkan — ia tersinkron begitu ada internet, dan
- * itu jauh lebih murah daripada membocorkan data akun lain.
+ * Prospek yang dibuat OFFLINE (`pendingSync`) tetap ikut diingatkan lewat cabang
+ * `assignedTo == myId` biasa: `CreateLeadUseCase.kt:61` mengisi `assignedTo` draft
+ * dengan id PEMBUAT sendiri kalau form tak memilih assignee lain — itu kasus normal
+ * "buat untuk diri sendiri" — dan `CrmRepository.createLead` (baris 361) menyalin
+ * `draft.assignedTo` itu apa adanya ke baris lokal. Tak ada biaya yang ditanggung di
+ * sini; benar bahwa `createLead` tak menulis `createdBy`, tapi itu tak masalah karena
+ * `assignedTo`-nya sudah terisi.
+ *
+ * Baris yang benar-benar TANPA pemilik di kedua kolom (`assignedTo` maupun
+ * `createdBy` null) dibuang sebagai default DEFENSIF, bukan tradeoff yang pernah
+ * disetujui siapa pun: baris tak-teratribusi tak boleh dibacakan ke siapa pun yang
+ * kebetulan sedang login. Kasus ini tak tercapai dari alur pembuatan mana pun yang
+ * ada sekarang — pagar untuk masa depan/data cacat, bukan celah yang sedang dipakai.
  */
 internal fun milikSaya(leads: List<LeadEntity>, myId: String): List<LeadEntity> =
     leads.filter { it.assignedTo == myId || it.createdBy == myId }
