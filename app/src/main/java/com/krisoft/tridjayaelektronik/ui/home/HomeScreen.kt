@@ -68,7 +68,6 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TrendingUp
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
@@ -149,8 +148,6 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    val layout by viewModel.layout.collectAsState()
-    var showCustomizeSheet by remember { mutableStateOf(false) }
     // Content scrolls behind the floating nav; clear it (pill ≈ 88dp) plus the system nav-bar inset.
     val bottomClearance = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 104.dp
 
@@ -172,16 +169,6 @@ fun HomeScreen(
                 }) {
                     Icon(Icons.Rounded.Notifications, contentDescription = "Notifikasi")
                 }
-            }
-            Spacer(modifier = Modifier.size(8.dp))
-            ExpressiveFilledIconButton(
-                onClick = { showCustomizeSheet = true },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            ) {
-                Icon(Icons.Rounded.Tune, contentDescription = "Atur tampilan Home")
             }
         }
     ) { contentModifier ->
@@ -208,9 +195,9 @@ fun HomeScreen(
                         // Banner izin notifikasi kini di ActivityScreen (layar pertama app,
                         // Task B6) — dicabut dari sini supaya tak dobel di tab Operasional.
                         item { GreetingCard(userName = state.user?.name.orEmpty()) }
-                        // Every section renders as a full-width titled card (same style as the rankings),
-                        // in the user's chosen order from the Tune sheet.
-                        layout.visibleOrdered.forEach { section ->
+                        // Tiap bagian dirender sebagai kartu selebar layar berjudul (gaya sama
+                        // dengan daftar klasemen), dalam urutan tetap [HomeSection.DEFAULT_ORDER].
+                        HomeSection.DEFAULT_ORDER.forEach { section ->
                             homeSection(
                                 section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
                                 onQuickAccessInventory, onQuickAccessSearch, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
@@ -224,17 +211,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    if (showCustomizeSheet) {
-        HomeCustomizeSheet(
-            layout = layout,
-            onMoveUp = viewModel::moveSectionUp,
-            onMoveDown = viewModel::moveSectionDown,
-            onToggle = viewModel::setSectionVisible,
-            onReset = viewModel::resetLayout,
-            onDismiss = { showCustomizeSheet = false }
-        )
     }
 }
 

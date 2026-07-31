@@ -10,7 +10,6 @@ import com.krisoft.tridjayaelektronik.data.model.UserDto
 import com.krisoft.tridjayaelektronik.data.LeadSummary
 import com.krisoft.tridjayaelektronik.domain.home.GetCrmSummaryUseCase
 import com.krisoft.tridjayaelektronik.domain.home.GetHomeDashboardUseCase
-import com.krisoft.tridjayaelektronik.domain.home.UpdateHomeLayoutUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,15 +37,11 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val getHomeDashboardUseCase: GetHomeDashboardUseCase,
     private val getCrmSummaryUseCase: GetCrmSummaryUseCase,
-    private val updateHomeLayoutUseCase: UpdateHomeLayoutUseCase,
     private val authRepository: com.krisoft.tridjayaelektronik.data.AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
-
-    private val _layout = MutableStateFlow(updateHomeLayoutUseCase.current())
-    val layout: StateFlow<HomeLayout> = _layout.asStateFlow()
 
     init {
         // CRM summary is observed live from the same leads cache the Prospek tab uses, so the Home
@@ -64,24 +59,6 @@ class HomeViewModel @Inject constructor(
                 _uiState.update { it.copy(capabilities = caps) }
             }
         }
-    }
-
-    /** Move a section one slot earlier in the dashboard order. */
-    fun moveSectionUp(section: HomeSection) {
-        _layout.value = updateHomeLayoutUseCase.moveUp(_layout.value, section)
-    }
-
-    /** Move a section one slot later in the dashboard order. */
-    fun moveSectionDown(section: HomeSection) {
-        _layout.value = updateHomeLayoutUseCase.moveDown(_layout.value, section)
-    }
-
-    fun setSectionVisible(section: HomeSection, visible: Boolean) {
-        _layout.value = updateHomeLayoutUseCase.setVisible(_layout.value, section, visible)
-    }
-
-    fun resetLayout() {
-        _layout.value = updateHomeLayoutUseCase.reset()
     }
 
     fun loadDashboard(forceRefresh: Boolean = false) {
