@@ -50,10 +50,46 @@ class ActivityRegistryTest {
         assertEquals(listOf("raport"), tanpaKunci)
     }
 
+    // ── Item khusus akun uji ─────────────────────────────────────────────────
+
+    @Test
+    fun `Input Aktivitas hilang dari karyawan nyata, tampil untuk akun uji`() {
+        // 2026-07-31, permintaan user: fitur BETA diuji di produksi tanpa
+        // memancing karyawan nyata memakainya.
+        val karyawan = visibleActivityItems(setOf("karyawan"), null, akunUji = false).map { it.id }
+        assertFalse("raport" in karyawan)
+        // Arah kedua: yang hilang HANYA itu — gate ini gampang ditulis kelewat
+        // lebar dan diam-diam mengosongkan layar Activity karyawan.
+        val uji = visibleActivityItems(setOf("karyawan"), null, akunUji = true).map { it.id }
+        assertTrue("raport" in uji)
+        assertEquals(uji - "raport", karyawan)
+    }
+
+    @Test
+    fun `default akunUji menyembunyikan, bukan membocorkan`() {
+        // Pemanggil yang lupa mengoper argumennya harus gagal ke sisi AMAN.
+        assertFalse("raport" in visibleActivityItems(setOf("karyawan"), null).map { it.id })
+    }
+
+    @Test
+    fun `akunUji cocok lewat prefiks, bukan substring`() {
+        assertTrue(akunUji("UJI Sales", "11111111"))
+        assertTrue(akunUji("E2E Approver Test", "990012345"))
+        assertTrue(akunUji("test driver", null))
+        assertTrue(akunUji("Nama Apa Saja", "990012345"))
+        // Orang nyata yang namanya kebetulan memuat kata itu TIDAK boleh kena.
+        assertFalse(akunUji("Puji Astuti", "2020010109"))
+        assertFalse(akunUji("Kontes Testimoni", "2020010110"))
+        assertFalse(akunUji(null, null))
+    }
+
     // ── Gate dua arah per persona ────────────────────────────────────────────
 
+    // Persona di bawah ini sengaja dinilai sebagai AKUN UJI supaya assertion
+    // lamanya tetap menguji gate role/kemampuan — bukan ikut tertelan gate
+    // akun-uji yang baru.
     private fun ids(vararg roles: String, caps: Map<String, Boolean>? = null) =
-        visibleActivityItems(roles.toSet(), caps).map { it.id }
+        visibleActivityItems(roles.toSet(), caps, akunUji = true).map { it.id }
 
     @Test
     fun `pdi melihat antrian pdi dan form akinya sendiri`() {

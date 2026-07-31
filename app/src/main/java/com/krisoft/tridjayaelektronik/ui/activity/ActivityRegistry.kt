@@ -354,11 +354,40 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
     ),
 )
 
-/** Item yang boleh tampil untuk pemilik [effectiveRoles]. Fail-closed. */
+/**
+ * Item yang HANYA tampil untuk akun uji, bukan karyawan nyata — dipakai saat
+ * sebuah fitur masih diuji di produksi.
+ *
+ * `raport` (Input Aktivitas, BETA) masuk sini 2026-07-31 atas permintaan user.
+ * Ini gate TAMPILAN saja: `POST /raport-harian` sengaja TIDAK ditutup, supaya
+ * raport yang sudah berjalan dan auto-feed KPI `LAPORAN AKTIVITAS` tak putus.
+ */
+private val ITEM_KHUSUS_AKUN_UJI = setOf("raport")
+
+/**
+ * Apakah akun ini akun UJI (bukan karyawan nyata).
+ *
+ * Cerminan `birthday::akun_uji` di kinerja-service. PREFIKS, bukan `contains` —
+ * "Puji Astuti" itu nama orang nyata dan tak boleh kehilangan menunya.
+ */
+internal fun akunUji(name: String?, nik: String?): Boolean {
+    if (nik?.trim()?.startsWith("9900") == true) return true
+    val atas = name.orEmpty().trimStart().uppercase()
+    return listOf("UJI ", "E2E ", "TEST ").any { atas.startsWith(it) }
+}
+
+/**
+ * Item yang boleh tampil untuk pemilik [effectiveRoles]. Fail-closed.
+ *
+ * [akunUji] default `false` DISENGAJA: pemanggil yang lupa mengopernya
+ * menyembunyikan item BETA, bukan membocorkannya ke seluruh karyawan.
+ */
 internal fun visibleActivityItems(
     effectiveRoles: Set<String>,
     capabilities: Map<String, Boolean>? = null,
+    akunUji: Boolean = false,
 ): List<ActivityItem> = ACTIVITY_ITEMS.filter {
+    if (it.id in ITEM_KHUSUS_AKUN_UJI && !akunUji) return@filter false
     gateAllows(it.capability, it.allowedRoles, effectiveRoles, capabilities)
 }
 

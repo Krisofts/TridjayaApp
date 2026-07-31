@@ -115,7 +115,7 @@ class ActivityViewModel @Inject constructor(
 
         val user = authRepository.cachedUser
         val roles = effectiveRoles(user)
-        val items = visibleActivityItems(roles, capabilities)
+        val items = visibleActivityItems(roles, capabilities, akunUji(user?.name, user?.nik))
         val todayIso = KlasemenStandings.todayIso()
 
         val counts = mutableMapOf<ActivitySource, Int?>()
