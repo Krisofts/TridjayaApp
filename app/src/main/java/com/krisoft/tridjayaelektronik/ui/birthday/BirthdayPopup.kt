@@ -280,18 +280,25 @@ private fun KartuUcapan(nama: String, milikSendiri: Boolean, jam: Float, modifie
     ) {
         // Plat krem di balik logo. Bukan hiasan: logonya merah+biru, dan di atas
         // dongker bagian birunya nyaris hilang — plat ini supaya logo terbaca.
+        //
+        // Logonya `logo_tridjaya`, BUKAN `logo_header`: yang belakangan memuat
+        // deretan mitra kredit (Spektra, Adira, Akulaku, dst) di sebelah kanan,
+        // jadi pada kartu ucapan ia jadi gambar selebar 10:1 yang isinya
+        // sebagian besar logo perusahaan lain. Aset ini = logo web
+        // (`logo-horizontal.webp`) yang dipangkas rapat ke isinya, sehingga
+        // tak ada lagi pias kosong yang membuat logo terlihat jauh dari tepi plat.
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
                 .background(NAVY_CREAM)
                 .border(1.dp, GOLD_LIGHT, RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             androidx.compose.foundation.Image(
-                painter = painterResource(id = R.drawable.logo_header),
+                painter = painterResource(id = R.drawable.logo_tridjaya),
                 contentDescription = "Tridjaya Elektronik",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.height(30.dp),
+                modifier = Modifier.height(44.dp),
             )
         }
 
