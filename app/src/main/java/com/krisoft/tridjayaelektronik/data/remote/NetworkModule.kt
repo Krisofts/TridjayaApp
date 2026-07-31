@@ -97,8 +97,11 @@ object NetworkModule {
 
     /**
      * Client TERPISAH untuk unggah video bukti chat. Client bersama ber-write/readTimeout
-     * 20 detik — video sampai 20MB di jaringan cabang butuh MENIT, jadi lewat client itu
-     * unggahan besar SELALU mati timeout dan di layar terlihat seperti "server error".
+     * 20 detik — video sampai 50MB (batas naik dari 20MB pada 2026-07-31) di jaringan cabang
+     * butuh MENIT, jadi lewat client itu unggahan besar SELALU mati timeout dan di layar
+     * terlihat seperti "server error". Kenaikan batas TIDAK menuntut angka di bawah diubah:
+     * `callTimeout(0)` tak membatasi durasi menyeluruh dan write timeout dihitung PER-BLOK,
+     * jadi berkas 2,5× lebih besar tetap lolos selama datanya mengalir.
      *
      * Diturunkan lewat `newBuilder()` dari client bersama (BUKAN client baru dari nol) supaya
      * AuthHeaderInterceptor + TokenRefreshAuthenticator IKUT — tanpa itu request unggah

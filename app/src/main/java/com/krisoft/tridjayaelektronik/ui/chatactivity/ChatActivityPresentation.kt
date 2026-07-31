@@ -15,12 +15,18 @@ package com.krisoft.tridjayaelektronik.ui.chatactivity
  *  selesai bermenit-menit di jaringan cabang hanya untuk ditolak 400.
  *
  *  WAJIB sama dengan `chat_activity::upload::MAX_VIDEO_BYTES` di repo `Tridjaya`
- *  (dan `frontend/src/utils/aktivitasChat.ts`). Diturunkan 50 → 20 MB pada
- *  2026-07-30 karena gateway menyangga badan unggahan PENUH di RAM
- *  (`proxy_kinerja` menerima `body: Bytes`) dan VPS cuma punya ±3 GB sisa —
- *  angka mobile yang lebih tinggi dari server berarti app menerima berkas yang
- *  pasti ditolak di ujung sana. */
-const val MAX_VIDEO_BYTES: Long = 20L * 1024 * 1024
+ *  (dan `frontend/src/utils/aktivitasChat.ts`). Riwayatnya: 50 → 20 MB pada
+ *  2026-07-30 (gateway menyangga badan unggahan PENUH di RAM), lalu 20 → 50 MB
+ *  pada 2026-07-31 setelah route unggah di gateway diubah jadi STREAMING
+ *  (`proxy_kinerja_upload`) sehingga penyanggaan itu hilang.
+ *
+ *  Sisi HP sendiri tak terpengaruh angka ini: `UriRequestBody` sudah streaming
+ *  per-blok dari `ContentResolver`, jadi heap tak ikut naik.
+ *
+ *  KENAIKAN INI BUTUH SERVER BARU. App dengan 50 MB di atas server yang masih
+ *  20 MB = karyawan menunggu unggahan panjang lalu ditolak 400 di ujung sana.
+ *  Rilis APK-nya HARUS sesudah kinerja-service + gateway naik. */
+const val MAX_VIDEO_BYTES: Long = 50L * 1024 * 1024
 
 data class KirimGate(val ok: Boolean, val alasan: String? = null)
 
@@ -28,11 +34,13 @@ fun bolehKirim(adaVideo: Boolean, jumlahChat: Int, minimal: Int, ukuranBytes: Lo
     if (!adaVideo) return KirimGate(false, "Pilih video bukti dulu.")
     // ponytail: HANYA yang terbukti kebesaran ditolak. Sebagian ContentProvider mengembalikan
     // kolom SIZE null → ViewModel mengirim 0; menolak ukuran tak terbaca akan mengunci karyawan
-    // dari fitur ini tanpa jalan keluar. Server tetap punya batas 20 MB-nya sendiri.
+    // dari fitur ini tanpa jalan keluar. Server tetap punya batasnya sendiri.
     if (ukuranBytes > MAX_VIDEO_BYTES) {
         return KirimGate(
             false,
-            "Video terlalu besar (maks 20 MB). Rekam lebih pendek atau turunkan " +
+            // Angka DITURUNKAN dari konstanta, tidak diketik ulang — pesan yang menyebut batas
+            // lama menyuruh karyawan mengecilkan video ke ukuran yang sebenarnya sudah diterima.
+            "Video terlalu besar (maks ${MAX_VIDEO_BYTES / (1024 * 1024)} MB). Rekam lebih pendek atau turunkan " +
                 "kualitas perekam layar ke 720p.",
         )
     }

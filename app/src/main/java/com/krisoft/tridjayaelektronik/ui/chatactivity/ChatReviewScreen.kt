@@ -240,7 +240,7 @@ private fun BarisReview(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     when {
-                        bukti.videoPurged -> "Video sudah dihapus (retensi 3 hari)"
+                        bukti.videoPurged -> "Video sudah dihapus (retensi 24 jam)"
                         !adaVideo -> "Video tidak ada"
                         mengunduh -> "Mengunduh…"
                         else -> "Putar Video"

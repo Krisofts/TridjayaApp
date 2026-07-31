@@ -93,6 +93,16 @@ fun ChatActivityScreen(
         }
     }
 
+    // Banner error duduk di DASAR kolom yang bisa di-scroll, sedangkan tombol Kirim
+    // ada di tengah. Tanpa gulir otomatis ini, unggahan yang gagal terlihat seperti
+    // "tombol menyala lagi, tak terjadi apa-apa" — alasannya ada, cuma di luar layar.
+    // Itu keluhan nyata dari lapangan. Banner error = elemen TERAKHIR kolom, jadi
+    // menggulir ke `maxValue` selalu memunculkannya; kalau nanti ada elemen baru di
+    // bawahnya, gulir ini harus diarahkan ulang.
+    val scrollState = rememberScrollState()
+    LaunchedEffect(state.pesanError) {
+        if (state.pesanError != null) scrollState.animateScrollTo(scrollState.maxValue)
+    }
     TridjayaCollapsibleHeader(title = "Bukti Chat Harian", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val today = state.today
@@ -111,7 +121,7 @@ fun ChatActivityScreen(
             else -> Column(
                 modifier = contentModifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
             ) {
                 KartuStatus(today, state)
@@ -146,7 +156,7 @@ fun ChatActivityScreen(
                     Banner(
                         warna = MaterialTheme.colorScheme.onSurfaceVariant,
                         ikon = Icons.Rounded.DeleteForever,
-                        judul = "Video sudah dihapus (retensi 3 hari)",
+                        judul = "Video sudah dihapus (retensi 24 jam)",
                         isi = "Jumlah chat dan hasil pemeriksaannya tetap tercatat.",
                     )
                 }
