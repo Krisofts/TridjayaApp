@@ -14,6 +14,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /** Status review absensi dari backend (`valid` | `pending_review` | `approved` | `rejected`). */
 enum class AbsensiStatus(
@@ -94,6 +95,27 @@ private fun offToRekap(kategori: String): RekapStatus = when (OffKategori.from(k
 
 /** "yyyy-MM-dd" LOKAL hari ini (tz device = tz server Indonesia WIB/WITA). */
 fun attendanceToday(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+/**
+ * Tanggal hari ini menurut jam DEVICE, dinyatakan sebagai tengah malam UTC.
+ *
+ * Satuan itulah yang dipakai `DatePickerState` Material3: tiap pilihan user
+ * dinormalkan ke tengah malam UTC, jadi nilai awalnya harus bicara satuan yang
+ * sama. Mengoper `System.currentTimeMillis()` mentah membuat picker terbuka di
+ * tanggal UTC-nya — antara 00:00–06:59 WIB itu tanggal KEMARIN.
+ *
+ * `nowMillis`/`zonaDevice` bisa dioper demi test; produksi memakai default.
+ */
+fun hariIniSebagaiUtcMidnight(
+    nowMillis: Long = System.currentTimeMillis(),
+    zonaDevice: TimeZone = TimeZone.getDefault(),
+): Long {
+    val lokal = Calendar.getInstance(zonaDevice).apply { timeInMillis = nowMillis }
+    return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        clear()
+        set(lokal.get(Calendar.YEAR), lokal.get(Calendar.MONTH), lokal.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
 
 /**
  * Tanggal 1 bulan berjalan s/d hari ini ("yyyy-MM-dd", lokal). Sengaja komponen

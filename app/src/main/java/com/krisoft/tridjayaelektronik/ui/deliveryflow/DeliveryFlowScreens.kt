@@ -89,6 +89,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
+import com.krisoft.tridjayaelektronik.data.model.parseTimestampMillis
 import com.krisoft.tridjayaelektronik.ui.home.formatRupiahShort
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
@@ -1306,15 +1307,21 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
     }
 }
 
-/** Parse timestamp backend `YYYY-MM-DDTHH:MM:SS` (naive UTC) → epoch millis.
- *  minSdk 24 tanpa desugaring — SimpleDateFormat, bukan java.time (pola AssignAction). */
-private fun parseUtcMillis(ts: String?): Long? = ts?.let {
-    runCatching {
-        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-            .parse(it)?.time
-    }.getOrNull()
-}
+/**
+ * Timestamp backend → epoch millis, penafsiran ikut BENTUK nilainya.
+ *
+ * Meneruskan ke [parseTimestampMillis] (router yang sama dipakai label
+ * notifikasi & umur SPK) alih-alih parser lokal — dulu berkas ini punya
+ * `parseUtcMillis` sendiri yang SELALU menafsir UTC. Sejak backend mengirim WIB
+ * polos tanpa penanda (kontrak `tridjaya_shared::waktu`, 2026-07-30), penafsiran
+ * itu menaruh `consumerChatAt` 7 jam di MASA DEPAN: `elapsedMin` jadi negatif,
+ * jadi gate serah terima menahan driver ~7 jam + jeda padahal server sudah
+ * melepasnya setelah `chatMinMinutes`.
+ *
+ * Nilai lama ber-`Z` tetap dibaca UTC oleh router yang sama.
+ */
+private fun parseWaktuMillis(ts: String?): Long? =
+    parseTimestampMillis(ts?.trim()?.takeIf { it.isNotEmpty() }?.replace(' ', 'T'))
 
 @Composable
 private fun DeliverAction(
@@ -1415,7 +1422,7 @@ private fun DeliverAction(
     // Jeda minimum chat dari SERVER (menit; 0 = chat wajib tanpa tunggu —
     // pelonggaran live testing 2026-07-23). Backend lama tanpa field → 60.
     val chatMinMin: Long = (photoState.deliveryContext?.chatMinMinutes ?: 60).coerceAtLeast(0).toLong()
-    val chatMillis = parseUtcMillis(job.consumerChatAt)
+    val chatMillis = parseWaktuMillis(job.consumerChatAt)
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(chatMillis) {
         while (true) { nowMillis = System.currentTimeMillis(); delay(30_000) }

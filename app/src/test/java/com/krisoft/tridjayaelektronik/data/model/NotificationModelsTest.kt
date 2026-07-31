@@ -98,4 +98,24 @@ class NotificationModelsTest {
         cal.set(java.util.Calendar.MILLISECOND, 0)
         assertEquals("Baru saja", relativeTimeId("2026-07-23T10:00:00+07:00", cal.timeInMillis))
     }
+
+    /**
+     * Cabang ">7 hari" memformat balik dengan zona DEVICE, bukan UTC.
+     *
+     * Nilainya di-parse sebagai jam dinding device; memformatnya dengan
+     * formatter UTC (perilaku sebelum perbaikan ini) mengurangi offset zona
+     * sekali lagi, sehingga notifikasi dini hari tampil tertanggal sehari lebih
+     * awal. Dipakukan pada jam 01:00 — kasus yang paling gampang berubah kalau
+     * ada yang menambahkan `timeZone` di formatter itu lagi.
+     */
+    @Test
+    fun `tanggal absolut memakai zona device, bukan UTC`() {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(2026, java.util.Calendar.JULY, 20, 1, 0, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val dibuat = cal.timeInMillis
+        val sepuluhHariKemudian = dibuat + 10L * 24 * 3_600_000L
+
+        assertEquals("20 Jul 2026", relativeTimeId("2026-07-20T01:00:00", sepuluhHariKemudian))
+    }
 }
