@@ -55,9 +55,11 @@ fun relativeTimeId(iso: String?, nowMillis: Long = System.currentTimeMillis()): 
         diff < hour -> "${diff / minute} menit lalu"
         diff < day -> "${diff / hour} jam lalu"
         diff < 7 * day -> "${diff / day} hari lalu"
-        else -> SimpleDateFormat("d MMM yyyy", Locale("in", "ID")).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }.format(Date(millis))
+        // Zona device, BUKAN UTC: `millis` di atas kini hasil [parseTimestampMillis]
+        // yang menafsir nilai tanpa penanda sebagai jam dinding device. Memformat
+        // balik dengan formatter UTC mengurangi 7 jam lagi, sehingga notifikasi
+        // yang dibuat 00:00–06:59 WIB tampil tertanggal SEHARI lebih awal.
+        else -> SimpleDateFormat("d MMM yyyy", Locale("in", "ID")).format(Date(millis))
     }
 }
 

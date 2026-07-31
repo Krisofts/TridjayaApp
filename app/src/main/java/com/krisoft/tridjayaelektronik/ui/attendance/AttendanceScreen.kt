@@ -783,12 +783,23 @@ private fun OffFormSheet(
     onDismiss: () -> Unit,
     onSubmit: (tanggal: String, alasan: String) -> Unit
 ) {
-    val dateState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+    // Hari ini menurut jam DEVICE, dinyatakan sebagai tengah malam UTC — satuan
+    // yang dipakai `DatePickerState` (Material3 menormalkan tiap pilihan ke
+    // sana, dan dua formatter di bawah ikut ber-zona UTC karena itu).
+    //
+    // Mengoper `System.currentTimeMillis()` mentah SALAH: nilai itu dinormalkan
+    // ke tanggal UTC-nya, sehingga antara 00:00–06:59 WIB form ini terbuka —
+    // dan mengirim — tanggal KEMARIN. Dulu diam-diam membuat izin di hari yang
+    // salah; sejak server menolak tanggal mundur (2026-07-31) ia jadi 400 tepat
+    // pada kasus yang aturan itu justru ingin biarkan lewat: sakit mendadak
+    // pagi hari.
+    val hariIniUtcMillis = remember { hariIniSebagaiUtcMidnight() }
+    val dateState = rememberDatePickerState(initialSelectedDateMillis = hariIniUtcMillis)
     var showPicker by remember { mutableStateOf(false) }
     var alasan by remember { mutableStateOf("") }
     val isoUtc = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") } }
     val displayFmt = remember { SimpleDateFormat("EEEE, d MMMM yyyy", Locale("in", "ID")).apply { timeZone = TimeZone.getTimeZone("UTC") } }
-    val millis = dateState.selectedDateMillis ?: System.currentTimeMillis()
+    val millis = dateState.selectedDateMillis ?: hariIniUtcMillis
     val tanggalIso = isoUtc.format(Date(millis))
     val canSubmit = alasan.trim().length >= 5 && !submitting
 

@@ -44,9 +44,16 @@ class OffRepository @Inject constructor(
         val parsed = raw?.let {
             runCatching { errorJson.decodeFromString(ApiErrorResponse.serializer(), it) }.getOrNull()
         }
+        // `errors[0]` DULU, `message` cuma cadangan: `ApiError::Validation`
+        // (rust-shared `error.rs`) selalu mengirim `message: "Input tidak valid"`
+        // dan menaruh alasan sebenarnya di `errors`. Tanpa ini, penolakan yang
+        // paling sering ditemui karyawan — "Pengajuan izin/OFF tidak bisa untuk
+        // tanggal yang sudah lewat" — tampil sebagai "Input tidak valid" tanpa
+        // petunjuk apa pun tentang apa yang harus diperbaiki.
+        val detail = parsed?.errors?.firstOrNull()?.takeIf { it.isNotBlank() }
         return AuthResult.Failure(
             parsed?.code ?: "http_${response.code()}",
-            parsed?.message ?: "$fallback (${response.code()})"
+            detail ?: parsed?.message ?: "$fallback (${response.code()})"
         )
     }
 }
