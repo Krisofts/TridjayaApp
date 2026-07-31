@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
 import com.krisoft.tridjayaelektronik.ui.home.ALL_LOGGED_IN
+import com.krisoft.tridjayaelektronik.ui.home.BUKTI_CHAT_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.CRM_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.STAFF_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.SPK_MENU_ROLES
@@ -163,10 +164,12 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         subtitle = "Video bukti chat harian",
         kind = ActivityKind.TUGAS_HARIAN,
         capability = "aktivitas_chat.submit",
-        // Siapa yang bisa absen, dia yang wajib kirim bukti — daftarnya sengaja
-        // sama dengan absen, bukan daftar baru yang bisa menyimpang diam-diam.
-        allowedRoles = STAFF_MENU_ROLES,
-        backendGuard = "kinerja-service chat_activity SUBMIT_ROLES (= STAFF_SELF_SERVICE_ROLES)",
+        // BUKAN `STAFF_MENU_ROLES` lagi: peran manajemen dibebaskan dari
+        // kewajiban ini 2026-07-31, jadi cadangan offline harus ikut menyempit
+        // — kalau tidak, kartu tetap muncul sampai peta kemampuan termuat lalu
+        // hilang sendiri, dan yang menekannya lebih dulu dijawab 400.
+        allowedRoles = BUKTI_CHAT_MENU_ROLES,
+        backendGuard = "rust-shared capabilities.rs AKTIVITAS_CHAT_SUBMIT_ROLES",
         source = ActivitySource.CHAT_ACTIVITY_TODAY,
         navKey = "bukti_chat",
     ),

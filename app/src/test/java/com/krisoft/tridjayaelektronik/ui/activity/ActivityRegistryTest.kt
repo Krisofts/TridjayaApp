@@ -298,9 +298,29 @@ class ActivityRegistryTest {
         val caps = mapOf("aktivitas_chat.submit" to true, "aktivitas_chat.review" to false)
         assertTrue("bukti_chat" in ids("karyawan", caps = caps))
         assertTrue("bukti_chat" in ids("driver", caps = caps))
-        // Siapa yang bisa absen, dia yang wajib kirim bukti — cadangan offline
-        // harus sepakat dengan peta kemampuan server.
+        // Siapa yang wajib kirim bukti, dia yang punya kartunya — cadangan
+        // offline harus sepakat dengan peta kemampuan server.
         assertTrue("bukti_chat" in ids("kasir", caps = null))
+        assertTrue("bukti_chat" in ids("kepala-cabang", caps = null))
+    }
+
+    /**
+     * Peran manajemen dibebaskan dari kewajiban unggah (2026-07-31): server
+     * menjawab `aktivitas_chat.submit = false`, dan cadangan offline harus
+     * sepakat — kartu yang muncul sebentar lalu hilang sendiri terbaca sebagai
+     * app yang kedip, dan yang menekannya lebih dulu dijawab 400.
+     */
+    @Test
+    fun `kartu bukti chat tak muncul untuk peran manajemen`() {
+        val caps = mapOf("aktivitas_chat.submit" to false, "aktivitas_chat.review" to true)
+        for (peran in listOf("manager", "admin", "superadmin", "owner", "hrd")) {
+            assertFalse("$peran: peta kemampuan", "bukti_chat" in ids(peran, caps = caps))
+            assertFalse("$peran: cadangan offline", "bukti_chat" in ids(peran, caps = null))
+        }
+        // Yang dicabut cuma unggahannya — memeriksa bukti orang lain tetap.
+        assertTrue(
+            "review_bukti_chat" in ids("manager", caps = mapOf("aktivitas_chat.review" to true))
+        )
     }
 
     @Test

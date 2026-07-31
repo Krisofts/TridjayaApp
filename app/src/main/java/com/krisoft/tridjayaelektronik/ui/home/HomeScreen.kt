@@ -460,6 +460,18 @@ internal val STAFF_MENU_ROLES = setOf(
 internal fun canAccessStaffSelfService(roles: Set<String>): Boolean =
     roles.any { it in STAFF_MENU_ROLES }
 
+/** Wajib mengunggah bukti chat harian — `AKTIVITAS_CHAT_SUBMIT_ROLES` di
+ *  rust-shared `capabilities.rs` (= [STAFF_MENU_ROLES] MINUS peran manajemen).
+ *
+ *  Peran manajemen dibebaskan 2026-07-31: server menjawab
+ *  `aktivitas_chat.submit = false` untuk mereka, jadi kartu itu sudah hilang
+ *  begitu peta kemampuan termuat. Daftar ini yang menutup celahnya SEBELUM
+ *  peta termuat (cold start / offline), tempat `gateAllows` jatuh ke role. */
+internal val BUKTI_CHAT_MENU_ROLES = setOf(
+    "karyawan", "kepala-cabang", "admin-sales", "sales", "pdi", "driver", "kasir",
+    "delivery-control", "admin-stok", "operator", "agent",
+)
+
 /** `MOBILE_LEADERBOARD_ROLES` gateway — lihat gateway/src/lib.rs. */
 internal val KLASEMEN_MENU_ROLES = setOf(
     "manager", "sales-manager", "kepala-cabang", "admin", "superadmin", "owner",
