@@ -138,12 +138,13 @@ class FcmService : FirebaseMessagingService() {
     private fun channelLabel(channelId: String): String = when (channelId) {
         CHANNEL_CRM -> "CRM / Prospek"
         CHANNEL_DELIVERY -> "SPK & Pengiriman"
+        CHANNEL_ULTAH -> "Ulang Tahun Karyawan"
         else -> "Persetujuan Absensi/Izin"
     }
 
     /** Channel tak dikenal dari server → pakai "approval" supaya notif tetap tampil. */
     private fun normalizeChannel(channelId: String): String = when (channelId) {
-        CHANNEL_CRM, CHANNEL_DELIVERY -> channelId
+        CHANNEL_CRM, CHANNEL_DELIVERY, CHANNEL_ULTAH -> channelId
         else -> CHANNEL_APPROVAL
     }
 
@@ -151,6 +152,11 @@ class FcmService : FirebaseMessagingService() {
         const val CHANNEL_APPROVAL = "approval"
         const val CHANNEL_CRM = "crm"
         const val CHANNEL_DELIVERY = "delivery"
+
+        /** Ucapan ulang tahun harian (kinerja-service `birthday/notify.rs`). Channel
+         *  sendiri supaya bisa dimatikan di setelan HP tanpa ikut mematikan
+         *  pengingat absensi — keduanya dulu akan berbagi channel "approval". */
+        const val CHANNEL_ULTAH = "ultah"
 
         /** Extra pada intent peluncur tap-notifikasi — dibaca [com.krisoft.tridjayaelektronik.MainActivity]
          *  untuk deep-link ke layar yang relevan (channel `delivery` → hub SPK, `crm` → tab CRM). */
@@ -170,7 +176,7 @@ class FcmService : FirebaseMessagingService() {
         const val DATA_KEY_CHANNEL = "channel"
 
         /**
-         * Buat tiga channel notifikasi bila belum ada. Dipanggil di startup app
+         * Buat empat channel notifikasi bila belum ada. Dipanggil di startup app
          * ([TridjayaApplication.onCreate]) — penting supaya notifikasi FCM saat app di
          * **background** (ditampilkan sistem, kode kita tak jalan) sudah punya channel
          * "approval"/"crm"/"delivery" yang cocok di Android 8+; kalau belum ada, notif bisa tak tampil.
@@ -196,6 +202,16 @@ class FcmService : FirebaseMessagingService() {
                 manager.createNotificationChannel(
                     NotificationChannel(CHANNEL_DELIVERY, "SPK & Pengiriman", NotificationManager.IMPORTANCE_HIGH).apply {
                         description = "Notifikasi alur SPK: diskon, PDI, input GS, surat jalan, tugas antar, terkirim"
+                    }
+                )
+            }
+            if (manager.getNotificationChannel(CHANNEL_ULTAH) == null) {
+                manager.createNotificationChannel(
+                    // DEFAULT, bukan HIGH: ucapan ulang tahun tak menuntut
+                    // tindakan apa pun — memaksanya muncul melayang di atas
+                    // layar akan membuatnya terasa seperti gangguan kerja.
+                    NotificationChannel(CHANNEL_ULTAH, "Ulang Tahun Karyawan", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                        description = "Ucapan saat ada rekan kerja yang berulang tahun"
                     }
                 )
             }

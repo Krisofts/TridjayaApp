@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.krisoft.tridjayaelektronik.push.FcmService
 import com.krisoft.tridjayaelektronik.ui.attendance.LocationProvider
+import com.krisoft.tridjayaelektronik.ui.birthday.BirthdayPopupHost
 import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_SPK_HUB
 import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_DISKON
 import com.krisoft.tridjayaelektronik.ui.activity.ROUTE_DLV_PDI
@@ -320,6 +321,15 @@ private fun TridjayaNavHost(
                 onDismiss = if (available.force) null else ({ updateViewModel.dismissOptional() })
             )
         }
+    }
+
+    // Ucapan ulang tahun — sekali sehari, di atas layar mana pun setelah login
+    // (cerminan popup web). Ditahan saat gate paksa-update sedang tampil: dua
+    // dialog bertumpuk membuat tombol update tak bisa ditekan, dan update wajib
+    // jelas lebih mendesak daripada ucapan.
+    val forceUpdate = (updateStatus as? UpdateStatus.Available)?.force == true
+    if (isLoggedIn && !mustChangePassword && !forceUpdate) {
+        BirthdayPopupHost()
     }
 }
 
