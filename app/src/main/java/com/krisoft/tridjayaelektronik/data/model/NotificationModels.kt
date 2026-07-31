@@ -111,6 +111,33 @@ internal fun parseTimestampMillis(iso: String?): Long? {
 }
 
 /**
+ * Timestamp server → teks yang dibaca manusia: `30/07/2026 10:29`.
+ *
+ * Menerima tiga bentuk yang beredar: `2026-07-30T10:29:51` (WIB polos, bentuk
+ * baku sejak 2026-07-30), `2026-07-30 10:29:51` (spasi), dan `…Z` (nilai lama).
+ * Nilai TANGGAL-SAJA (`2026-07-30`) jadi `30/07/2026`.
+ *
+ * Ada karena beberapa layar mencetak string server APA ADANYA — timeline Detail
+ * Pengiriman menampilkan `2026-07-30T10:29:51` lengkap dengan huruf `T` dan
+ * detik yang tak berguna bagi pembacanya (laporan user 2026-07-31).
+ *
+ * Zona: [parseTimestampMillis] menafsirkan nilai polos sebagai jam device, dan
+ * di sini diformat ulang dengan zona device juga — jadi digitnya kembali persis
+ * seperti yang dikirim server (WIB), bukan digeser dua kali.
+ */
+fun formatWaktuId(iso: String?): String {
+    val raw = iso?.trim().orEmpty()
+    if (raw.isEmpty()) return "-"
+    // Tanggal-saja: tak ada jam untuk ditampilkan.
+    if (raw.length == 10 && raw.count { it == '-' } == 2) {
+        val bagian = raw.split("-")
+        return if (bagian.size == 3) "${bagian[2]}/${bagian[1]}/${bagian[0]}" else raw
+    }
+    val millis = parseTimestampMillis(raw.replace(' ', 'T')) ?: return raw
+    return SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("in", "ID")).format(Date(millis))
+}
+
+/**
  * `Z` di ujung atau offset `±HH:MM`/`±HHMM` sesudah bagian jam.
  *
  * Catatan jujur soal bentuk beroffset: [parseIsoUtcMillis] memotong string di 19

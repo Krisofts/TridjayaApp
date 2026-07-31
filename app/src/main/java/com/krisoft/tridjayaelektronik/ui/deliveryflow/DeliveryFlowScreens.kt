@@ -86,6 +86,7 @@ import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.krisoft.tridjayaelektronik.data.model.formatWaktuId
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
@@ -488,8 +489,8 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                         Text("Pengiriman", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         InfoLine("Surat Jalan", job.deliveryNoteNo)
                         InfoLine("Driver", job.assignedDriverName)
-                        InfoLine("Jadwal", job.scheduledDate)
-                        InfoLine("Chat Konsumen", job.consumerChatAt)
+                        InfoLine("Jadwal", job.scheduledDate?.let(::formatWaktuId))
+                        InfoLine("Chat Konsumen", job.consumerChatAt?.let(::formatWaktuId))
                         job.reviewRating?.let { InfoLine("Rating", "★".repeat(it) + (job.reviewComment?.let { c -> " · $c" } ?: "")) }
                         if (job.status == DeliveryStatusKey.CANCELLED) InfoLine("Alasan Batal", job.cancelReason)
                         job.customerMapUrl?.takeIf { it.isNotBlank() }?.let { url ->
@@ -720,14 +721,14 @@ private fun SpkTimelineCard(
                         )
                         if (rejected) {
                             Text(
-                                listOfNotNull(step.timestamp, step.subtitle).joinToString(" · ").ifBlank { "Ditolak" },
+                                listOfNotNull(step.timestamp?.let(::formatWaktuId), step.subtitle).joinToString(" · ").ifBlank { "Ditolak" },
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error,
                             )
                         } else if (step.skipped) {
                             Text("Dilewati (tanpa PDI)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else if (done) {
                             Text(
-                                listOfNotNull(step.timestamp, step.subtitle).joinToString(" · "),
+                                listOfNotNull(step.timestamp?.let(::formatWaktuId), step.subtitle).joinToString(" · "),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         } else {
@@ -1308,13 +1309,11 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
 
 /** Parse timestamp backend `YYYY-MM-DDTHH:MM:SS` (naive UTC) → epoch millis.
  *  minSdk 24 tanpa desugaring — SimpleDateFormat, bukan java.time (pola AssignAction). */
-private fun parseUtcMillis(ts: String?): Long? = ts?.let {
-    runCatching {
-        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-            .parse(it)?.time
-    }.getOrNull()
-}
+/** Zona ditentukan dari penanda nilainya, bukan dipaksa UTC — backend mengirim
+ *  WIB polos sejak 2026-07-30. Memaksa UTC di sini membuat hitung mundur gate
+ *  chat H-1 menganggap chat terjadi 7 jam lebih awal. */
+private fun parseUtcMillis(ts: String?): Long? =
+    com.krisoft.tridjayaelektronik.data.model.parseTimestampMillis(ts)
 
 @Composable
 private fun DeliverAction(

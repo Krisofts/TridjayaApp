@@ -98,4 +98,31 @@ class NotificationModelsTest {
         cal.set(java.util.Calendar.MILLISECOND, 0)
         assertEquals("Baru saja", relativeTimeId("2026-07-23T10:00:00+07:00", cal.timeInMillis))
     }
+
+    // ---- formatWaktuId: teks yang dibaca manusia ----
+
+    /** Bentuk baku server sejak 2026-07-30: WIB polos, huruf `T` di tengah. */
+    @Test
+    fun `iso polos jadi tanggal dan jam yang terbaca`() {
+        assertEquals("30/07/2026 10:29", formatWaktuId("2026-07-30T10:29:51"))
+    }
+
+    /** Bentuk berspasi (beberapa endpoint lama) diperlakukan sama. */
+    @Test
+    fun `bentuk berspasi diperlakukan sama`() {
+        assertEquals("30/07/2026 10:29", formatWaktuId("2026-07-30 10:29:51"))
+    }
+
+    /** Tanggal-saja tak punya jam untuk ditampilkan. */
+    @Test
+    fun `tanggal saja jadi dd MM yyyy`() {
+        assertEquals("30/07/2026", formatWaktuId("2026-07-30"))
+    }
+
+    @Test
+    fun `kosong dan tak terbaca tidak bikin layar kosong`() {
+        assertEquals("-", formatWaktuId(null))
+        assertEquals("-", formatWaktuId("   "))
+        assertEquals("bukan tanggal", formatWaktuId("bukan tanggal"))
+    }
 }
