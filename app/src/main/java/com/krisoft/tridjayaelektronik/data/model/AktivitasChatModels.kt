@@ -21,6 +21,18 @@ data class AktivitasChatTodayDto(
     val sudahCheckIn: Boolean = false,
     val checkoutTerbuka: Boolean = true,
     val alasanCheckoutTertutup: String? = null,
+    /**
+     * Apa yang masih kurang hari ini, TANPA mengunci absen pulang.
+     *
+     * Sejak 2026-07-31 server punya saklar `blokirPulang` (default MATI): saat
+     * mati, [checkoutTerbuka] tetap `true` dan kalimat tagihannya pindah ke
+     * sini. Tanpa field ini, melepas kunci berarti kartu "belum kirim bukti"
+     * ikut hilang dari layar absensi — kewajibannya lenyap dari pandangan
+     * karyawan tanpa satu pun jejak.
+     *
+     * Server lama tak mengirimnya → `null` → layar berperilaku seperti dulu.
+     */
+    val peringatanBuktiChat: String? = null,
     val bukti: BuktiChatDto? = null,
     val kepalaCabang: KepalaCabangInfoDto? = null,
 )
