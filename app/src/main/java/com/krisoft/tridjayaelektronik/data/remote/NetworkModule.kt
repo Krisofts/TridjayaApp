@@ -122,6 +122,9 @@ object NetworkModule {
             .create(AktivitasChatUploadApi::class.java)
     }
 
+    fun createEventApi(tokenStore: TokenStore): EventApi =
+        authenticatedRetrofit(tokenStore).create(EventApi::class.java)
+
     fun createOffApi(tokenStore: TokenStore): OffApi =
         authenticatedRetrofit(tokenStore).create(OffApi::class.java)
 

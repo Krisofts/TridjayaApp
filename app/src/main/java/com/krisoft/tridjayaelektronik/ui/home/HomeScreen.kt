@@ -108,6 +108,8 @@ import com.krisoft.tridjayaelektronik.data.model.ExecutiveKpiDto
 import com.krisoft.tridjayaelektronik.data.model.LeaderboardBranchItemDto
 import com.krisoft.tridjayaelektronik.data.model.LeaderboardSalesItemDto
 import com.krisoft.tridjayaelektronik.data.model.MonthlyTargetDto
+import com.krisoft.tridjayaelektronik.ui.event.EventCarousel
+import com.krisoft.tridjayaelektronik.ui.event.EventViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
@@ -145,9 +147,20 @@ fun HomeScreen(
     onQuickAccessMutasiHistori: () -> Unit = {},
     /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
+    /** Buka layar isi prospek untuk satu event (id-nya). */
+    onOpenEvent: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    // Instance terpisah dari layar isi prospek (pola sama NotificationCenterViewModel di
+    // bawah) — di sini cuma dibaca daftar event-nya, form-nya tak pernah tersentuh.
+    val eventViewModel: EventViewModel = hiltViewModel()
+    val eventState by eventViewModel.uiState.collectAsState()
+    // Ambil ULANG tiap kali layar ini masuk komposisi (kembali dari route anak, atau pindah
+    // tab ke Operasional lagi) — bukan sekali di `init` VM. VM-nya hidup selama back stack
+    // tab ini hidup, jadi `init` = sekali seumur proses: sekali gagal saat wifi bazar putus,
+    // kartunya tak akan pernah muncul lagi, dan tak ada tile Akses Cepat sebagai pintu kedua.
+    LaunchedEffect(Unit) { eventViewModel.muat() }
     // Content scrolls behind the floating nav; clear it (pill ≈ 88dp) plus the system nav-bar inset.
     val bottomClearance = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 104.dp
 
@@ -194,7 +207,19 @@ fun HomeScreen(
                     ) {
                         // Banner izin notifikasi kini di ActivityScreen (layar pertama app,
                         // Task B6) — dicabut dari sini supaya tak dobel di tab Operasional.
-                        item { GreetingCard(userName = state.user?.name.orEmpty()) }
+                        item {
+                            // Kartu event MENGGANTIKAN sapaan — tapi hanya kalau server
+                            // bilang user ini sales (`bolehIsi`) DAN ada event aktif.
+                            // Daftar kosong menampung SEMUA keadaan lain sekaligus:
+                            // jaringan mati, respons tak terbaca, bukan sales, tak ada
+                            // event. Layar utama tak boleh mati karena fitur ini.
+                            val kartuEvent = eventState.kartuEvent
+                            if (kartuEvent.isEmpty()) {
+                                GreetingCard(userName = state.user?.name.orEmpty())
+                            } else {
+                                EventCarousel(events = kartuEvent, onOpen = { onOpenEvent(it.id) })
+                            }
+                        }
                         // Tiap bagian dirender sebagai kartu selebar layar berjudul (gaya sama
                         // dengan daftar klasemen), dalam urutan tetap [HomeSection.DEFAULT_ORDER].
                         HomeSection.DEFAULT_ORDER.forEach { section ->

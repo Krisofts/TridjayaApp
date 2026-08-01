@@ -20,6 +20,7 @@ import com.krisoft.tridjayaelektronik.ui.attendance.AttendanceScreen
 import com.krisoft.tridjayaelektronik.ui.chatactivity.ChatActivityScreen
 import com.krisoft.tridjayaelektronik.ui.chatactivity.ChatReviewScreen
 import com.krisoft.tridjayaelektronik.ui.deadstock.DeadstockScreen
+import com.krisoft.tridjayaelektronik.ui.event.EventLeadScreen
 import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
 import com.krisoft.tridjayaelektronik.ui.opname.OpnameListScreen
 import com.krisoft.tridjayaelektronik.ui.sales.SalesScreen
@@ -70,6 +71,10 @@ private const val ROUTE_SERIAL_INPUT = "home_serial_input"
 private const val ROUTE_DEADSTOCK = "home_deadstock"
 private const val ROUTE_MUTASI_HISTORI = "home_mutasi_histori"
 private const val ROUTE_PANDUAN_ALUR = "home_panduan_alur"
+// Prospek event lapangan — dibuka HANYA dari kartu event yang menggantikan sapaan
+// di tab Operasional (spec §7.3: sengaja tanpa tile di Akses Cepat/registri Activity,
+// supaya tak ada registri kedua yang harus dijaga sinkron).
+private const val ROUTE_EVENT_LEAD = "home_event_lead/{eventId}"
 // Prospek/CRM — dulu NavHost sejajar tab (LeadsNavHost) tanpa pill/back yang
 // benar (destination-nya sengaja tak masuk bottomNavItems, jadi pill tetap
 // tampil tanpa yang menyala). Pindah ke tabel ini supaya mewarisi header +
@@ -93,6 +98,8 @@ const val ROUTE_DLV_PENDING_PAYMENT = "home_dlv_pending_payment"
 const val ROUTE_SPK_HUB = "home_spk_hub"
 
 private fun dlvDetailRoute(id: String) = "home_dlv_detail/${Uri.encode(id)}"
+
+private fun eventLeadRoute(eventId: String) = "home_event_lead/${Uri.encode(eventId)}"
 
 private fun branchTransactionsRoute(kodeDealer: String, branchName: String) =
     "home_ranking_transactions/${RankingKind.BRANCH.name}/${Uri.encode(kodeDealer)}?name=${Uri.encode(branchName)}"
@@ -254,6 +261,9 @@ fun ActivityNavHost(
                         else -> deliveryStageRoute(key) ?: ROUTE_DLV_CREATE
                     }
                     navController.navigate(route) { launchSingleTop = true }
+                },
+                onOpenEvent = { eventId ->
+                    navController.navigate(eventLeadRoute(eventId)) { launchSingleTop = true }
                 }
             )
         }
@@ -342,6 +352,15 @@ fun ActivityNavHost(
         }
         composable(ROUTE_PANDUAN_ALUR) {
             PanduanAlurScreen(onBack = { navController.popBackStack() })
+        }
+        composable(
+            route = ROUTE_EVENT_LEAD,
+            arguments = listOf(navArgument("eventId") { type = NavType.StringType })
+        ) { entry ->
+            EventLeadScreen(
+                eventId = entry.arguments?.getString("eventId").orEmpty(),
+                onBack = { navController.popBackStack() },
+            )
         }
         composable(ROUTE_SPK_HUB) {
             SpkHubScreen(onBack = { navController.popBackStack() }, onNavigate = { key ->

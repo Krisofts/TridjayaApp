@@ -22,6 +22,7 @@ import com.krisoft.tridjayaelektronik.data.remote.CrmApi
 import com.krisoft.tridjayaelektronik.data.remote.BirthdayApi
 import com.krisoft.tridjayaelektronik.data.remote.DeviceApi
 import com.krisoft.tridjayaelektronik.data.remote.ErpPriceChangesApi
+import com.krisoft.tridjayaelektronik.data.remote.EventApi
 import com.krisoft.tridjayaelektronik.data.remote.OffApi
 import com.krisoft.tridjayaelektronik.data.remote.RaportApi
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
@@ -93,6 +94,11 @@ object AppModule {
     @Singleton
     fun provideAktivitasChatUploadApi(tokenStore: TokenStore): AktivitasChatUploadApi =
         NetworkModule.createAktivitasChatUploadApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideEventApi(tokenStore: TokenStore): EventApi =
+        NetworkModule.createEventApi(tokenStore)
 
     @Provides
     @Singleton
