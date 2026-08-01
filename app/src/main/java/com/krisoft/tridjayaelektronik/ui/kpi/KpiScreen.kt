@@ -92,6 +92,8 @@ fun KpiScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item { BetaNotice() }
+
             item {
                 PeriodeSwitcher(
                     periode = state.periode,
@@ -156,6 +158,38 @@ fun KpiScreen(
                     KaryawanRow(row, onClick = { viewModel.openKaryawan(row) })
                 }
             }
+        }
+    }
+}
+
+/**
+ * Penanda BETA layar KPI.
+ *
+ * Modul KPI masih tahap pengembangan: fitur input aktivitas belum berjalan
+ * sehingga sebagian indikator diisi dari rekap manual, sebagian karyawan belum
+ * punya posisi KPI, dan angkanya BUKAN penilaian resmi. Tanpa penanda ini
+ * karyawan membaca skor di layarnya sebagai vonis atas kerjanya.
+ *
+ * Cerminan `KpiBetaBanner` di web (`components/dashboard/KpiHasilBadge.tsx`) —
+ * kalau teksnya berubah, ubah keduanya supaya tak ada dua versi kebenaran.
+ */
+@Composable
+private fun BetaNotice() {
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = "BETA",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                color = PendingColor
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Halaman ini masih tahap pengembangan — angkanya belum data aktual dan " +
+                    "belum bisa dipakai sebagai penilaian resmi.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
