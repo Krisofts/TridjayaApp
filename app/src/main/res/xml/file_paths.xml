@@ -5,6 +5,12 @@
     <cache-path name="absensi" path="absensi/" />
     <cache-path name="delivery" path="delivery/" />
     <cache-path name="raport" path="raport/" />
-    <cache-path name="update" path="update/" />
+    <!-- APK update pindah ke files-path (2026-08-01): cache dibersihkan OS saat
+         penyimpanan menipis, dan APK yang lenyap antara unduh & pasang gagal tanpa
+         pesan yang berarti. `cache-path` LAMA sengaja dipertahankan supaya berkas
+         sisa dari versi sebelumnya masih bisa dibuka, bukan melempar
+         IllegalArgumentException. -->
+    <files-path name="update" path="update/" />
+    <cache-path name="update_lama" path="update/" />
     <cache-path name="aktivitas_chat" path="aktivitas-chat/" />
 </paths>
