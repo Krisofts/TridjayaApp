@@ -509,6 +509,15 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     Spacer(Modifier.height(14.dp))
                     JobPhotosCard(state.jobPhotos)
                 }
+                // Sunting isi SPK (2026-08-01) — administrator saja, dan hanya
+                // selagi unitnya belum di-PDI + belum tercatat di GS. Kartunya
+                // TIDAK dirender kalau syaratnya tak terpenuhi (bukan
+                // dirender-lalu-dinonaktifkan): tombol mati yang servernya
+                // jawab 400 cuma bikin orang menebak.
+                if (viewModel.isAdminViewer && spkBolehDisunting(job)) {
+                    Spacer(Modifier.height(14.dp))
+                    EditSpkAction(job, viewModel, state.submitting)
+                }
                 Spacer(Modifier.height(14.dp))
                 val shareContext = LocalContext.current
                 ExpressiveOutlinedButton(onClick = {
@@ -2285,5 +2294,105 @@ private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRe
                 }
             }
         }
+    }
+}
+
+
+/**
+ * Koreksi salah input SPK oleh administrator (2026-08-01). Dialognya
+ * data-driven dari [SPK_EDIT_FIELDS] — menambah field cukup di daftar itu,
+ * tak ada 29 `remember` yang harus dijaga sinkron dengan backend.
+ *
+ * Yang dikirim hanya SELISIH-nya ([buildSpkEditPatch]); field yang tak
+ * disentuh tak ikut, supaya dua administrator yang membuka SPK yang sama tak
+ * saling menimpa isian yang tak mereka ubah.
+ */
+@Composable
+private fun EditSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
+    var show by remember { mutableStateOf(false) }
+    // `job.id` sebagai kunci: berpindah unit harus memuat ulang isian, kalau
+    // tidak koreksi unit A tersimpan ke unit B.
+    var form by remember(job.id) { mutableStateOf(spkEditFormFromJob(job)) }
+    var alasan by remember(job.id) { mutableStateOf("") }
+    var pesan by remember(job.id) { mutableStateOf<String?>(null) }
+
+    OutlinedButton(
+        onClick = { form = spkEditFormFromJob(job); alasan = ""; show = true },
+        enabled = !submitting,
+        modifier = Modifier.fillMaxWidth()
+    ) { Text("Ubah Isi SPK") }
+    pesan?.let {
+        Spacer(Modifier.height(6.dp))
+        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+    }
+
+    if (show) {
+        val patch = buildSpkEditPatch(form, job, alasan)
+        AlertDialog(
+            onDismissRequest = { if (!submitting) show = false },
+            title = { Text("Ubah Isi SPK", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(job.kodePengiriman, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Koreksi salah input. Diskon tak bisa diubah di sini — ajukan lewat menu " +
+                            "diskon supaya tetap ada approver yang memutuskan. Total dihitung ulang " +
+                            "otomatis dari harga OTR dikurangi diskon berjalan.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SpkEditGrup.entries.forEach { grup ->
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            grup.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        SPK_EDIT_FIELDS.filter { it.grup == grup }.forEach { f ->
+                            Spacer(Modifier.height(8.dp))
+                            ExpressiveTextField(
+                                value = form[f.key].orEmpty(),
+                                onValueChange = { v -> form = form + (f.key to v) },
+                                label = f.label,
+                                singleLine = f.tipe != SpkEditTipe.TEKS_PANJANG,
+                                keyboardType = if (f.tipe == SpkEditTipe.ANGKA) KeyboardType.Number else KeyboardType.Text,
+                                supportingText = if (f.tipe == SpkEditTipe.METODE_BAYAR) "cash atau credit" else null,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    ExpressiveTextField(
+                        value = alasan,
+                        onValueChange = { alasan = it },
+                        label = "Alasan koreksi (wajib)",
+                        placeholder = "mis. sales salah pilih varian warna",
+                        isError = alasan.isNotEmpty() && !spkEditAlasanValid(alasan),
+                        supportingText = "Tersimpan di log aktivitas beserta nama Anda.",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !submitting && patch != null && spkEditAlasanValid(alasan),
+                    onClick = {
+                        val body = patch ?: return@TextButton
+                        vm.editJob(job.id, body) { konsumenDiubah ->
+                            show = false
+                            pesan = if (konsumenDiubah > 1) {
+                                "Tersimpan · data konsumen ikut diperbarui di $konsumenDiubah unit SPK ini"
+                            } else {
+                                "Tersimpan"
+                            }
+                        }
+                    }
+                ) { Text(if (submitting) "Menyimpan..." else "Simpan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { show = false }, enabled = !submitting) { Text("Batal") }
+            }
+        )
     }
 }

@@ -774,6 +774,31 @@ class DeliveryFlowViewModel @Inject constructor(
      * ditampilkan apa adanya — pada 409 pesan itulah satu-satunya tempat nama
      * pemegang klaim disebutkan.
      */
+    /**
+     * Sunting isi SPK (administrator). Sengaja BUKAN [jobUpdate]: balasannya
+     * membungkus job di dalam `{job, konsumenDiubah}`, dan memaksanya ke bentuk
+     * yang sama akan membuang angka fan-out konsumen yang justru ingin
+     * dilaporkan ke penyuntingnya.
+     *
+     * `onDone` dipanggil HANYA saat sukses — dialog menutup dirinya di situ.
+     * Gagal tetap membiarkan dialog terbuka dengan isian utuh, supaya koreksi
+     * yang ditolak server (mis. NIK kurang digit) tak perlu diketik ulang.
+     */
+    fun editJob(id: String, patch: kotlinx.serialization.json.JsonObject, onDone: (Int) -> Unit) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.editJob(id, patch)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false, detail = res.data.job) }
+                    onDone(res.data.konsumenDiubah)
+                }
+                is AuthResult.Failure ->
+                    _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
+
     fun claimPdi(id: String) = jobUpdate { repository.claimPdi(id) }
 
     fun releasePdiClaim(id: String) = jobUpdate { repository.releasePdiClaim(id) }

@@ -41,6 +41,7 @@ import com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody
 import com.krisoft.tridjayaelektronik.data.model.SetoranKasirBody
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
+import com.krisoft.tridjayaelektronik.data.model.SpkEditResultDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangData
 import okhttp3.MultipartBody
 import retrofit2.Response
@@ -48,6 +49,8 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
+import kotlinx.serialization.json.JsonObject
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
@@ -84,6 +87,21 @@ interface DeliveryFlowApi {
 
     @GET("api/inventory/delivery/{id}")
     suspend fun detail(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
+
+    /**
+     * Sunting isi SPK (2026-08-01, administrator) — patch PARSIAL: field yang
+     * tak ada di [body] dipertahankan server apa adanya. Bentuk badannya
+     * `JsonObject` (bukan data class 29 field) supaya "tak dikirim" benar-benar
+     * berarti tak dikirim; lihat `SpkEditFields.buildSpkEditPatch`.
+     *
+     * 400 = tahapnya sudah lewat / sudah tercatat di GS / isinya tak valid;
+     * 403 = bukan admin. Pesannya ada di `message` server.
+     */
+    @PATCH("api/inventory/delivery/{id}")
+    suspend fun editJob(
+        @Path("id") id: String,
+        @Body body: JsonObject
+    ): Response<ApiResponse<SpkEditResultDto>>
 
     @POST("api/inventory/delivery")
     suspend fun create(@Body body: CreateDeliveryBody): Response<ApiResponse<DeliveryCreateResult>>
