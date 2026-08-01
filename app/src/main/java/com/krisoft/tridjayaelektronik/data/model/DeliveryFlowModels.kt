@@ -435,6 +435,11 @@ data class DiscountRequestDto(
     val discountType: String = "",
     val value: Double = 0.0,
     val reason: String = "",
+    /** Siapa yang meng-acc di luar sistem (2026-08-01) — klaim sales, teks
+     *  bebas, TIDAK terverifikasi. Beda dari `decidedByName`. */
+    val accOleh: String? = null,
+    /** Foto bukti acc — path privat, diambil lewat `fetchPhoto`. */
+    val buktiUrl: String? = null,
     val hargaSebelum: Double? = null,
     val hargaSesudah: Double? = null,
     val status: String = "pending",

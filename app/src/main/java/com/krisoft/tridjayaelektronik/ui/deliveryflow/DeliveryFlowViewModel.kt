@@ -111,6 +111,9 @@ data class DeliveryFlowUiState(
      *  2026-07-29: 5 foto raib dari server, gejalanya identik dengan form lama
      *  yang wajar tanpa foto. */
     val akiPhotos: Map<String, AkiPhotoState> = emptyMap(),
+    /** Status foto bukti acc diskon per pengajuan (key = `DiscountRequestDto.id`) —
+     *  pola sama [akiPhotos]. */
+    val diskonBuktiPhotos: Map<String, AkiPhotoState> = emptyMap(),
     /** Preview foto (sudah ber-watermark geotag+jam) — pola sama [AttendanceUiState.selfie]:
      *  bitmap dipegang di state, BUKAN dibaca ulang dari file (hindari cache-basi/race preview). */
     /** Hasil `POST /delivery` terakhir (2026-07-26) — dipakai `CreateSpkScreen` buat
@@ -393,11 +396,40 @@ class DeliveryFlowViewModel @Inject constructor(
 
     // ── Approval diskon per-baris ────────────────────────────────────────────
     fun loadDiscounts(status: String? = "pending") {
-        _state.update { it.copy(loading = true, error = null) }
+        // Peta foto dikosongkan di sini, bukan cuma ditimpa: item yang sudah
+        // diputuskan hilang dari antrian, dan bitmap-nya ikut dibuang.
+        _state.update { it.copy(loading = true, error = null, diskonBuktiPhotos = emptyMap()) }
         viewModelScope.launch {
             when (val res = repository.discounts(status)) {
-                is AuthResult.Success -> _state.update { it.copy(loading = false, discounts = res.data.items, error = null) }
+                is AuthResult.Success -> {
+                    _state.update { it.copy(loading = false, discounts = res.data.items, error = null) }
+                    loadDiscountPhotos(res.data.items)
+                }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
+            }
+        }
+    }
+
+    /** Muat foto bukti acc diskon per pengajuan — pola sama [loadAkiPhotos].
+     *  Tiga keadaan dibedakan (memuat / ada / gagal) supaya approver tahu
+     *  bedanya "sales tak melampirkan" dan "filenya hilang dari server". */
+    private fun loadDiscountPhotos(items: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>) {
+        items.filter { !it.buktiUrl.isNullOrBlank() }.forEach { d ->
+            val url = d.buktiUrl.orEmpty()
+            _state.update { it.copy(diskonBuktiPhotos = it.diskonBuktiPhotos + (d.id to AkiPhotoState.Memuat)) }
+            viewModelScope.launch {
+                val bytes = repository.fetchPhoto(url)
+                val bmp = bytes?.let {
+                    withContext(Dispatchers.Default) {
+                        android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)
+                    }
+                }
+                _state.update {
+                    it.copy(
+                        diskonBuktiPhotos = it.diskonBuktiPhotos +
+                            (d.id to (bmp?.let(AkiPhotoState::Ada) ?: AkiPhotoState.Gagal))
+                    )
+                }
             }
         }
     }

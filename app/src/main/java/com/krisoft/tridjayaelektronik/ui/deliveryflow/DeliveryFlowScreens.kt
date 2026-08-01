@@ -2224,7 +2224,7 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
             ) {
                 state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
                 items(state.discounts, key = { it.id }) { d ->
-                    DiscountCard(d, state.submitting, onApprove = { viewModel.approveDiscount(d.id, "") }, onReject = { rejectId = d.id })
+                    DiscountCard(d, state.submitting, state.diskonBuktiPhotos[d.id], onApprove = { viewModel.approveDiscount(d.id, "") }, onReject = { rejectId = d.id })
                 }
             }
         }
@@ -2259,7 +2259,7 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
 }
 
 @Composable
-private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto, submitting: Boolean, onApprove: () -> Unit, onReject: () -> Unit) {
+private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto, submitting: Boolean, bukti: AkiPhotoState?, onApprove: () -> Unit, onReject: () -> Unit) {
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2273,6 +2273,31 @@ private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRe
             InfoLine("Harga sebelum", d.hargaSebelum?.let { rupiah(it) })
             InfoLine("Harga sesudah", d.hargaSesudah?.let { rupiah(it) })
             InfoLine("Alasan", d.reason)
+            if (!d.accOleh.isNullOrBlank()) InfoLine("Acc oleh (di luar sistem)", d.accOleh)
+            when (bukti) {
+                is AkiPhotoState.Ada -> {
+                    Spacer(Modifier.height(8.dp))
+                    Image(
+                        bitmap = bukti.bitmap.asImageBitmap(),
+                        contentDescription = "Bukti acc diskon",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp)),
+                    )
+                }
+                is AkiPhotoState.Memuat -> {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Memuat bukti acc…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                is AkiPhotoState.Gagal -> {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Bukti acc gagal dimuat — file tidak ada di server atau jaringan putus.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                null -> Unit // sales memang tak melampirkan bukti — bukan kegagalan
+            }
             InfoLine("Diajukan", d.requestedByName)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
