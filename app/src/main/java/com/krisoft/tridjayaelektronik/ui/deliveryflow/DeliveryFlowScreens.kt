@@ -1881,7 +1881,13 @@ fun CreateSpkScreen(
                                     shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                                        Text(row.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        // 3 baris, BUKAN 1. Nama barang GS menaruh tipe/model di
+                                        // BELAKANG ("AC AQUA 1PK AQA-KR9VQCL", "1 SET ACCU DUBSS
+                                        // 6-EVF-45.5"), jadi memotongnya di satu baris membuang
+                                        // persis bagian yang membedakan satu varian dari varian
+                                        // lain — sales melihat beberapa hasil cari yang terlihat
+                                        // identik dan tak punya cara memilih yang benar.
+                                        Text(row.nama.trim(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
                                         Text("${row.kode} · ${row.kategori} · ${row.merk}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         // Stok + harga langsung di opsi hasil cari (paritas web
                                         // `renderStockRow`): sales tak perlu memilih dulu baru tahu
