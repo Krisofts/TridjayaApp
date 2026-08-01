@@ -30,6 +30,10 @@ data class SpkItemDraft(
     val hargaOtr: String = "",
     val diskon: String = "",
     val alasanDiskon: String = "",
+    /** Siapa yang meng-acc diskon ini di luar sistem (2026-08-01). */
+    val accDiskon: String = "",
+    /** URL foto bukti acc hasil upload. */
+    val buktiDiskonUrl: String = "",
     val paymentType: String = "cash",
     val fincoy: String = "",
     val fincoyLain: String = "",
@@ -107,6 +111,10 @@ data class SpkItemDraft(
             hargaOtr = money(hargaOtr) ?: 0.0,
             diskon = d,
             alasanDiskon = if (d != null) alasanDiskon.trim().ifBlank { null } else null,
+            // Tanpa diskon tak ada pengajuan yang dibuat, jadi buktinya tak
+            // ikut terkirim — pola sama `alasanDiskon` di atas.
+            accDiskon = if (d != null) accDiskon.trim().ifBlank { null } else null,
+            buktiDiskonUrl = if (d != null) buktiDiskonUrl.trim().ifBlank { null } else null,
             dpNet = if (isCredit) money(dpNet) else null,
             pembayaran1 = if (isCredit) money(pembayaran1) else null,
             angsuran = if (isCredit) money(angsuran) else null,

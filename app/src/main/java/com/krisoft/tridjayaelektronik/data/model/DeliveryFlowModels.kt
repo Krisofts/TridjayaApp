@@ -435,6 +435,11 @@ data class DiscountRequestDto(
     val discountType: String = "",
     val value: Double = 0.0,
     val reason: String = "",
+    /** Siapa yang meng-acc di luar sistem (2026-08-01) — klaim sales, teks
+     *  bebas, TIDAK terverifikasi. Beda dari `decidedByName`. */
+    val accOleh: String? = null,
+    /** Foto bukti acc — path privat, diambil lewat `fetchPhoto`. */
+    val buktiUrl: String? = null,
     val hargaSebelum: Double? = null,
     val hargaSesudah: Double? = null,
     val status: String = "pending",
@@ -488,6 +493,11 @@ data class CreateDeliveryItemBody(
     val hargaOtr: Double,
     val diskon: Double? = null,
     val alasanDiskon: String? = null,
+    /** Siapa yang meng-acc diskon di luar sistem (2026-08-01) — opsional,
+     *  hanya dikirim kalau barang ini berdiskon. */
+    val accDiskon: String? = null,
+    /** URL foto bukti acc hasil upload-photo — opsional. */
+    val buktiDiskonUrl: String? = null,
     val dpNet: Double? = null,
     val pembayaran1: Double? = null,
     val angsuran: Double? = null,
