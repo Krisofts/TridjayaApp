@@ -61,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -76,13 +77,16 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -1679,12 +1683,22 @@ private fun PhotoBox(bitmap: Bitmap?, label: String, onCapture: () -> Unit) {
  */
 @Composable
 private fun PhotoReviewDialog(bitmap: Bitmap, onRetake: () -> Unit, onConfirm: () -> Unit) {
-    Dialog(onDismissRequest = onRetake, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = onRetake,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        // decorFitsSystemWindows=false WAJIB: defaultnya true bikin dialog "auto-fit" system bar,
+        // tapi di device gesture-nav banyak OEM window tetap dianggap sudah fit padahal gesture pill
+        // masih digambar DI ATAS konten dialog — WindowInsets.systemBars di bawah lalu terbaca 0,
+        // tombol nempel ke tepi bawah persis walau padding-nya sudah ditulis (bug lama, komentar
+        // sebelumnya salah kira sudah beres). Matikan auto-fit → insets sungguhan didorong ke sini.
+        val view = LocalView.current
+        SideEffect {
+            (view.parent as? DialogWindowProvider)?.window?.let {
+                WindowCompat.setDecorFitsSystemWindows(it, false)
+            }
+        }
         Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
-            // Dialog full-screen menutupi status bar & navigation bar, jadi inset-nya harus
-            // dibayar sendiri (pola sama `navBottom` di layar-layar lain file ini). Tanpa ini
-            // tombol Ambil Ulang/Pakai Foto Ini menempel di tepi paling bawah — tertindih
-            // gesture bar dan susah dijangkau ibu jari.
             val systemBars = WindowInsets.systemBars.asPaddingValues()
             Column(Modifier.fillMaxSize()) {
                 Text(
