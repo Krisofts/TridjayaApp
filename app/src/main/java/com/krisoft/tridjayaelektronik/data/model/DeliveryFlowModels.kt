@@ -488,6 +488,11 @@ data class CreateDeliveryItemBody(
     val hargaOtr: Double,
     val diskon: Double? = null,
     val alasanDiskon: String? = null,
+    /** Siapa yang meng-acc diskon di luar sistem (2026-08-01) — opsional,
+     *  hanya dikirim kalau barang ini berdiskon. */
+    val accDiskon: String? = null,
+    /** URL foto bukti acc hasil upload-photo — opsional. */
+    val buktiDiskonUrl: String? = null,
     val dpNet: Double? = null,
     val pembayaran1: Double? = null,
     val angsuran: Double? = null,

@@ -488,6 +488,17 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /** Foto bukti acc diskon (2026-08-01) — pola sama [uploadPoPhoto]:
+     *  watermark lalu unggah ke endpoint foto delivery yang sama. Return
+     *  `null` kalau gagal. */
+    suspend fun uploadBuktiAccPhoto(file: File): String? {
+        val prepared = watermarked(file, "TRIDJAYA · ACC DISKON") ?: return null
+        return when (val up = repository.uploadPhoto(prepared.first, "acc_diskon_${System.currentTimeMillis()}.jpg")) {
+            is AuthResult.Success -> up.data
+            is AuthResult.Failure -> null
+        }
+    }
+
     /** Foto bukti aki (2026-07-24, wajib) — capture→watermark→upload langsung,
      *  pola sama [uploadPoPhoto]. Return `null` kalau gagal. */
     suspend fun uploadAkiPhoto(file: File): String? {

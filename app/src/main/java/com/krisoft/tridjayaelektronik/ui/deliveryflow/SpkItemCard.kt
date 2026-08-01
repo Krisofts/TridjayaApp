@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.krisoft.tridjayaelektronik.data.model.BrokerOption
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.MoneyTextField
 import kotlinx.coroutines.launch
@@ -71,6 +73,8 @@ fun SpkItemCard(
     onSerialFocus: () -> Unit,
     /** Watermark+upload foto PO barang ini, return URL (null = gagal). */
     uploadPoPhoto: suspend (File) -> String?,
+    /** Watermark+upload foto bukti acc diskon barang ini, return URL (null = gagal). */
+    uploadBuktiAcc: suspend (File) -> String?,
     /** Metode pengiriman SPK (header, bukan per-barang): "driver" | "self_pickup" |
      *  "sales_delivery". COD (uang diambil driver) cuma relevan "driver" (2026-07-26). */
     deliveryMethod: String = "driver",
@@ -120,6 +124,19 @@ fun SpkItemCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     MoneyTextField(item.diskon, { onUpdate(item.copy(diskon = it)) }, modifier = Modifier.weight(1f), label = "Diskon")
                     ExpressiveTextField(item.alasanDiskon, { onUpdate(item.copy(alasanDiskon = it)) }, label = if ((item.diskon.toLongOrNull() ?: 0L) > 0) "Alasan diskon *" else "Alasan diskon", modifier = Modifier.weight(1f))
+                }
+                if ((item.diskon.toLongOrNull() ?: 0L) > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    AccDiskonField(
+                        accDiskon = item.accDiskon,
+                        onAccChange = { onUpdate(item.copy(accDiskon = it)) },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    BuktiAccField(
+                        buktiUrl = item.buktiDiskonUrl,
+                        onUploaded = { onUpdate(item.copy(buktiDiskonUrl = it)) },
+                        uploadBukti = uploadBuktiAcc,
+                    )
                 }
 
                 // Metode PDI (backend 2026-07-27): TAK ADA opsi melewati PDI. Toggle ini
@@ -366,6 +383,99 @@ private fun PoPhotoField(
     if (error != null) {
         Spacer(Modifier.height(4.dp))
         Text(error!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+/** Saran nama pemberi acc diskon — cerminan `SARAN_ACC_DISKON` di web
+ *  (`SalesDeliveryFlowPage.tsx`). Dua nama, teks tetap bebas diketik. */
+private val SARAN_ACC_DISKON = listOf("Setiawan Widjaya", "Feby")
+
+/** "Acc oleh" — teks bebas + chip saran. Compose tak punya padanan
+ *  `<datalist>`; chip menekankan pilihan umum tanpa mengunci pilihan. */
+@Composable
+private fun AccDiskonField(accDiskon: String, onAccChange: (String) -> Unit) {
+    ExpressiveTextField(
+        accDiskon,
+        onAccChange,
+        label = "Acc oleh (opsional)",
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(6.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SARAN_ACC_DISKON.forEach { nama ->
+            AssistChip(onClick = { onAccChange(nama) }, label = { Text(nama) })
+        }
+    }
+}
+
+/** Bukti acc: kamera ATAU galeri. Keduanya bermuara ke berkas cache yang
+ *  SAMA supaya jalur unggahnya (watermark + POST) cuma satu, bukan dua yang
+ *  bisa menyimpang diam-diam. `GetContent()` = Android Photo Picker, tak
+ *  butuh izin penyimpanan. */
+@Composable
+private fun BuktiAccField(
+    buktiUrl: String,
+    onUploaded: (String) -> Unit,
+    uploadBukti: suspend (File) -> String?,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var uploading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val file = remember {
+        File(context.cacheDir, "delivery/acc_diskon_${System.currentTimeMillis()}.jpg").apply { parentFile?.mkdirs() }
+    }
+    val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
+
+    fun unggah() {
+        uploading = true
+        error = null
+        scope.launch {
+            val url = uploadBukti(file)
+            uploading = false
+            if (url != null) onUploaded(url) else error = "Gagal unggah bukti acc"
+        }
+    }
+
+    val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) unggah()
+    }
+    val galeri = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked ->
+        if (picked == null) return@rememberLauncherForActivityResult
+        val tersalin = runCatching {
+            context.contentResolver.openInputStream(picked)!!.use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+            }
+        }.isSuccess
+        if (tersalin) unggah() else error = "Gagal membaca foto dari galeri"
+    }
+
+    Text("Bukti acc (opsional)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(6.dp))
+    if (buktiUrl.isNotBlank()) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Bukti acc terunggah", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            IconButton(onClick = { onUploaded("") }) { Icon(Icons.Rounded.Close, contentDescription = "Hapus bukti acc") }
+        }
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ExpressiveOutlinedButton(onClick = { if (!uploading) cam.launch(uri) }, enabled = !uploading, modifier = Modifier.weight(1f)) {
+                Text(if (uploading) "Mengunggah…" else "Kamera")
+            }
+            ExpressiveOutlinedButton(onClick = { if (!uploading) galeri.launch("image/*") }, enabled = !uploading, modifier = Modifier.weight(1f)) {
+                Text("Galeri")
+            }
+        }
+    }
+    error?.let {
+        Spacer(Modifier.height(4.dp))
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }
 
