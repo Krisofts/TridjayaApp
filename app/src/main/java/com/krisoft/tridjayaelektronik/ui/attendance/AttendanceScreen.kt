@@ -427,15 +427,25 @@ private fun ColumnScope.PunchSection(
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
-    if (!gate.boleh) {
+    // Dirender saat ada ALASAN, bukan saat tertutup: sejak saklar `blokirPulang`
+    // server ada, bukti yang masih kurang bisa cuma ditagih tanpa mengunci —
+    // dan menggantungkan kartu ini pada `!gate.boleh` akan membuat tagihannya
+    // ikut hilang begitu kuncinya dilepas.
+    gate.alasan?.let { alasan ->
         Spacer(modifier = Modifier.height(10.dp))
         Text(
-            // Kalimatnya milik SERVER (`alasanCheckoutTertutup`) — jangan menyusun
-            // teks sendiri di sini, supaya layar dan pesan error 400 saat menekan
-            // tombol tak pernah berselisih isi.
-            gate.alasan ?: "Bukti chat harian belum beres.",
+            // Kalimatnya milik SERVER — jangan menyusun teks sendiri di sini,
+            // supaya layar dan pesan error 400 saat menekan tombol tak pernah
+            // berselisih isi.
+            alasan,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
+            // Merah HANYA saat benar-benar menahan. Peringatan yang tak
+            // memblokir tapi berwarna error mengajari orang mengabaikan merah.
+            color = if (gate.boleh) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.error
+            },
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
         Spacer(modifier = Modifier.height(8.dp))

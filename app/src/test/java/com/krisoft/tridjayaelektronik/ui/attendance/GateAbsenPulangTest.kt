@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.ui.attendance
 import com.krisoft.tridjayaelektronik.data.model.AktivitasChatTodayDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,6 +33,36 @@ class GateAbsenPulangTest {
         )
         assertFalse(gate.boleh)
         assertEquals("Bukti chat kamu masih menunggu persetujuan kepala cabang.", gate.alasan)
+    }
+
+    /**
+     * Sejak saklar `blokirPulang` server ada (2026-07-31, default MATI): boleh
+     * pulang TAPI tagihannya tetap terbawa. Layar merender kartunya dari
+     * `alasan != null`, jadi kalau ini hilang, melepas kunci ikut menghapus
+     * tagihan bukti chat dari layar absensi tanpa jejak.
+     */
+    @Test
+    fun `terbuka tapi tetap membawa tagihan bukti chat`() {
+        val gate = gateAbsenPulang(
+            AktivitasChatTodayDto(
+                checkoutTerbuka = true,
+                peringatanBuktiChat = "Upload bukti chat harian dulu sebelum absen pulang.",
+            )
+        )
+        assertTrue(gate.boleh)
+        assertEquals("Upload bukti chat harian dulu sebelum absen pulang.", gate.alasan)
+    }
+
+    @Test
+    fun `terbuka tanpa tagihan tidak memunculkan kartu`() {
+        assertNull(gateAbsenPulang(AktivitasChatTodayDto(checkoutTerbuka = true)).alasan)
+        // Server lama tak mengenal field ini; string kosong pun tak boleh
+        // memunculkan kartu berisi teks kosong.
+        assertNull(
+            gateAbsenPulang(
+                AktivitasChatTodayDto(checkoutTerbuka = true, peringatanBuktiChat = "  ")
+            ).alasan
+        )
     }
 
     @Test

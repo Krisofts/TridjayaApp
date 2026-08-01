@@ -184,7 +184,15 @@ sealed interface TimelineEntry {
     }
 }
 
-/** Hasil gate tombol Absen Pulang. [alasan] hanya terisi saat tertutup. */
+/**
+ * Hasil gate tombol Absen Pulang.
+ *
+ * [alasan] tidak lagi berarti "tertutup": sejak saklar `blokirPulang` server ada
+ * (2026-07-31, default MATI), ia bisa terisi SEKALIGUS [boleh] `true` — artinya
+ * bukti chat masih kurang tapi absen pulangnya tidak ditahan. Karena itu layar
+ * merender kartunya berdasarkan `alasan != null`, BUKAN `!boleh`; kalau tidak,
+ * melepas kunci ikut menghapus tagihannya dari layar.
+ */
 data class GatePulang(val boleh: Boolean, val alasan: String? = null)
 
 /**
@@ -202,7 +210,10 @@ data class GatePulang(val boleh: Boolean, val alasan: String? = null)
  */
 fun gateAbsenPulang(today: AktivitasChatTodayDto?): GatePulang {
     if (today == null) return GatePulang(true)
-    if (today.checkoutTerbuka) return GatePulang(true)
+    if (today.checkoutTerbuka) {
+        // Terbuka, tapi mungkin masih ada tagihan yang harus tetap terlihat.
+        return GatePulang(true, today.peringatanBuktiChat?.takeIf { it.isNotBlank() })
+    }
     return GatePulang(false, today.alasanCheckoutTertutup ?: "Bukti chat harian belum beres.")
 }
 
