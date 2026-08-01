@@ -179,6 +179,10 @@ object NetworkModule {
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            // SEBELUM logging: interceptor aplikasi berjalan sesuai urutan
+            // penambahannya, jadi kalau logging didaftarkan lebih dulu ia mencatat
+            // request yang belum bertanda versi dan log debug jadi menyesatkan.
+            .addInterceptor(AppVersionInterceptor())
             .addInterceptor(logging)
     }
 
@@ -236,6 +240,37 @@ private class TokenRefresher(
  * Attaches the Bearer header, refreshing the token *before* the request when it is within
  * [REFRESH_MARGIN_MILLIS] of expiry (proactive) so most requests never have to eat a 401 round-trip.
  */
+/** Nama header pembawa `versionCode` app. Dibaca gateway (`activity_log.rs`). */
+private const val APP_VERSION_HEADER = "X-App-Version"
+
+/**
+ * Menempelkan `versionCode` app di SETIAP request.
+ *
+ * Sampai 2026-07-31 server tak punya cara apa pun mengetahui versi app pemanggil:
+ * seluruh trafik ber-`User-Agent` `okhttp/4.12.0` (versi pustaka HTTP, bukan versi
+ * app), `device_tokens` tak menyimpannya, dan [UpdateManager] membandingkan
+ * versi DI SINI lalu tak pernah memberi tahu server hasilnya. Akibatnya
+ * "siapa yang belum memperbarui" cuma bisa ditebak dari perilaku — dan itu jadi
+ * mahal persis saat penting: gate bukti chat harian mengunci absen pulang
+ * karyawan yang app-nya belum punya layar unggahnya, tanpa satu pun query yang
+ * bisa menyebut siapa mereka.
+ *
+ * Dipasang di `baseClientBuilder()` (BUKAN per-API) supaya SEMUA client ikut,
+ * termasuk client refresh token dan client unggah video yang diturunkan lewat
+ * `newBuilder()`.
+ *
+ * `header()` bukan `addHeader()`: menimpa, jadi tak mungkin terkirim ganda kalau
+ * suatu saat ada pemanggil yang menyetelnya sendiri.
+ */
+private class AppVersionInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response = chain.proceed(
+        chain.request()
+            .newBuilder()
+            .header(APP_VERSION_HEADER, BuildConfig.VERSION_CODE.toString())
+            .build()
+    )
+}
+
 private class AuthHeaderInterceptor(
     private val tokenStore: TokenStore,
     private val refresher: TokenRefresher
