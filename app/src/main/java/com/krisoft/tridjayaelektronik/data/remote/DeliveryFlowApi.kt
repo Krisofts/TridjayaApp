@@ -32,6 +32,7 @@ import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.KontributorDto
 import com.krisoft.tridjayaelektronik.data.model.PetugasDirektoriDto
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.model.ReorderResult
@@ -84,6 +85,14 @@ interface DeliveryFlowApi {
 
     @GET("api/inventory/delivery/{id}")
     suspend fun detail(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
+
+    /**
+     * Karyawan yang sudah menangani unit ini + nomor WA-nya. Guard-nya sama
+     * dengan detail SPK, jadi siapa pun yang bisa membuka unitnya bisa membaca
+     * daftar ini — tak perlu pengecekan role tambahan di klien.
+     */
+    @GET("api/inventory/delivery/{id}/kontributor")
+    suspend fun kontributor(@Path("id") id: String): Response<ApiResponse<List<KontributorDto>>>
 
     @POST("api/inventory/delivery")
     suspend fun create(@Body body: CreateDeliveryBody): Response<ApiResponse<DeliveryCreateResult>>

@@ -711,6 +711,29 @@ data class WaPrefDto(val spkWaOptout: Boolean = false)
 @Serializable
 data class PetugasDto(val nama: String = "", val whatsapp: String? = null)
 
+/** Satu peran yang pernah dilakukan atas unit ini. `waktu` null = tercatat
+ *  sebagai pelakunya tapi tanpa jam (kolom lama / worker GS). */
+@Serializable
+data class KontributorPeranDto(val label: String = "", val waktu: String? = null)
+
+/**
+ * Karyawan yang BENAR-BENAR menyentuh unit ini, beda dari [PetugasDto] yang
+ * daftarnya jabatan se-cabang. Saat sebuah unit bermasalah, yang dicari orang
+ * adalah "siapa yang meng-PDI unit INI", bukan "siapa saja petugas PDI".
+ *
+ * `karyawanId` dikirim server hanya bila akunnya masih ada; di app belum ada
+ * layar profil karyawan sehingga field itu belum dipakai — tindakan per orang
+ * di sini adalah WhatsApp, sama seperti direktori petugas. Web memakainya untuk
+ * menautkan ke halaman statistik karyawan.
+ */
+@Serializable
+data class KontributorDto(
+    val karyawanId: String? = null,
+    val nama: String = "",
+    val whatsapp: String? = null,
+    val peran: List<KontributorPeranDto> = emptyList(),
+)
+
 /**
  * Satu kelompok tugas. Server SELALU mengirim enam kelompok berurutan
  * (sales, pdi, kasir, delivery-control, driver, kepala-cabang) termasuk yang

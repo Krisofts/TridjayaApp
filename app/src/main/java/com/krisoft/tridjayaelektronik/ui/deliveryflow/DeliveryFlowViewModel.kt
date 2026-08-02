@@ -59,6 +59,10 @@ data class DeliveryFlowUiState(
     val loading: Boolean = false,
     val items: List<DeliveryJobDto> = emptyList(),
     val detail: DeliveryJobDto? = null,
+    /** Karyawan yang sudah menangani unit yang sedang dibuka. Gagal dimuat =
+     *  dibiarkan kosong tanpa pesan error: ini informasi pelengkap, tak boleh
+     *  menutupi detail SPK yang justru jadi alasan orang membuka layar ini. */
+    val kontributor: List<com.krisoft.tridjayaelektronik.data.model.KontributorDto> = emptyList(),
     val error: String? = null,
     val submitting: Boolean = false,
     val actionError: String? = null,
@@ -244,7 +248,8 @@ class DeliveryFlowViewModel @Inject constructor(
     fun loadDetail(id: String) {
         _state.update {
             it.copy(
-                loading = true, error = null, actionDone = false, actionError = null, driverChecklist = emptyList(),
+                loading = true, error = null, actionDone = false, actionError = null,
+                kontributor = emptyList(), driverChecklist = emptyList(),
                 driverChecklistError = null, jobPhotos = emptyMap(),
                 pdiPhoto = null, deliverPhoto = null, cashPhoto = null,
                 pdiPhotoConfirmed = false, deliverPhotoConfirmed = false, cashPhotoConfirmed = false
@@ -260,6 +265,7 @@ class DeliveryFlowViewModel @Inject constructor(
                     loadAuxFor(res.data)
                     loadTimelineExtras(res.data)
                     loadJobPhotos(res.data)
+                    loadKontributor(id)
                 }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
             }
@@ -272,6 +278,16 @@ class DeliveryFlowViewModel @Inject constructor(
 
     /** Muat foto job ter-autentikasi (bukti PDI / serah terima / uang) utk preview
      *  di detail — fail-soft per foto (gagal = tak tampil, tanpa error). */
+    /** Fail-soft: gagal = daftar dibiarkan kosong, layar detail tetap utuh. */
+    private fun loadKontributor(id: String) {
+        viewModelScope.launch {
+            when (val res = repository.kontributor(id)) {
+                is AuthResult.Success -> _state.update { it.copy(kontributor = res.data) }
+                is AuthResult.Failure -> Unit
+            }
+        }
+    }
+
     private fun loadJobPhotos(job: DeliveryJobDto) {
         val urls = listOfNotNull(
             job.pdiReadyPhotoUrl?.takeIf { it.isNotBlank() }?.let { "pdi" to it },

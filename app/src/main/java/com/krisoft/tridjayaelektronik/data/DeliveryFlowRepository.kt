@@ -11,6 +11,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryCreateResult
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryNoteBody
 import com.krisoft.tridjayaelektronik.data.model.PdiBody
+import com.krisoft.tridjayaelektronik.data.model.KontributorDto
 import com.krisoft.tridjayaelektronik.data.model.PetugasDirektoriDto
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
 import com.krisoft.tridjayaelektronik.data.local.DashboardCacheDao
@@ -88,6 +89,21 @@ class DeliveryFlowRepository @Inject constructor(
         return runCatching {
             errorJson.decodeFromString(PetugasDirektoriDto.serializer(), row.jsonPayload)
         }.getOrNull()
+    }
+
+    /**
+     * Karyawan yang sudah menangani unit ini. TIDAK di-cache: isinya berubah
+     * tiap kali seseorang menyentuh unit, dan daftar basi di layar justru
+     * menyesatkan orang yang sedang mencari "siapa yang pegang unit ini
+     * sekarang" — beda dengan direktori petugas yang nyaris statis.
+     */
+    suspend fun kontributor(id: String): AuthResult<List<KontributorDto>> = try {
+        val response = api.kontributor(id)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal memuat kontributor SPK")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
     suspend fun context(): AuthResult<DeliveryContextDto> = try {
