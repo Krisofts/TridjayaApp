@@ -39,6 +39,25 @@ class SpkItemDraftTest {
         assertTrue(d.copy(alasanDiskon = "promo").issues().isEmpty())
     }
 
+    /** Menyebut pemberi acc = mengaku diskonnya sudah disetujui DI LUAR
+     *  sistem; approver tak punya cara memeriksa klaim itu selain fotonya. */
+    @Test
+    fun `acc diskon di luar sistem wajib berfoto bukti`() {
+        val berdiskon = draft().copy(diskon = "50000", alasanDiskon = "promo")
+        val pesan = "Foto bukti acc wajib kalau diskon sudah di-acc di luar sistem"
+
+        assertTrue(berdiskon.copy(accDiskon = "Feby").issues().contains(pesan))
+        assertTrue(
+            berdiskon.copy(accDiskon = "Feby", buktiDiskonUrl = "/uploads/delivery/a.jpg").issues().isEmpty()
+        )
+        // Spasi saja bukan "terisi" — `toItemBody` juga memangkasnya jadi null.
+        assertTrue(berdiskon.copy(accDiskon = "   ").issues().isEmpty())
+        // Diskon biasa (menunggu approval DI DALAM sistem) tak butuh foto.
+        assertTrue(berdiskon.issues().isEmpty())
+        // Tanpa diskon tak ada pengajuan sama sekali → tak ada yang ditagih.
+        assertTrue(draft().copy(accDiskon = "Feby").issues().isEmpty())
+    }
+
     @Test
     fun `credit wajib fincoy, lainnya wajib teks`() {
         val c = draft().copy(paymentType = "credit")

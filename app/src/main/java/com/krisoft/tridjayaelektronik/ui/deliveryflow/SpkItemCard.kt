@@ -134,6 +134,9 @@ fun SpkItemCard(
                     Spacer(Modifier.height(8.dp))
                     BuktiAccField(
                         buktiUrl = item.buktiDiskonUrl,
+                        // Wajib begitu nama pemberi acc disebut — lihat
+                        // `SpkItemDraft.issues()` (cerminan guard server).
+                        wajib = item.accDiskon.isNotBlank(),
                         onUploaded = { onUpdate(item.copy(buktiDiskonUrl = it)) },
                         uploadBukti = uploadBuktiAcc,
                     )
@@ -415,6 +418,7 @@ private fun AccDiskonField(accDiskon: String, onAccChange: (String) -> Unit) {
 @Composable
 private fun BuktiAccField(
     buktiUrl: String,
+    wajib: Boolean,
     onUploaded: (String) -> Unit,
     uploadBukti: suspend (File) -> String?,
 ) {
@@ -450,7 +454,11 @@ private fun BuktiAccField(
         if (tersalin) unggah() else error = "Gagal membaca foto dari galeri"
     }
 
-    Text("Bukti acc (opsional)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        if (wajib) "Bukti acc *" else "Bukti acc (opsional)",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Spacer(Modifier.height(6.dp))
     if (buktiUrl.isNotBlank()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

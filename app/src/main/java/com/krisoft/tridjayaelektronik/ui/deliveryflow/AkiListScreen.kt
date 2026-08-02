@@ -178,10 +178,12 @@ private fun AkiCard(form: AkiFormDto, submitting: Boolean, photo: com.krisoft.tr
             // server — dan 5 foto memang benar-benar hilang.
             Spacer(Modifier.height(8.dp))
             when (photo) {
+                // Bisa ditekan untuk melihat ukuran penuh — thumbnail 140dp
+                // ber-Crop tak cukup untuk membaca nomor seri aki.
                 is com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiPhotoState.Ada ->
-                    androidx.compose.foundation.Image(
-                        bitmap = photo.bitmap.asImageBitmap(), contentDescription = "Foto bukti aki",
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    BuktiFotoThumbnail(
+                        bitmap = photo.bitmap,
+                        deskripsi = "Foto bukti aki",
                         modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp))
                     )
                 is com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiPhotoState.Memuat ->

@@ -2289,12 +2289,13 @@ private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRe
             InfoLine("Alasan", d.reason)
             if (!d.accOleh.isNullOrBlank()) InfoLine("Acc oleh (di luar sistem)", d.accOleh)
             when (bukti) {
+                // Bisa ditekan untuk ukuran penuh — tulisan di tangkapan layar
+                // WA/kwitansi tak terbaca pada thumbnail 140dp ber-Crop.
                 is AkiPhotoState.Ada -> {
                     Spacer(Modifier.height(8.dp))
-                    Image(
-                        bitmap = bukti.bitmap.asImageBitmap(),
-                        contentDescription = "Bukti acc diskon",
-                        contentScale = ContentScale.Crop,
+                    BuktiFotoThumbnail(
+                        bitmap = bukti.bitmap,
+                        deskripsi = "Bukti acc diskon",
                         modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp)),
                     )
                 }

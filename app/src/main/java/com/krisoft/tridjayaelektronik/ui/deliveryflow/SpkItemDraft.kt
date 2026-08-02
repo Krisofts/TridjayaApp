@@ -70,6 +70,14 @@ data class SpkItemDraft(
         if (harga <= 0) out += "Harga wajib > 0"
         val d = money(diskon) ?: 0.0
         if (d > 0 && alasanDiskon.trim().isBlank()) out += "Alasan diskon wajib diisi (diskon > 0)"
+        // Cerminan guard server (`create_delivery`): menyebut pemberi acc =
+        // mengaku diskonnya sudah disetujui DI LUAR sistem, dan approver tak
+        // punya cara memeriksa klaim itu selain fotonya. Menempel ke "acc
+        // diisi", BUKAN ke "ada diskon" — diskon biasa memang menunggu
+        // approval di dalam sistem dan tak perlu foto apa pun.
+        if (d > 0 && accDiskon.trim().isNotBlank() && buktiDiskonUrl.trim().isBlank()) {
+            out += "Foto bukti acc wajib kalau diskon sudah di-acc di luar sistem"
+        }
         if (isCredit && fincoyResolved.isBlank()) out += "Fincoy/leasing wajib utk kredit"
         val maxQty = minOf(200, stokTersedia ?: 200)
         val q = qtyInt
