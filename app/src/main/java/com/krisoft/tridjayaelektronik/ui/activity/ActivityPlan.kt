@@ -34,6 +34,16 @@ data class DailyTask(
      * kegagalan jaringan bukan salah user, jangan menghukum progresnya.
      */
     val loadFailed: Boolean = false,
+    /**
+     * true = server menyatakan tugas ini TIDAK WAJIB hari ini (hari libur,
+     * belum check-in, peran yang dibebaskan, saklar mati). Kartunya tetap
+     * dirender supaya bisa dibuka — dulu ia disembunyikan sama sekali dan
+     * karyawan melapor "menunya hilang" (2026-08-02, akun uji 11111111 pada
+     * hari Minggu). Dikecualikan dari penyebut [dailyProgressLabel] dengan
+     * alasan yang sama seperti [loadFailed]: yang tak dituntut hari ini tak
+     * boleh membuat progres harian terlihat gagal.
+     */
+    val opsional: Boolean = false,
 )
 
 /**
@@ -163,11 +173,12 @@ internal fun buildDailyTasks(
     chatFailed: Boolean = false,
 ): List<DailyTask> = items
     .filter { it.kind == ActivityKind.TUGAS_HARIAN }
-    // `wajib = false` (hari libur, saklar server mati, atau belum check-in):
-    // server sendiri menyatakan hari ini tak menuntut bukti, jadi kartunya tak
-    // boleh ikut jadi penyebut progres. Hanya saat kita BENAR-BENAR tahu — null
-    // (gagal muat) tetap ditampilkan sbg "gagal muat", bukan disembunyikan.
-    .filterNot { it.id == "bukti_chat" && chatToday?.wajib == false }
+    // `wajib = false` (hari libur, saklar server mati, belum check-in, atau
+    // peran yang dibebaskan) TIDAK LAGI menyembunyikan kartunya (2026-08-02,
+    // permintaan user). Menyembunyikannya membuat kartu lenyap tiap Minggu dan
+    // setiap pagi sebelum check-in, dan itu terbaca sebagai "menu bukti chat
+    // hilang" — laporan nyata dari akun uji 11111111. Sekarang kartunya tetap
+    // ada, ditandai `opsional` supaya tak ikut jadi penyebut progres.
     // Absen pulang tak relevan sebelum check-in — menampilkannya sejak pagi
     // membuat progres harian selalu terlihat gagal. Gagal-muat dikecualikan
     // dari aturan ini (di bawah): kita tak TAHU status check-in-nya, jadi
@@ -200,6 +211,15 @@ internal fun buildDailyTasks(
             }
             chatFailed && item.id == "bukti_chat" ->
                 DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
+            // Tidak wajib hari ini: kartu tetap bisa dibuka (layar Bukti Chat
+            // menjelaskan alasannya lewat `alasanTidakWajib`), tapi tak dihitung
+            // sebagai tugas yang belum beres.
+            item.id == "bukti_chat" && chatToday?.wajib == false -> DailyTask(
+                item,
+                done = false,
+                detail = "tidak wajib hari ini",
+                opsional = true,
+            )
             item.id == "bukti_chat" -> {
                 val status = chatToday?.bukti?.status.orEmpty()
                 DailyTask(
@@ -275,7 +295,7 @@ internal fun prospekTaskDetail(server: ProspekTargetDto?, leadsToday: Int): Stri
  * (bukan salah user, kegagalan jaringan) tak ikut jadi penyebut.
  */
 internal fun dailyProgressLabel(tasks: List<DailyTask>): String {
-    val nyata = tasks.filterNot { it.item.comingSoon || it.loadFailed }
+    val nyata = tasks.filterNot { it.item.comingSoon || it.loadFailed || it.opsional }
     return "${nyata.count { it.done }}/${nyata.size}"
 }
 
