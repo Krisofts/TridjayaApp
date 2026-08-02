@@ -121,12 +121,21 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
         id = "kpi",
         // `GET /kpi/me` HANYA memanggil `identity_from_headers` — tak ada
         // `ensure_role` sama sekali; scope-nya diri sendiri lewat user_id token.
-        // Daftar karyawan (`/kpi/karyawan`) yang ber-gate `kpi.manage` disaring
-        // di dalam layar, bukan di sini — menunya sendiri milik semua orang.
+        // Karena itu `capability` tetap `null`: TIDAK ADA kunci kemampuan yang
+        // bisa dicerminkan, dan mengisinya dengan kunci yang tak dikenal server
+        // justru menyembunyikan menu dari SEMUA orang (peta kemampuan ada →
+        // kunci absen dianggap false).
+        //
+        // MANAGER & SUPERADMIN SAJA sejak 2026-08-02 (permintaan user): KPI
+        // masih diuji, karyawan belum boleh melihat skor dirinya. Ini gate
+        // MENU — endpoint `/kpi/me` sengaja dibiarkan terbuka, sama seperti
+        // "Input aktivitas" (`ActivityRegistry.kt`) 2026-07-31. Cerminan web:
+        // `DashboardLayout.tsx` blok "KPI Saya" + `dashboardAccess.ts`.
+        // "admin" ikut karena alias lama superadmin (migrasi 075).
         capability = null,
         label = "KPI Saya",
-        allowedRoles = ALL_LOGGED_IN,
-        backendGuard = "tanpa gate role — kinerja-service kpi.rs get_me (self-scoped)",
+        allowedRoles = setOf("manager", "superadmin", "admin"),
+        backendGuard = "tanpa gate role — kinerja-service kpi.rs get_me (self-scoped); pembatasan ini MENU-only",
     ),
     QuickAccessMenu(
         id = "inventory",

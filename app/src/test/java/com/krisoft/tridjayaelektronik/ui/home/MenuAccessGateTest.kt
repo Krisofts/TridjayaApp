@@ -274,12 +274,20 @@ class CapabilityDrivenMenuTest {
     }
 
     @Test
-    fun `kpi terlihat semua role yang login`() {
-        // Semua orang punya KPI-nya sendiri — termasuk role yang ditolak menu
-        // lain (crm-manager/ai-engineer), sebab endpoint-nya tak ber-gate.
-        assertTrue(visibleQuickAccessMenus(setOf("karyawan")).any { it.id == "kpi" })
-        assertTrue(visibleQuickAccessMenus(setOf("crm-manager")).any { it.id == "kpi" })
-        assertTrue(visibleQuickAccessMenus(setOf("ai-engineer")).any { it.id == "kpi" })
+    fun `kpi hanya manager dan superadmin`() {
+        // 2026-08-02: KPI masih diuji, karyawan belum boleh melihat skor
+        // dirinya. Gate MENU saja — `/kpi/me` tetap terbuka, jadi ini bukan
+        // cerminan guard backend melainkan penyempitan yang disengaja.
+        assertTrue(visibleQuickAccessMenus(setOf("manager")).any { it.id == "kpi" })
+        assertTrue(visibleQuickAccessMenus(setOf("superadmin")).any { it.id == "kpi" })
+        assertTrue(visibleQuickAccessMenus(setOf("admin")).any { it.id == "kpi" })
+        // Multi-role: cukup salah satu role efektif cocok.
+        assertTrue(visibleQuickAccessMenus(setOf("karyawan", "manager")).any { it.id == "kpi" })
+
+        assertFalse(visibleQuickAccessMenus(setOf("karyawan")).any { it.id == "kpi" })
+        assertFalse(visibleQuickAccessMenus(setOf("kepala-cabang")).any { it.id == "kpi" })
+        assertFalse(visibleQuickAccessMenus(setOf("crm-manager")).any { it.id == "kpi" })
+        assertFalse(visibleQuickAccessMenus(setOf("ai-engineer")).any { it.id == "kpi" })
         // Profil belum termuat tetap fail-closed.
         assertFalse(visibleQuickAccessMenus(emptySet()).any { it.id == "kpi" })
     }
