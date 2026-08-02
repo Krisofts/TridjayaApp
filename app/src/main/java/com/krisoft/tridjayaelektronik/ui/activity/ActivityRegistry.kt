@@ -1,7 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
 import com.krisoft.tridjayaelektronik.ui.home.ALL_LOGGED_IN
-import com.krisoft.tridjayaelektronik.ui.home.BUKTI_CHAT_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.CRM_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.STAFF_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.SPK_MENU_ROLES
@@ -163,13 +162,15 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         label = "Bukti chat",
         subtitle = "Video bukti chat harian",
         kind = ActivityKind.TUGAS_HARIAN,
-        capability = "aktivitas_chat.submit",
-        // BUKAN `STAFF_MENU_ROLES` lagi: peran manajemen dibebaskan dari
-        // kewajiban ini 2026-07-31, jadi cadangan offline harus ikut menyempit
-        // — kalau tidak, kartu tetap muncul sampai peta kemampuan termuat lalu
-        // hilang sendiri, dan yang menekannya lebih dulu dijawab 400.
-        allowedRoles = BUKTI_CHAT_MENU_ROLES,
-        backendGuard = "rust-shared capabilities.rs AKTIVITAS_CHAT_SUBMIT_ROLES",
+        // `.open`, BUKAN `.submit` (2026-08-02): `.submit` = WAJIB mengirim, dan
+        // memakainya sebagai gate kartu membuat pembebasan peran manajemen
+        // 2026-07-31 sekaligus melenyapkan kartunya. Sekarang dua kunci: yang
+        // ini soal boleh-membuka, kewajibannya tetap `.submit` (dipakai `wajib`
+        // di `/today`). Server juga tak lagi menolak kiriman sukarela mereka,
+        // jadi kartu ini bukan jalan buntu.
+        capability = "aktivitas_chat.open",
+        allowedRoles = STAFF_MENU_ROLES,
+        backendGuard = "rust-shared capabilities.rs AKTIVITAS_CHAT_ACCESS_ROLES",
         source = ActivitySource.CHAT_ACTIVITY_TODAY,
         navKey = "bukti_chat",
     ),
