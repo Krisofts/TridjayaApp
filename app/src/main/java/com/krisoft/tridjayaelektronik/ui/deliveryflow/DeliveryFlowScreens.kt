@@ -761,8 +761,6 @@ private fun SpkTimelineCard(
     }
 }
 
-/** Foto bukti job (dimuat ter-autentikasi via VM) — label per jenis. */
-@Composable
 /**
  * Karyawan yang BENAR-BENAR menangani unit ini — beda dari direktori petugas
  * (Panduan Alur) yang daftarnya jabatan se-cabang. Saat unit bermasalah, yang
@@ -803,6 +801,7 @@ private fun KontributorCard(orang: List<KontributorDto>) {
     }
 }
 
+/** Foto bukti job (dimuat ter-autentikasi via VM) — label per jenis. */
 @Composable
 private fun JobPhotosCard(photos: Map<String, Bitmap>) {
     ClayCard(modifier = Modifier.fillMaxWidth()) {
