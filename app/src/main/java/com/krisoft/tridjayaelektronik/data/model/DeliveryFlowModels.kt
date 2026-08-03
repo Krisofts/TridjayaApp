@@ -24,6 +24,17 @@ object DeliveryStatusKey {
     const val CANCELLED = "cancelled"
 }
 
+/**
+ * Balasan `PATCH /api/inventory/delivery/{id}` (sunting isi SPK, 2026-08-01).
+ * [konsumenDiubah] = berapa unit sekode SPK yang ikut menerima perubahan data
+ * konsumen — konsumen milik SPK, bukan milik barang.
+ */
+@Serializable
+data class SpkEditResultDto(
+    val job: DeliveryJobDto = DeliveryJobDto(),
+    val konsumenDiubah: Int = 0,
+)
+
 /** Satu job pengiriman (1 unit fisik). Subset field yang dipakai app; semua opsional agar tahan null. */
 @Serializable
 data class DeliveryJobDto(

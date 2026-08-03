@@ -14,10 +14,12 @@ import com.krisoft.tridjayaelektronik.data.model.PdiBody
 import com.krisoft.tridjayaelektronik.data.model.KontributorDto
 import com.krisoft.tridjayaelektronik.data.model.PetugasDirektoriDto
 import com.krisoft.tridjayaelektronik.data.model.ReorderBody
+import com.krisoft.tridjayaelektronik.data.model.SpkEditResultDto
 import com.krisoft.tridjayaelektronik.data.local.DashboardCacheDao
 import com.krisoft.tridjayaelektronik.data.local.DashboardCacheEntity
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -123,6 +125,12 @@ class DeliveryFlowRepository @Inject constructor(
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
+
+    /** Sunting isi SPK (administrator) — patch parsial, lihat
+     *  `SpkEditFields.buildSpkEditPatch`. Balasan membawa job terbaru SEKALIGUS
+     *  jumlah unit yang ikut menerima perubahan data konsumen. */
+    suspend fun editJob(id: String, patch: JsonObject): AuthResult<SpkEditResultDto> =
+        call("Gagal menyimpan perubahan SPK") { api.editJob(id, patch) }
 
     /** 111: ambil klaim PDI. Pesan 409 dari server memuat nama pemegangnya —
      *  [parseError] meneruskannya apa adanya, jangan dikarang ulang di UI. */
@@ -377,10 +385,10 @@ class DeliveryFlowRepository @Inject constructor(
         false
     }
 
-    private inline fun call(
+    private inline fun <T> call(
         fallback: String,
-        block: () -> Response<com.krisoft.tridjayaelektronik.data.model.ApiResponse<DeliveryJobDto>>
-    ): AuthResult<DeliveryJobDto> = try {
+        block: () -> Response<com.krisoft.tridjayaelektronik.data.model.ApiResponse<T>>
+    ): AuthResult<T> = try {
         val response = block()
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data)
