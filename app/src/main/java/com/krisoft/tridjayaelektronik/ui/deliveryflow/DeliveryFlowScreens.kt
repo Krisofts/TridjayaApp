@@ -1683,6 +1683,12 @@ private fun PhotoBox(bitmap: Bitmap?, label: String, onCapture: () -> Unit) {
  */
 @Composable
 private fun PhotoReviewDialog(bitmap: Bitmap, onRetake: () -> Unit, onConfirm: () -> Unit) {
+    // Inset dibaca DI LUAR Dialog — dari jendela Activity, bukan jendela dialog.
+    // Jendela dialog sering melaporkan systemBars = 0 (percobaan sebelumnya
+    // membacanya dari dalam dan tombolnya TETAP tertutup tombol navigasi
+    // 3-tombol; laporan lapangan 2026-08-03). Jendela Activity selalu tahu
+    // tinggi bar yang sebenarnya.
+    val systemBars = WindowInsets.systemBars.asPaddingValues()
     Dialog(
         onDismissRequest = onRetake,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
@@ -1699,7 +1705,6 @@ private fun PhotoReviewDialog(bitmap: Bitmap, onRetake: () -> Unit, onConfirm: (
             }
         }
         Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
-            val systemBars = WindowInsets.systemBars.asPaddingValues()
             Column(Modifier.fillMaxSize()) {
                 Text(
                     "Cek hasil foto — pastikan watermark jam & lokasi terbaca",
@@ -1720,7 +1725,10 @@ private fun PhotoReviewDialog(bitmap: Bitmap, onRetake: () -> Unit, onConfirm: (
                             end = 16.dp,
                             top = 16.dp,
                             // Naikkan tombol dari tepi layar: inset navigasi + jarak nyaman.
-                            bottom = 28.dp + systemBars.calculateBottomPadding(),
+                            // `coerceAtLeast` = lantai pengaman kalau inset TETAP
+                            // terbaca 0 di suatu OEM: 24.dp masih menyisakan jarak
+                            // walau tombol navigasi tak terlaporkan sama sekali.
+                            bottom = 32.dp + systemBars.calculateBottomPadding().coerceAtLeast(24.dp),
                         ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
