@@ -92,6 +92,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.data.model.formatWaktuId
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
+import com.krisoft.tridjayaelektronik.data.model.KontributorDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.data.model.parseTimestampMillis
@@ -513,6 +514,10 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     Spacer(Modifier.height(14.dp))
                     JobPhotosCard(state.jobPhotos)
                 }
+                if (state.kontributor.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    KontributorCard(state.kontributor)
+                }
                 Spacer(Modifier.height(14.dp))
                 val shareContext = LocalContext.current
                 ExpressiveOutlinedButton(onClick = {
@@ -748,6 +753,47 @@ private fun SpkTimelineCard(
 }
 
 /** Foto bukti job (dimuat ter-autentikasi via VM) — label per jenis. */
+@Composable
+/**
+ * Karyawan yang BENAR-BENAR menangani unit ini — beda dari direktori petugas
+ * (Panduan Alur) yang daftarnya jabatan se-cabang. Saat unit bermasalah, yang
+ * dicari orang adalah "siapa yang meng-PDI unit INI".
+ *
+ * Nomor sudah dinormalisasi server (`628…`); yang tak punya nomor tetap tampil
+ * tanpa tombol — kehilangan cara menghubungi tak boleh berarti kehilangan
+ * informasi siapa. Cerminan modal "Kontributor SPK" di web (`PdiDetailPage`),
+ * yang di sana namanya juga menautkan ke halaman statistik karyawan; app belum
+ * punya layar itu, jadi di sini tindakannya WhatsApp saja.
+ */
+@Composable
+private fun KontributorCard(orang: List<KontributorDto>) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text("Yang Menangani Unit Ini", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            orang.forEach { k ->
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(k.nama, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = k.peran.joinToString(" · ") { it.label },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    val wa = k.whatsapp?.takeIf { it.isNotBlank() }
+                    if (wa != null) {
+                        TextButton(onClick = { runCatching { uriHandler.openUri("https://wa.me/$wa") } }) {
+                            Text("WhatsApp")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun JobPhotosCard(photos: Map<String, Bitmap>) {
     ClayCard(modifier = Modifier.fillMaxWidth()) {
