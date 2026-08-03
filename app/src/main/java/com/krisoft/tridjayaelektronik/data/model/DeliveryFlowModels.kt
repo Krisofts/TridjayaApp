@@ -268,8 +268,30 @@ data class StokCabangRow(
     @SerialName("Merk") val merk: String = "",
     @SerialName("Tipe") val tipe: String = "",
     @SerialName("Harga") val harga: Double? = null,
-    @SerialName("Stok") val stok: Int? = null
-)
+    @SerialName("Stok") val stok: Int? = null,
+    /**
+     * Jumlah unit ber-SPK yang belum tuntas di cabang ini. Hanya dikirim server
+     * saat picker meminta `includeDipesan=true`; nol/absen di jalur lain.
+     *
+     * Baris berstok NOL ber-nilai > 0 muncul SENGAJA: sebelum ini barang yang
+     * notanya sudah diinput kasir ke GS lenyap dari picker tanpa keterangan dan
+     * terbaca cabang sebagai "mutasi tak masuk stok" (2026-08-03, Samsung A57
+     * Pagaden→Pamanukan). Baris begitu WAJIB tak bisa dipilih — lihat
+     * [terkunciKarenaDipesan].
+     */
+    @SerialName("SudahDipesan") val sudahDipesan: Int? = null
+) {
+    /** Jumlah SPK berjalan atas barang ini; 0 kalau server tak mengirimnya. */
+    val dipesan: Int get() = sudahDipesan?.takeIf { it > 0 } ?: 0
+
+    /**
+     * Tak boleh dipilih: stok habis DAN sudah ada SPK berjalan. Syarat stok-habis
+     * WAJIB — barang yang masih berstok boleh dipesan lagi walau satu unitnya
+     * sedang ber-SPK, itu penjualan normal. Stok negatif (GS menyimpannya saat
+     * jual-dari-nol) dihitung habis.
+     */
+    val terkunciKarenaDipesan: Boolean get() = dipesan > 0 && (stok ?: 0) <= 0
+}
 
 /** Response `GET /api/inventory/stok-cabang` (di dalam `data`). */
 @Serializable

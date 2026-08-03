@@ -196,7 +196,15 @@ interface DeliveryFlowApi {
         @Query("search") search: String,
         @Query("kodeDealer") kodeDealer: String,
         @Query("limit") limit: Int = 24,
-        @Query("inStock") inStock: Boolean = true
+        @Query("inStock") inStock: Boolean = true,
+        /**
+         * `true` mengembalikan SATU kelas barang stok-nol: yang sudah punya SPK
+         * belum tuntas di cabang itu, ditandai `SudahDipesan`. Bukan pelonggaran
+         * `inStock` — stok nol tanpa SPK tetap dibuang server. Default `false`
+         * supaya picker input serial admin-stok (pemakai kedua method ini) tak
+         * ikut menerima baris kosong.
+         */
+        @Query("includeDipesan") includeDipesan: Boolean = false
     ): Response<ApiResponse<StokCabangData>>
 
     /** Autocomplete broker KBK — di-scope query. */

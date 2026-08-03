@@ -1946,6 +1946,13 @@ fun CreateSpkScreen(
                         Spacer(Modifier.height(6.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             stokRows.forEach { row ->
+                                // Baris stok-nol yang muncul HANYA karena sudah punya SPK
+                                // berjalan: tampilkan supaya sales tahu barangnya sudah
+                                // dipesan (bukan "cabang ini tak punya"), tapi JANGAN bisa
+                                // dipilih — memilihnya membuat SPK kedua atas unit yang
+                                // sudah dipesan, dan kalau notanya sudah masuk GS, sudah
+                                // terjual ke orang lain.
+                                val terkunci = row.terkunciKarenaDipesan
                                 Surface(
                                     onClick = {
                                         // Prepend + collapse kartu lain (baru = fokus)
@@ -1953,6 +1960,7 @@ fun CreateSpkScreen(
                                         barangSearch = ""
                                         viewModel.ensureSerials(spkCabang, row.kode.trim())
                                     },
+                                    enabled = !terkunci,
                                     shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -1992,6 +2000,32 @@ fun CreateSpkScreen(
                                                 fontWeight = FontWeight.SemiBold,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
+                                            )
+                                            if (row.dipesan > 0) {
+                                                Spacer(Modifier.width(8.dp))
+                                                Surface(
+                                                    color = Color(0xFFF79009).copy(alpha = 0.16f),
+                                                    shape = RoundedCornerShape(50),
+                                                ) {
+                                                    Text(
+                                                        "Sudah dipesan · ${row.dipesan} SPK",
+                                                        color = Color(0xFFB54708),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (terkunci) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                "Unit ini sudah masuk SPK lain. Kalau SPK itu batal, minta admin " +
+                                                    "membatalkannya dulu — stok terbaca lagi setelah GS diperbarui.",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
                                     }

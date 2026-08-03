@@ -194,7 +194,7 @@ class DeliveryFlowRepository @Inject constructor(
 
     /** Autocomplete barang Input SPK — `search` min. 2 karakter, di-scope `kodeDealer`. */
     suspend fun stokCabang(search: String, kodeDealer: String): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.StokCabangRow>> = try {
-        val response = api.stokCabang(search = search, kodeDealer = kodeDealer)
+        val response = api.stokCabang(search = search, kodeDealer = kodeDealer, includeDipesan = true)
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.items)
         else parseError(response, "Gagal memuat stok cabang")
