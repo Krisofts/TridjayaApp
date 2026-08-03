@@ -273,9 +273,9 @@ fun SpkItemCard(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                if (!item.isKbk) {
-                    MoneyTextField(item.komisiSales, { onUpdate(item.copy(komisiSales = it)) }, modifier = Modifier.fillMaxWidth(), label = "Komisi Sales")
-                } else {
+                // Isian "Komisi Sales" dibuang 2026-08-03 (permintaan user);
+                // blok ini tinggal milik broker KBK.
+                if (item.isKbk) {
                     if (item.kbkBrokerKode.isBlank()) {
                         ExpressiveTextField(brokerSearch, onBrokerSearch, label = "Cari broker KBK (min. 2 karakter) *", modifier = Modifier.fillMaxWidth())
                         if (brokerResults.isNotEmpty()) {

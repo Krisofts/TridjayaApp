@@ -13,11 +13,11 @@ class CreateSpkParityTest {
         val item = CreateDeliveryItemBody(
             kodeBarang = "TE-1", namaBarang = "AC", kategori = "AC", merk = "AQUA", tipe = "X",
             hargaOtr = 1000.0, pembayaran1 = 500.0, angsuran = 250.0, tenor = 12,
-            komisiSales = 50.0, komisiKbk = 60.0, noHpKbk = "0812", orderSource = "kbk",
+            komisiKbk = 60.0, noHpKbk = "0812", orderSource = "kbk",
             kbkBrokerKode = "BR1", kbkBrokerNama = "Broker Satu"
         )
         val s = json.encodeToString(CreateDeliveryItemBody.serializer(), item)
-        listOf("pembayaran1", "angsuran", "tenor", "komisiSales", "komisiKbk",
+        listOf("pembayaran1", "angsuran", "tenor", "komisiKbk",
                "noHpKbk", "orderSource", "kbkBrokerKode", "kbkBrokerNama").forEach {
             assertTrue("key $it hilang: $s", s.contains("\"$it\""))
         }

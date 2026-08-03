@@ -12,6 +12,10 @@ class DeliveryFlow088Test {
 
     @Test
     fun `job dto decode field 088 dan pembiayaan`() {
+        // `komisiSales` SENGAJA masih ada di JSON di bawah: server yang belum
+        // di-deploy masih mengirimnya, sedangkan DTO tak lagi punya field-nya
+        // (dibuang 2026-08-03). Baris itu membuktikan `ignoreUnknownKeys`
+        // menahan kunci asing — hapus, dan pembuktiannya ikut hilang.
         val raw = """
             {"id":"J1","kodePengiriman":"DLV-M1-1u1","status":"assigned",
              "driverTerimaUang":true,"driverTerimaNominal":150000.0,

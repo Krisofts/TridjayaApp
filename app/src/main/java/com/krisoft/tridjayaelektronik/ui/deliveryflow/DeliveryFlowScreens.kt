@@ -483,7 +483,6 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                             job.orderSource != null -> "Sales"
                             else -> null
                         })
-                        InfoLine("Komisi Sales", job.komisiSales?.let { rupiah(it) })
                         InfoLine("Komisi KBK", job.komisiKbk?.let { rupiah(it) })
                         InfoLine("No. HP KBK", job.noHpKbk)
                         InfoLine("Sosmed", listOfNotNull(

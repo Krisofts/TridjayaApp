@@ -44,7 +44,6 @@ data class SpkItemDraft(
     val orderSource: String = "sales",
     val kbkBrokerKode: String = "",
     val kbkBrokerNama: String = "",
-    val komisiSales: String = "",
     val komisiKbk: String = "",
     val noHpKbk: String = "",
     /** COD (2026-07-25, cash-only): driver terima uang dari konsumen saat serah terima. */
@@ -127,7 +126,6 @@ data class SpkItemDraft(
             pembayaran1 = if (isCredit) money(pembayaran1) else null,
             angsuran = if (isCredit) money(angsuran) else null,
             tenor = if (isCredit) tenor.filter { it.isDigit() }.toIntOrNull() else null,
-            komisiSales = if (isKbk) null else money(komisiSales),
             komisiKbk = if (isKbk) money(komisiKbk) else null,
             noHpKbk = if (isKbk) noHpKbk.trim().ifBlank { null } else null,
             orderSource = if (isKbk) "kbk" else null,

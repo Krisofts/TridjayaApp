@@ -81,7 +81,6 @@ data class DeliveryJobDto(
     val biayaAdm: Double? = null,
     val angsuranPertama: Double? = null,
     // Komisi + sumber order (068/080)
-    val komisiSales: Double? = null,
     val komisiKbk: Double? = null,
     val noHpKbk: String? = null,
     val orderSource: String? = null,
@@ -513,7 +512,6 @@ data class CreateDeliveryItemBody(
     val pembayaran1: Double? = null,
     val angsuran: Double? = null,
     val tenor: Int? = null,
-    val komisiSales: Double? = null,
     val komisiKbk: Double? = null,
     val noHpKbk: String? = null,
     val orderSource: String? = null,

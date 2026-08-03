@@ -98,23 +98,21 @@ class SpkItemDraftTest {
 
     @Test
     fun `toItemBody conditional kredit dan kbk`() {
-        val cash = draft().copy(diskon = "50000", alasanDiskon = "promo", komisiSales = "10000")
+        val cash = draft().copy(diskon = "50000", alasanDiskon = "promo")
             .toItemBody("D-01", "1-01")
         assertEquals("D-01", cash.kodeDealer)
         assertEquals(50000.0, cash.diskon)
-        assertEquals(10000.0, cash.komisiSales)
         assertNull(cash.fincoy); assertNull(cash.dpNet); assertNull(cash.orderSource)
         val kbkCredit = draft().copy(
             paymentType = "credit", fincoy = FINCOY_LAINNYA, fincoyLain = "BCA F",
             dpNet = "500000", tenor = "12", orderSource = "kbk",
-            kbkBrokerKode = "BR1", kbkBrokerNama = "B", komisiKbk = "25000", komisiSales = "99"
+            kbkBrokerKode = "BR1", kbkBrokerNama = "B", komisiKbk = "25000"
         ).toItemBody("D-01", "1-01")
         assertEquals("BCA F", kbkCredit.fincoy)
         assertEquals(500000.0, kbkCredit.dpNet)
         assertEquals(12, kbkCredit.tenor)
         assertEquals("kbk", kbkCredit.orderSource)
         assertEquals(25000.0, kbkCredit.komisiKbk)
-        assertNull(kbkCredit.komisiSales)   // komisi tak dobel
     }
 
     @Test
