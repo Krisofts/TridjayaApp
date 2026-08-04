@@ -15,6 +15,11 @@ import kotlinx.serialization.Serializable
 object DeliveryStatusKey {
     const val PENDING_DISCOUNT = "pending_discount"
     const val PENDING_PDI = "pending_pdi"
+
+    /** Unit ditahan — ada jawaban checklist PDI "Tidak" (2026-08-04). Jalan
+     *  keluar di app: PDI ULANG dengan semua jawaban OK (jalur a). Lepas paksa
+     *  (jalur b) urusan kepala cabang lewat web. */
+    const val PENDING_PERBAIKAN = "pending_perbaikan"
     const val PENDING_SPK = "pending_spk"
     const val PENDING_DELIVERY_NOTE = "pending_delivery_note"
     const val PENDING_SCHEDULING = "pending_scheduling"

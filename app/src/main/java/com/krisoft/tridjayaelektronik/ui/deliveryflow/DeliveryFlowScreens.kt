@@ -114,6 +114,7 @@ import kotlinx.coroutines.launch
 private fun statusMeta(status: String): Pair<String, Color> = when (status) {
     DeliveryStatusKey.PENDING_DISCOUNT -> "Tunggu Diskon" to Color(0xFFB5670C)
     DeliveryStatusKey.PENDING_PDI -> "Antri PDI" to Color(0xFF6941C6)
+    DeliveryStatusKey.PENDING_PERBAIKAN -> "Ditahan — Perbaikan" to Color(0xFFF04438)
     DeliveryStatusKey.PENDING_SPK -> "Antri Kasir" to Color(0xFF0086C9)
     DeliveryStatusKey.PENDING_DELIVERY_NOTE -> "Surat Jalan" to Color(0xFF0E9384)
     DeliveryStatusKey.PENDING_SCHEDULING -> "Penjadwalan" to Color(0xFF0E9384)
@@ -563,7 +564,10 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     Spacer(Modifier.height(14.dp))
                 }
                 when {
-                    job.status == DeliveryStatusKey.PENDING_PDI && (access.pdi || isSelfPdiJob) ->
+                    // `pending_perbaikan` ikut: unit tertahan HANYA bisa keluar lewat
+                    // PDI ulang di sini (jalur a) — tanpa cabang ini form-nya tak pernah
+                    // muncul dan unit terkunci dari sisi app, tanpa error apa pun.
+                    (job.status == DeliveryStatusKey.PENDING_PDI || job.status == DeliveryStatusKey.PENDING_PERBAIKAN) && (access.pdi || isSelfPdiJob) ->
                         PdiAction(job, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
                     job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
                         KasirConfirmSpkAction(job, viewModel, state.submitting)
@@ -589,6 +593,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     else -> Text(
                         when (job.status) {
                             DeliveryStatusKey.PENDING_PDI -> "Tahap ini ditangani tim PDI cabang."
+                            DeliveryStatusKey.PENDING_PERBAIKAN -> "Unit ditahan (checklist Tidak) — menunggu perbaikan & PDI ulang, atau pelepasan kepala cabang."
                             DeliveryStatusKey.PENDING_SPK -> "Tahap ini ditangani kasir cabang."
                             DeliveryStatusKey.PENDING_DELIVERY_NOTE, DeliveryStatusKey.PENDING_SCHEDULING -> "Tahap ini ditangani Delivery Control."
                             DeliveryStatusKey.ASSIGNED, DeliveryStatusKey.IN_TRANSIT -> "Tahap ini ditangani driver yang ditugaskan."

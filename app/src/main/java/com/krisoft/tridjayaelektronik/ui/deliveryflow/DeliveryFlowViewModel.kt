@@ -367,7 +367,8 @@ class DeliveryFlowViewModel @Inject constructor(
     /** Muat data pendukung sesuai tahap: checklist PDI (pending_pdi) atau daftar driver (pending_scheduling). */
     private fun loadAuxFor(job: DeliveryJobDto) {
         when (job.status) {
-            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_PDI -> {
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_PDI,
+            com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_PERBAIKAN -> {
                 val kategori = job.kategori?.trim().orEmpty()
                 if (kategori.isNotEmpty()) viewModelScope.launch {
                     (repository.checklist(kategori) as? AuthResult.Success)?.let { r -> _state.update { it.copy(checklist = r.data) } }
@@ -673,8 +674,25 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Failure -> return@action up
             }
         }
-        repository.submitPdi(id, PdiBody(serialNumber = serial.trim(), engineNumber = engine.trim().ifBlank { null }, readyPhotoUrl = photoUrl, checklist = checklist))
-            .mapOk { onDone() }
+        val res = repository.submitPdi(id, PdiBody(serialNumber = serial.trim(), engineNumber = engine.trim().ifBlank { null }, readyPhotoUrl = photoUrl, checklist = checklist))
+        if (res is AuthResult.Success &&
+            res.data.status == com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_PERBAIKAN
+        ) {
+            // Unit DITAHAN (ada jawaban "Tidak" + saklar cabang menyala). Server
+            // menjawab 200, tapi meneruskannya sebagai Success membuat wrapper
+            // `action` menyetel `actionDone` → layar pop-back ke antrian TANPA
+            // SATU KALIMAT PUN; unit tampak "beres" padahal justru berhenti.
+            // Dipulangkan sebagai Failure SENGAJA: wrapper menaruh pesannya di
+            // `actionError` (satu-satunya kanal pesan layar ini — dan ini memang
+            // peringatan) dan petugas TETAP di detail, yang di-reload dulu
+            // supaya badge merah "Ditahan — Perbaikan" ikut tampil.
+            loadDetail(id)
+            return@action AuthResult.Failure(
+                "pdi_ditahan",
+                "Unit DITAHAN — ada item checklist dijawab \"Tidak\". Perbaiki lalu PDI ulang, atau minta kepala cabang melepaskannya.",
+            )
+        }
+        res.mapOk { onDone() }
     }
 
     /** Simpan satu form pengambilan aki (gate PDI kategori ber-flag `requiresAkiForm`). */

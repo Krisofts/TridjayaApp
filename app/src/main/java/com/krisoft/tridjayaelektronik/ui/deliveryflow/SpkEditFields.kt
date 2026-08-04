@@ -144,7 +144,8 @@ fun buildSpkEditPatch(
  *  DUA syarat: tahapnya belum lewat PDI DAN belum tercatat di GS. */
 fun spkBolehDisunting(job: DeliveryJobDto): Boolean =
     job.noTransaksi.isNullOrBlank() &&
-        (job.status == DeliveryStatusKey.PENDING_PDI || job.status == DeliveryStatusKey.PENDING_DISCOUNT)
+        (job.status == DeliveryStatusKey.PENDING_PDI || job.status == DeliveryStatusKey.PENDING_DISCOUNT ||
+            job.status == DeliveryStatusKey.PENDING_PERBAIKAN)
 
 /** Alasan koreksi wajib — jejaknya hidup di `activity_log` gateway, dan jejak
  *  tanpa alasan cuma memberi tahu bahwa sesuatu berubah. Ambangnya SAMA dengan
