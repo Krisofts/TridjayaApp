@@ -33,9 +33,6 @@ import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonBox
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 
 /**
  * Layar pertama app — menjawab satu pertanyaan: "hari ini aku harus ngapain?".
@@ -147,7 +144,11 @@ fun ActivityScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item { NotificationPermissionBanner() }
-                item { GreetingRow(state.userName, state.cabangName) }
+                // Kartu sapaan bergradien — dipindah dari dashboard lama
+                // (`ui/home/HomeScreen.kt`) ke layar pertama app, menggantikan
+                // `GreetingRow` teks polos. Cabang ikut di baris tanggal supaya
+                // info yang dulu ditampilkan `GreetingRow` tak hilang.
+                item { GreetingCard(userName = state.userName, cabang = state.cabangName) }
 
                 item { SectionTitle("HARI INI", trailing = state.progress) }
                 items(state.tasks, key = { it.item.id }) { task ->
@@ -226,36 +227,6 @@ fun ActivityScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun GreetingRow(name: String, cabang: String) {
-    // Minor (review): dulu `Calendar.getInstance()`/`SimpleDateFormat` dibuat
-    // ulang tiap recomposition (state ini sering berubah tiap tick load) —
-    // `remember` pola sama `GreetingCard` di `HomeScreen.kt`.
-    val cal = remember { Calendar.getInstance() }
-    val jam = remember { cal.get(Calendar.HOUR_OF_DAY) }
-    val sapaan = when {
-        jam < 11 -> "Selamat pagi"
-        jam < 15 -> "Selamat siang"
-        jam < 18 -> "Selamat sore"
-        else -> "Selamat malam"
-    }
-    val tanggal = remember {
-        SimpleDateFormat("EEEE, d MMMM", Locale("id", "ID")).format(cal.time)
-    }
-    Column(Modifier.padding(vertical = 4.dp)) {
-        Text(
-            "$sapaan${if (name.isNotBlank()) ", $name" else ""}",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            listOf(tanggal, cabang).filter { it.isNotBlank() }.joinToString(" · "),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

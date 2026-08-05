@@ -387,17 +387,21 @@ Done in a dedicated "is this ready to ship?" pass; don't regress these:
 
 - No Android Studio GUI available in this environment — everything via Gradle CLI.
 - `gradlew` invoked directly via
-  `"C:\laragon\jdk17\bin\java.exe" -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain <task>`
-  (bypasses `gradlew.bat`/shell script quoting issues). The Android Studio JBR path this doc
-  pointed at previously doesn't exist on this machine — use the Laragon JDK 17 above.
+  `"C:\Program Files\Android\Android Studio\jbr\bin\java.exe" -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain <task>`
+  (bypasses `gradlew.bat`/shell script quoting issues). Catatan lama menyebut
+  `C:\laragon\jdk17\bin\java.exe` — **tidak ada di mesin ini** (2026-08-03), dan `java` juga tidak
+  ada di PATH; JBR Android Studio di atas yang dipakai.
+- **Kutip flag `-P` di PowerShell.** `-Pkotlin.compiler.execution.strategy=in-process` tanpa tanda
+  kutip dipecah jadi dua argumen sehingga Gradle gagal dengan `Task '.compiler.execution.strategy=
+  in-process' not found`. Tulis `"-Pkotlin.compiler.execution.strategy=in-process"`.
 - Builds are slow (1-3+ min for debug, much longer for release/R8) — always run via
   `run_in_background: true` and poll with `ScheduleWakeup`, don't block synchronously.
-- Android SDK: `$ANDROID_HOME` = `C:\laragon\android-sdk` (yang dipakai Gradle). `local.properties`
-  masih menunjuk `C:/Users/acer/AppData/Local/Android/Sdk` yang **tidak ada** — build tetap jalan
-  karena jatuh ke `ANDROID_HOME`, jangan bingung kalau path itu tak ketemu.
-- `adb.exe` lives at `C:\laragon\android-sdk\platform-tools\adb.exe` (mesin ini; catatan lama
-  menyebut `C:\Users\adm_c\...` yang tidak ada di sini) (not on
-  PATH in the sandboxed shell — use the full path).
+  Patokan nyata: `:app:installDebug` dingin (daemon baru) memakan **~18 menit** di mesin ini.
+- Android SDK: `C:\Users\adm_c\AppData\Local\Android\Sdk`, dipasok lewat `local.properties`
+  (`sdk.dir`) — `ANDROID_HOME`/`ANDROID_SDK_ROOT` kosong di shell ini. Catatan lama menyebut
+  `C:\laragon\android-sdk` dan `C:/Users/acer/...`; keduanya **tidak ada**.
+- `adb.exe` ada di `C:\Users\adm_c\AppData\Local\Android\Sdk\platform-tools\adb.exe` (tidak ada di
+  PATH — pakai path lengkap).
 - Test device: physical phone, serial `30531702210004R`. `adb devices -l` sometimes shows it
   disconnected if the USB cable/authorization dropped — ask the user to reconnect rather than
   assuming the device is gone.
@@ -458,12 +462,19 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
 
 - Login (NIK/WhatsApp + password), JWT session in encrypted DataStore, proactive + reactive
   auto-refresh, forced `must_change_password` gate, and change/forgot/reset-password flows
-- Home: greeting card (with mascot image + wave animation), KPI summary (today/MTD + growth
-  badges vs yesterday/last month), branch + sales rankings (top 5 + "lihat semua"). Dashboard
+- Home (tab Operasional): KPI summary (today/MTD + growth badges vs yesterday/last month),
+  branch + sales rankings (top 5 + "lihat semua"). Dashboard
   sections (KPI / Target / Ranking Cabang / Ranking Sales) are **user-reorderable + show/hide**
   via a "Tune" button → `HomeCustomizeSheet` (up/down arrows, not drag). Order+visibility persist
   in plain (non-encrypted) SharedPreferences via `HomeLayoutPreferences` (Hilt constructor-injected).
-  The greeting card is fixed at the top and not customizable, matching Rhythm's welcome section.
+  **Kartu sapaan sudah TIDAK di sini** — pindah ke Activity (lihat baris berikut); slot teratas
+  Home kini murni `EventCarousel`, dan tak dirender sama sekali kalau tak ada event aktif.
+- Kartu sapaan (`ui/activity/GreetingCard.kt`): gradien + ikon berubah per waktu
+  (pagi/siang/sore/malam) dengan override musiman (`seasonalGreeting`, mis. Agustus =
+  Kemerdekaan). Tampil paling atas di **Activity** (layar pertama app), menggantikan
+  `GreetingRow` teks polos lama; baris tanggal ikut membawa nama cabang (param `cabang`)
+  supaya info yang dulu ditampilkan `GreetingRow` tak hilang. Kartunya fixed, tak ikut
+  pengaturan urutan `HomeCustomizeSheet`.
 - Inventory: search (Material3 `SearchBar`), filter chips (ready-only, region, category, brand),
   sort, Paging3 list with expandable per-branch stock breakdown, product detail with flyer
   generator + WhatsApp share + installment simulator
