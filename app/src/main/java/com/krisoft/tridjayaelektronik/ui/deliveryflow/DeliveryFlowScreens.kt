@@ -335,31 +335,6 @@ fun DeliveryQueueScreen(
         )
     }
 
-    var kasirGrup by remember { mutableStateOf<SpkBatchGroup?>(null) }
-    kasirGrup?.let { grup ->
-        KonfirmasiSpkGrupDialog(
-            grup = grup,
-            submitting = state.submitting,
-            onDismiss = { kasirGrup = null },
-            onSubmit = { noTransaksi, konfirmasiBayar, units ->
-                val anchor = grup.jobs.first()
-                viewModel.confirmSpk(
-                    id = anchor.id,
-                    noTransaksi = noTransaksi,
-                    kasirKonfirmasiPembayaran = konfirmasiBayar,
-                    // Field lama dipakai HANYA untuk SPK satu unit — di SPK
-                    // banyak unit `units[]` sudah memuat nominal anchor juga,
-                    // dan mengirim keduanya membuat dua sumber untuk angka yang
-                    // sama.
-                    kasirDpDiterima = if (grup.jobs.size == 1) units.firstOrNull()?.kasirDpDiterima else null,
-                    units = if (grup.jobs.size > 1) units else null,
-                ) {
-                    kasirGrup = null
-                    muatUlang()
-                }
-            },
-        )
-    }
 
     TridjayaCollapsibleHeader(title = title, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -406,6 +381,15 @@ fun DeliveryQueueScreen(
                                 }
                             }
                         }
+                    } else if (konfirmasiKasir) {
+                        // Antrian kasir = SATU baris per SPK, bukan per unit.
+                        // Kasir menyalin penjualan ke GS sebagai SATU transaksi
+                        // satu nomor; menampilkan N baris untuk satu penjualan
+                        // membuat dia mengira ada N pekerjaan. Rincian unit +
+                        // tombol konfirmasinya hidup di layar detail.
+                        items(groups, key = { it.kode }) { grup ->
+                            SpkRingkasCard(grup) { onOpen(grup.jobs.first().id) }
+                        }
                     } else {
                         groups.forEach { grup ->
                             if (grup.jobs.size > 1) {
@@ -418,17 +402,15 @@ fun DeliveryQueueScreen(
                             // pembayaran) tak menyisipkan item kosong — daftar
                             // ini ber-`spacedBy`, jadi item nol-tinggi tetap
                             // memakan satu jarak dan terlihat sebagai lubang.
-                            if (terbitkanLangsung || konfirmasiKasir || antrianPdi) item(key = "aksi-${grup.kode}") {
+                            if (terbitkanLangsung || antrianPdi) item(key = "aksi-${grup.kode}") {
                                 SpkGrupAksi(
                                     grup = grup,
                                     threshold = threshold,
                                     submitting = state.submitting,
                                     currentUserId = viewModel.currentUserId,
                                     terbitkanLangsung = terbitkanLangsung,
-                                    konfirmasiKasir = konfirmasiKasir,
                                     antrianPdi = antrianPdi,
                                     onTerbitkan = { terbitkanGrup = grup },
-                                    onKonfirmasiKasir = { kasirGrup = grup },
                                     onKlaimPdi = { viewModel.claimPdiAntrian(it) { muatUlang() } },
                                     onLepasKlaimPdi = { viewModel.releasePdiClaimAntrian(it) { muatUlang() } },
                                     onPdiKecil = { anchorId -> viewModel.submitPdiKecil(anchorId) { muatUlang() } },
@@ -478,6 +460,72 @@ private fun SpkGrupHeader(grup: SpkBatchGroup) {
 }
 
 /**
+ * SATU kartu untuk satu SPK — dipakai antrian yang pekerjaannya memang per SPK
+ * (kasir). Ketuk = buka detail SPK-nya lewat unit pertama; rincian tiap unit
+ * dan tombol tahapnya hidup di sana.
+ *
+ * Beda dari [JobCard] yang mewakili SATU unit fisik: kartu ini mewakili satu
+ * PENJUALAN. Kasir menyalinnya ke GS sebagai satu transaksi satu nomor, jadi
+ * menampilkan N baris untuk satu penjualan membuatnya mengira ada N pekerjaan
+ * — persis keluhan yang memicu fan-out di server.
+ */
+@Composable
+private fun SpkRingkasCard(grup: SpkBatchGroup, onClick: () -> Unit) {
+    val anchor = grup.jobs.first()
+    val n = grup.jobs.size
+    ClayCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        grup.kode, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    StatusChip(anchor.status)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    anchor.customerName ?: "-", style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                // Semua barangnya disebut, bukan cuma yang pertama + "dst":
+                // kasir memakai daftar ini untuk mencocokkan dengan penjualan
+                // yang sedang dia ketik di GS.
+                grup.jobs.forEach { j ->
+                    Text(
+                        "• ${j.namaBarang ?: j.kodeBarang ?: "-"}${j.tipe?.let { " · $it" } ?: ""}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
+                        Text(
+                            if (n > 1) "$n unit · 1 transaksi GS" else "1 unit",
+                            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                    if (grup.jobs.any { it.driverTerimaUang == true }) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "COD", style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold, color = Color(0xFF9E4B00),
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
  * Tombol tahap di level SPK. Semua endpoint yang dipanggil di sini FAN-OUT
  * se-SPK di server, jadi satu ketukan menyelesaikan seluruh grup — teksnya
  * menyebut jumlah unit supaya petugas tahu itu memang disengaja, bukan
@@ -490,10 +538,8 @@ private fun SpkGrupAksi(
     submitting: Boolean,
     currentUserId: String,
     terbitkanLangsung: Boolean,
-    konfirmasiKasir: Boolean,
     antrianPdi: Boolean,
     onTerbitkan: () -> Unit,
-    onKonfirmasiKasir: () -> Unit,
     onKlaimPdi: (String) -> Unit,
     onLepasKlaimPdi: (String) -> Unit,
     onPdiKecil: (String) -> Unit,
@@ -508,12 +554,6 @@ private fun SpkGrupAksi(
             ExpressiveFilledButton(
                 onClick = onTerbitkan, enabled = !submitting, modifier = Modifier.fillMaxWidth(),
             ) { Text("Terbitkan Surat Jalan$suffix") }
-        }
-        konfirmasiKasir -> {
-            Spacer(Modifier.height(6.dp))
-            ExpressiveFilledButton(
-                onClick = onKonfirmasiKasir, enabled = !submitting, modifier = Modifier.fillMaxWidth(),
-            ) { Text("Konfirmasi SPK$suffix") }
         }
         antrianPdi -> {
             val kecil = unitPdiKecil(grup.jobs, threshold)
@@ -598,123 +638,6 @@ private fun TerbitkanSuratJalanDialog(
         confirmButton = {
             TextButton(onClick = { onSubmit(cabang) }, enabled = !submitting && cabang.trim().isNotEmpty()) {
                 Text(if (submitting) "Menerbitkan…" else "Terbitkan")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text("Batal") } },
-    )
-}
-
-/**
- * Konfirmasi SPK kasir untuk SELURUH unit sekaligus — cerminan modal "Sudah
- * SPK" di `KasirDashboardPage` web.
- *
- * Nomor transaksi GS diketik SEKALI: di GS, SPK banyak barang adalah satu
- * transaksi satu nomor. Nominal DP diketik PER UNIT karena tiap unit COD `dp`
- * punya DP-nya sendiri, dan server menolak (400) daftar `units[]` yang
- * menyisakan salah satunya kosong.
- */
-@Composable
-private fun KonfirmasiSpkGrupDialog(
-    grup: SpkBatchGroup,
-    submitting: Boolean,
-    onDismiss: () -> Unit,
-    onSubmit: (String, Boolean?, List<com.krisoft.tridjayaelektronik.data.model.ConfirmSpkUnitBody>) -> Unit,
-) {
-    var noTransaksi by remember(grup.kode) { mutableStateOf(grup.jobs.first().noTransaksi.orEmpty()) }
-    var konfirmasiBayar by remember(grup.kode) { mutableStateOf(false) }
-    // Nominal DP per unit-id, hanya untuk unit COD mode `dp`.
-    val dp = remember(grup.kode) { mutableStateMapOf<String, String>() }
-
-    val adaCod = grup.jobs.any { it.driverTerimaUang == true }
-    val unitCodDp = grup.jobs.filter { it.driverTerimaUang == true && it.codPaymentMode == "dp" }
-    val dpLengkap = unitCodDp.all { (dp[it.id]?.toDoubleOrNull() ?: 0.0) > 0.0 }
-
-    AlertDialog(
-        onDismissRequest = { if (!submitting) onDismiss() },
-        title = { Text("Konfirmasi SPK", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("SPK ${grup.kode}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    grup.jobs.first().customerName ?: "-",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                ExpressiveTextField(
-                    noTransaksi, { noTransaksi = it },
-                    label = "No. Transaksi GS (wajib)", modifier = Modifier.fillMaxWidth(),
-                )
-                if (grup.jobs.size > 1) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Satu nomor untuk ${grup.jobs.size} unit — di GS, SPK banyak barang adalah satu transaksi.",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                grup.jobs.forEach { j ->
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        j.namaBarang ?: j.kodeBarang ?: "-",
-                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        j.kodePengiriman, style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (j.driverTerimaUang == true) {
-                        Text(
-                            "COD ${if (j.codPaymentMode == "dp") "DP" else "Full Payment"} · sisa diambil driver: " +
-                                (j.driverTerimaNominal?.let { rupiah(it) } ?: "-"),
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (j.codPaymentMode == "dp") {
-                            Spacer(Modifier.height(4.dp))
-                            MoneyTextField(
-                                dp[j.id].orEmpty(), { v -> dp[j.id] = v },
-                                label = "DP diterima kasir (wajib) *", modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-                }
-                if (adaCod) {
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable { konfirmasiBayar = !konfirmasiBayar },
-                    ) {
-                        Checkbox(checked = konfirmasiBayar, onCheckedChange = { konfirmasiBayar = it })
-                        Text("Sudah cek pembayaran benar (opsional)", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Text(
-                        "Uang yang ditagih driver dikonfirmasi nanti di tab Setoran Driver, setelah barang diantar.",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !submitting && noTransaksi.trim().isNotEmpty() && dpLengkap,
-                onClick = {
-                    onSubmit(
-                        noTransaksi,
-                        if (adaCod) konfirmasiBayar else null,
-                        unitCodDp.map {
-                            com.krisoft.tridjayaelektronik.data.model.ConfirmSpkUnitBody(
-                                id = it.id, kasirDpDiterima = dp[it.id]?.toDoubleOrNull(),
-                            )
-                        },
-                    )
-                },
-            ) {
-                Text(
-                    when {
-                        submitting -> "Menyimpan…"
-                        !dpLengkap -> "Isi DP tiap unit"
-                        else -> "Konfirmasi" + if (grup.jobs.size > 1) " (${grup.jobs.size} unit)" else ""
-                    }
-                )
             }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text("Batal") } },
@@ -889,7 +812,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     (job.status == DeliveryStatusKey.PENDING_PDI || job.status == DeliveryStatusKey.PENDING_PERBAIKAN) && (access.pdi || isSelfPdiJob) ->
                         PdiAction(job, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
                     job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
-                        KasirConfirmSpkAction(job, viewModel, state.submitting)
+                        KasirConfirmSpkAction(job, state.batchUnits, viewModel, state.submitting)
                     job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
                         DeliveryNoteAction(job, viewModel, state.submitting)
                     // Diambil sendiri (2026-07-24): konsumen ambil unit di cabang — TIDAK
@@ -1526,26 +1449,83 @@ private fun PdiAction(
  *  konsumen, jadi mewajibkannya membuat SPK mandek permanen di antrian kasir.
  *  Uangnya dikonfirmasi belakangan di tab "Setoran Driver". Nominal DP mode
  *  `dp` TETAP wajib: DP dibayar konsumen di toko, uangnya nyata ada di kasir.
- *  Mirror web `KasirDashboardPage`. */
+ *  Mirror web `KasirDashboardPage`.
+ *
+ *  MULTI-UNIT (2026-08-06): [batchUnits] = seluruh unit `pending_spk` SPK ini
+ *  (dimuat `loadBatchUnits`). Nomor transaksi GS diketik SEKALI — di GS, SPK
+ *  banyak barang adalah SATU transaksi satu nomor, dan server mem-fan-out-kan
+ *  konfirmasi ini ke semuanya. Nominal DP diketik PER UNIT: tiap unit COD `dp`
+ *  punya DP-nya sendiri, dan server menolak 400 daftar `units[]` yang
+ *  menyisakan salah satunya kosong.
+ *
+ *  [batchUnits] kosong (gagal dimuat / server lama) = jatuh balik ke satu unit,
+ *  persis perilaku sebelum fitur ini. Konfirmasinya tetap sah; yang hilang cuma
+ *  kesempatan mengetik DP unit lain, yang lalu memakai rencana sales. */
 @Composable
-private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
-    var noTransaksi by remember { mutableStateOf(job.noTransaksi.orEmpty()) }
-    var konfirmasiBayar by remember { mutableStateOf(false) }
-    var dpDiterima by remember { mutableStateOf("") }
-    val isCod = job.driverTerimaUang == true
-    val isCodDp = isCod && job.codPaymentMode == "dp"
+private fun KasirConfirmSpkAction(
+    job: DeliveryJobDto,
+    batchUnits: List<DeliveryJobDto>,
+    vm: DeliveryFlowViewModel,
+    submitting: Boolean,
+) {
+    val units = batchUnits.ifEmpty { listOf(job) }
+    val multi = units.size > 1
+    var noTransaksi by remember(job.id) { mutableStateOf(job.noTransaksi.orEmpty()) }
+    var konfirmasiBayar by remember(job.id) { mutableStateOf(false) }
+    // Nominal DP per unit-id. Kunci `job.id`: berpindah SPK harus mengosongkan
+    // isian, kalau tidak DP SPK sebelumnya ikut terkirim.
+    val dp = remember(job.id) { mutableStateMapOf<String, String>() }
+
+    val adaCod = units.any { it.driverTerimaUang == true }
+    val unitCodDp = units.filter { it.driverTerimaUang == true && it.codPaymentMode == "dp" }
     // Hanya nominal DP yang menahan tombol; centang konfirmasi tidak (lihat dok di atas).
-    val codValid = !isCodDp || (dpDiterima.toDoubleOrNull() ?: 0.0) > 0.0
+    val dpLengkap = unitCodDp.all { (dp[it.id]?.toDoubleOrNull() ?: 0.0) > 0.0 }
 
     Text("Konfirmasi SPK (Kasir)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    if (multi) {
+        Spacer(Modifier.height(4.dp))
+        SpkFanOutNote("${units.size} barang dalam SPK ini dikonfirmasi sekaligus — satu nomor transaksi GS untuk semuanya.")
+    }
     Spacer(Modifier.height(8.dp))
     ExpressiveTextField(noTransaksi, { noTransaksi = it }, label = "No. Transaksi GS (wajib)", modifier = Modifier.fillMaxWidth())
-    if (isCod) {
-        Spacer(Modifier.height(10.dp))
+
+    units.forEach { u ->
+        Spacer(Modifier.height(12.dp))
+        // Unit yang sedang dibuka ditandai supaya kasir tahu kartu mana yang
+        // dia klik dari antrian — sisanya ikut karena satu SPK, bukan karena
+        // dia salah membuka.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                u.namaBarang ?: u.kodeBarang ?: "-",
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            if (multi && u.id == job.id) {
+                Text("dibuka", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
         Text(
-            "COD ${if (job.codPaymentMode == "dp") "DP" else "Full Payment"} · sisa diambil driver: ${job.driverTerimaNominal?.let { rupiah(it) } ?: "-"}",
+            u.kodePengiriman + (u.hargaOtr?.let { " · ${rupiah(it)}" } ?: ""),
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (u.driverTerimaUang == true) {
+            Text(
+                "COD ${if (u.codPaymentMode == "dp") "DP" else "Full Payment"} · sisa diambil driver: " +
+                    (u.driverTerimaNominal?.let { rupiah(it) } ?: "-"),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (u.codPaymentMode == "dp") {
+                Spacer(Modifier.height(6.dp))
+                MoneyTextField(
+                    dp[u.id].orEmpty(), { v -> dp[u.id] = v },
+                    label = "DP diterima kasir (wajib) *", modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+
+    if (adaCod) {
+        Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { konfirmasiBayar = !konfirmasiBayar }) {
             Checkbox(checked = konfirmasiBayar, onCheckedChange = { konfirmasiBayar = it })
             Text("Sudah cek pembayaran benar (opsional)", style = MaterialTheme.typography.bodyMedium)
@@ -1554,25 +1534,38 @@ private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel
             "Uang yang ditagih driver dikonfirmasi nanti di tab Setoran Driver, setelah barang diantar.",
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (isCodDp) {
-            Spacer(Modifier.height(6.dp))
-            MoneyTextField(dpDiterima, { dpDiterima = it }, label = "DP diterima kasir (wajib) *", modifier = Modifier.fillMaxWidth())
-        }
     }
     Spacer(Modifier.height(14.dp))
     ExpressiveFilledButton(
         onClick = {
             vm.confirmSpk(
-                job.id,
-                noTransaksi,
-                kasirKonfirmasiPembayaran = if (isCod) konfirmasiBayar else null,
-                kasirDpDiterima = if (isCodDp) dpDiterima.toDoubleOrNull() else null,
+                id = job.id,
+                noTransaksi = noTransaksi,
+                kasirKonfirmasiPembayaran = if (adaCod) konfirmasiBayar else null,
+                // Field lama dipakai HANYA saat satu unit; di SPK banyak unit
+                // `units[]` sudah memuat nominal unit ini juga, dan mengirim
+                // keduanya membuat dua sumber untuk angka yang sama.
+                kasirDpDiterima = if (!multi) dp[job.id]?.toDoubleOrNull() else null,
+                units = if (multi) {
+                    unitCodDp.map {
+                        com.krisoft.tridjayaelektronik.data.model.ConfirmSpkUnitBody(
+                            id = it.id, kasirDpDiterima = dp[it.id]?.toDoubleOrNull(),
+                        )
+                    }
+                } else null,
             ) {}
         },
-        enabled = !submitting && noTransaksi.trim().isNotEmpty() && codValid,
+        enabled = !submitting && noTransaksi.trim().isNotEmpty() && dpLengkap,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Konfirmasi SPK")
+        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        else Text(
+            when {
+                !dpLengkap -> "Isi DP tiap unit COD"
+                multi -> "Konfirmasi SPK (${units.size} unit)"
+                else -> "Konfirmasi SPK"
+            }
+        )
     }
 }
 

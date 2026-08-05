@@ -154,8 +154,26 @@ Konsekuensi yang mengikat app:
   ke-2 dst dijawab 400 "sudah tidak di tahap ini" — pekerjaannya sudah selesai
   di panggilan pertama, tapi layarnya membacanya sebagai kegagalan. Antrian
   (`DeliveryQueueScreen`) mengelompokkan unit lewat `groupJobsBySpk`
-  (`SpkBatch.kt`, cerminan `batch_prefix` backend + `utils/spkBatch.ts` web) dan
-  menaruh tombolnya di kepala grup.
+  (`SpkBatch.kt`, cerminan `batch_prefix` backend + `utils/spkBatch.ts` web).
+- **Tiga bentuk antrian, sengaja berbeda:**
+  (a) **Kasir** (`pending_spk`) = SATU kartu per SPK (`SpkRingkasCard`), ketuk
+  membuka detail; tombol konfirmasinya HANYA di detail. Kasir menyalin satu
+  penjualan ke GS sebagai satu transaksi satu nomor — N baris untuk satu
+  penjualan membuatnya mengira ada N pekerjaan.
+  (b) **PDI & surat jalan** = baris per unit + header grup + tombol di kepala
+  grup; kerja fisiknya memang per unit (serial, checklist), keputusannya per
+  SPK.
+  (c) **Manifest driver** (`reorderable`) = daftar RATA per unit tanpa grup —
+  `POST /delivery/driver/reorder` mengurutkan id unit dan panah naik/turun
+  bekerja atas indeks daftar itu.
+- **Layar detail memuat saudara se-SPK lewat `loadBatchUnits`**, TAPI hanya
+  untuk `pending_spk` (satu-satunya tahap yang isiannya butuh daftar itu:
+  `units[]` menuntut nominal DP tiap unit COD `dp` sebatch). Sumbernya antrian
+  kasir itu sendiri (`GET /delivery?status=pending_spk`) sehingga himpunannya
+  sama persis dengan `siblings` yang divalidasi `confirm_spk`. Fail-soft: gagal
+  = jatuh balik ke satu unit. Kalau nanti tahap lain butuh daftar saudara,
+  perluas fungsi ini — jangan menebak dari `state.items` (isinya antrian mana
+  pun yang terakhir dibuka).
 - **Ambang barang besar datang dari server**, `GET /delivery/context` field
   `barangBesarThreshold`. Barang besar tetap PDI per unit (checklist + no.
   rangka); barang kecil tuntas sekali klik lewat `POST /delivery/{id}/pdi-kecil`.
@@ -172,10 +190,8 @@ Konsekuensi yang mengikat app:
   uang. App belum bisa memilih anchor sendiri (layar detail tak memuat saudara
   se-SPK) — mitigasinya label "COD · tagih Rp…" di kartu antrian + kalimat
   pengarah di form serah terima. Kalau nanti ada endpoint "unit se-batch",
-  inilah tempat pertama yang harus memakainya.
-- **Manifest driver SENGAJA tetap daftar rata per unit** — `POST
-  /delivery/driver/reorder` mengurutkan id unit dan panah naik/turun bekerja
-  atas indeks daftar itu.
+  inilah tempat pertama yang harus memakainya (`loadBatchUnits` sudah jadi
+  polanya — tinggal dilebarkan ke tahap driver).
 
 **Token refresh is synchronized + proactive.** `NetworkModule.kt` has one `TokenRefresher`
 (`synchronized`) shared by two callers: `AuthHeaderInterceptor` refreshes **proactively** when the

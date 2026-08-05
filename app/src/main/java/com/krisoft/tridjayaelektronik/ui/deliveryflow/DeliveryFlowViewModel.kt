@@ -106,6 +106,14 @@ data class DeliveryFlowUiState(
      *  (beda dari [discounts] yang antrian approval). Kosong = tak pernah diajukan
      *  diskon, atau job lama dari worker GS (tak punya kode batch manual). */
     val jobDiscounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
+    /**
+     * Unit SAUDARA se-SPK dari job yang sedang dibuka, termasuk job itu sendiri
+     * — hanya diisi untuk tahap yang keputusannya memang per SPK (saat ini:
+     * konfirmasi kasir). Kosong = belum termuat / gagal / tahap lain; pemakainya
+     * WAJIB jatuh balik ke `listOf(detail)` supaya layar tetap bekerja sebagai
+     * satu unit, persis seperti sebelum fitur ini ada.
+     */
+    val batchUnits: List<DeliveryJobDto> = emptyList(),
     /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
     val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
     /** Status foto bukti aki per form id (key = form.id). Sengaja BUKAN
@@ -255,7 +263,7 @@ class DeliveryFlowViewModel @Inject constructor(
         _state.update {
             it.copy(
                 loading = true, error = null, actionDone = false, actionError = null,
-                kontributor = emptyList(), driverChecklist = emptyList(),
+                kontributor = emptyList(), driverChecklist = emptyList(), batchUnits = emptyList(),
                 driverChecklistError = null, jobPhotos = emptyMap(),
                 pdiPhoto = null, deliverPhoto = null, cashPhoto = null,
                 pdiPhotoConfirmed = false, deliverPhotoConfirmed = false, cashPhotoConfirmed = false
@@ -269,6 +277,7 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Success -> {
                     _state.update { it.copy(loading = false, detail = res.data) }
                     loadAuxFor(res.data)
+                    loadBatchUnits(res.data)
                     loadTimelineExtras(res.data)
                     loadJobPhotos(res.data)
                     loadKontributor(id)
@@ -367,6 +376,39 @@ class DeliveryFlowViewModel @Inject constructor(
         viewModelScope.launch {
             val history = (repository.discountHistory(batch, baris) as? AuthResult.Success)?.data.orEmpty()
             _state.update { it.copy(jobDiscounts = history) }
+        }
+    }
+
+    /**
+     * Muat unit saudara se-SPK untuk job yang sedang dibuka.
+     *
+     * HANYA untuk `pending_spk`: di tahap itu kasir memutuskan satu SPK sebagai
+     * satu transaksi GS (satu nomor), dan `units[]` menuntut nominal DP tiap
+     * unit COD `dp` sebatch — tanpa daftar saudaranya, layar detail tak punya
+     * tempat untuk menanyakannya. Tahap lain tidak memanggil ini: tak ada
+     * gunanya menambah satu request untuk daftar yang tak dirender.
+     *
+     * Sumbernya `GET /delivery?status=pending_spk`, yaitu ANTRIAN KASIR itu
+     * sendiri — sudah di-scope cabang oleh server, jadi himpunannya sama persis
+     * dengan `siblings` yang divalidasi `confirm_spk`. Menyaringnya di klien
+     * pakai [spkBatchPrefix] yang juga cerminan `batch_prefix` server.
+     *
+     * FAIL-SOFT: gagal / kosong = `batchUnits` dibiarkan kosong dan layar jatuh
+     * balik ke satu unit (perilaku lama). Konfirmasi satu unit tetap sah —
+     * server tetap mem-fan-out-kannya, cuma unit lain memakai `codDpAmount`
+     * rencana sales alih-alih nominal yang diketik kasir.
+     */
+    private fun loadBatchUnits(job: DeliveryJobDto) {
+        if (job.status != com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_SPK) return
+        val prefix = spkBatchPrefix(job.kodePengiriman)
+        viewModelScope.launch {
+            val semua = (repository.list(status = job.status) as? AuthResult.Success)?.data.orEmpty()
+            val sebatch = semua.filter { spkBatchPrefix(it.kodePengiriman) == prefix }
+            // Job yang dibuka WAJIB ada di daftar walau antrian tak memuatnya
+            // (halaman terpotong / baru berpindah status) — kalau tidak, layar
+            // memperlihatkan SPK tanpa unit yang justru sedang dibaca orangnya.
+            val lengkap = if (sebatch.any { it.id == job.id }) sebatch else listOf(job) + sebatch
+            _state.update { it.copy(batchUnits = lengkap) }
         }
     }
 
