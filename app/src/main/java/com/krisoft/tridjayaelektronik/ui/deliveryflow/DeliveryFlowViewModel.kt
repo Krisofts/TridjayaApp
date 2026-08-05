@@ -224,6 +224,12 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
             }
         }
+        // Antrian PDI butuh `barangBesarThreshold` untuk memisah barang besar
+        // (PDI per unit) dari barang kecil (satu klik se-SPK). Cached +
+        // fail-soft: gagal = ambang null = SEMUA unit dianggap besar, antrian
+        // kembali ke perilaku per unit yang lama, bukan salah menawarkan jalur
+        // massal.
+        loadDeliveryContextForCreate()
     }
 
     /** Geser urutan muatan driver (manifest). Optimistic; gagal → reload + error. */
@@ -453,6 +459,31 @@ class DeliveryFlowViewModel @Inject constructor(
 
     fun approveDiscount(id: String, note: String) = discountAction { repository.approveDiscount(id, note) }
     fun rejectDiscount(id: String, note: String) = discountAction { repository.rejectDiscount(id, note) }
+
+    /**
+     * Sales menyerah pada diskon yang ditolak: baris `rejected` sebatch dilepas
+     * `pending_discount` → `pending_pdi`.
+     *
+     * Sengaja BUKAN [discountAction]: pemanggilnya layar DETAIL SPK, bukan
+     * antrian approval, jadi memuat ulang antrian `pending` tak ada gunanya
+     * sementara yang justru harus berubah adalah status unit yang sedang
+     * dibuka. Tanpa `loadDetail` di sini, layar tetap memperlihatkan
+     * `pending_discount` beserta tombolnya — persis gejala "tombolnya tak
+     * bereaksi" walau servernya sudah memindahkan unitnya.
+     */
+    fun lanjutTanpaDiskon(discountId: String, jobId: String) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = repository.lanjutTanpaDiskon(discountId)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    loadDetail(jobId)
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
 
     private fun discountAction(block: suspend () -> AuthResult<*>) {
         if (_state.value.submitting) return
@@ -695,6 +726,19 @@ class DeliveryFlowViewModel @Inject constructor(
         res.mapOk { onDone() }
     }
 
+    /**
+     * PDI MASSAL barang kecil se-SPK (2026-08-05). Tak ada checklist, tak ada
+     * serial — server menutup semua unit kecil `pending_pdi` sebatch sekaligus.
+     *
+     * BEDA dari [submitPdi]: tak ada foto yang diunggah dan tak ada cabang
+     * `pending_perbaikan` untuk ditangani — unit yang lewat jalur ini memang
+     * tak dijawab checklist-nya, jadi tak mungkin ada jawaban "Tidak" yang
+     * menahannya.
+     */
+    fun submitPdiKecil(id: String, onDone: () -> Unit) = action {
+        repository.submitPdiKecil(id).mapOk { onDone() }
+    }
+
     /** Simpan satu form pengambilan aki (gate PDI kategori ber-flag `requiresAkiForm`). */
     fun createAkiForm(id: String, body: com.krisoft.tridjayaelektronik.data.model.CreateAkiFormBody, onDone: () -> Unit) {
         if (_state.value.submitting) return
@@ -795,11 +839,23 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Konfirmasi SPK kasir. Sejak 2026-08-05 server mem-FAN-OUT panggilan ini
+     * ke seluruh unit `pending_spk` sebatch dengan `noTransaksi` yang sama —
+     * satu SPK = satu transaksi GS, seperti di GS sendiri.
+     *
+     * [units] diisi HANYA kalau kasir benar-benar mengetik nominal DP per unit
+     * (SPK ber-unit COD `dp` lebih dari satu). Mengirim daftar setengah terisi
+     * lebih buruk daripada tidak mengirim sama sekali: server memvalidasi tiap
+     * unit COD `dp` sebatch wajib bernominal dan menolak 400 — sementara tanpa
+     * daftar itu unit lain memakai fallback `codDpAmount` rencana sales.
+     */
     fun confirmSpk(
         id: String,
         noTransaksi: String,
         kasirKonfirmasiPembayaran: Boolean? = null,
         kasirDpDiterima: Double? = null,
+        units: List<com.krisoft.tridjayaelektronik.data.model.ConfirmSpkUnitBody>? = null,
         onDone: () -> Unit,
     ) = action {
         repository.confirmSpk(
@@ -808,6 +864,7 @@ class DeliveryFlowViewModel @Inject constructor(
                 noTransaksi = noTransaksi.trim(),
                 kasirKonfirmasiPembayaran = kasirKonfirmasiPembayaran,
                 kasirDpDiterima = kasirDpDiterima,
+                units = units?.takeIf { it.isNotEmpty() },
             ),
         ).mapOk { onDone() }
     }
@@ -879,6 +936,32 @@ class DeliveryFlowViewModel @Inject constructor(
     fun claimPdi(id: String) = jobUpdate { repository.claimPdi(id) }
 
     fun releasePdiClaim(id: String) = jobUpdate { repository.releasePdiClaim(id) }
+
+    /**
+     * Klaim / lepas klaim PDI dari ANTRIAN, bukan dari layar detail.
+     *
+     * Sengaja bukan [jobUpdate]: wrapper itu menaruh hasilnya di `detail`, yang
+     * di layar antrian tidak dirender sama sekali — tombolnya akan terlihat
+     * "tidak bereaksi" padahal servernya sudah mengunci seluruh SPK. Yang harus
+     * dimuat ulang di sini adalah daftarnya.
+     */
+    fun claimPdiAntrian(id: String, onDone: () -> Unit) = klaimAntrian(onDone) { repository.claimPdi(id) }
+
+    fun releasePdiClaimAntrian(id: String, onDone: () -> Unit) = klaimAntrian(onDone) { repository.releasePdiClaim(id) }
+
+    private fun klaimAntrian(onDone: () -> Unit, block: suspend () -> AuthResult<DeliveryJobDto>) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            when (val res = block()) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    onDone()
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
 
     /** Aksi yang MEMUTAKHIRKAN job yang sedang dibuka, bukan menyelesaikan
      *  tahapnya — sengaja TIDAK menyetel `actionDone` (layar detail memakai

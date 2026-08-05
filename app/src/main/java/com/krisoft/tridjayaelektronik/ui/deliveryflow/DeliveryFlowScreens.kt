@@ -251,6 +251,19 @@ private fun JobCard(job: DeliveryJobDto, onClick: (() -> Unit)?, currentUserId: 
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("PDI Mandiri", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
                 }
+                // Penanda COD di KARTU, bukan cuma di detail (2026-08-06). Sejak
+                // serah terima fan-out se-SPK, gate foto uang hanya terpicu pada
+                // unit yang DIBUKA — driver yang membuka unit non-COD akan
+                // menuntaskan unit COD sekamar tanpa pernah diminta foto uangnya.
+                // Label ini yang memberitahunya unit mana yang harus dibuka.
+                if (job.driverTerimaUang == true) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "COD · tagih ${job.driverTerimaNominal?.let { rupiah(it) } ?: "-"}",
+                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        color = Color(0xFF9E4B00),
+                    )
+                }
                 // Metode pengiriman alternatif (2026-07-24) — job self_pickup/sales_delivery
                 // tak lewat assign-driver biasa, kasir/DC/driver perlu tahu kenapa.
                 when (job.deliveryMethod) {
@@ -289,19 +302,60 @@ fun DeliveryQueueScreen(
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(status, view) { viewModel.loadQueue(status, view, asDriver) }
+    val muatUlang = { viewModel.loadQueue(status, view, asDriver) }
 
-    // Antrian surat jalan: tombol terbit muncul per baris, tak perlu buka detail.
+    // ── Aksi level-SPK (2026-08-06) ──────────────────────────────────────────
+    // Backend mem-FAN-OUT surat jalan, penugasan driver, konfirmasi kasir,
+    // klaim PDI, dan PDI barang kecil ke SELURUH unit satu SPK. Antrian ini
+    // dulu murni daftar unit, jadi petugas menekan tombol yang sama N kali
+    // untuk pekerjaan yang server sudah selesaikan pada tekanan PERTAMA —
+    // panggilan ke-2 dst dijawab 400 "sudah tidak di tahap ini" dan terbaca
+    // sebagai kegagalan. Sekarang unit dikelompokkan per SPK dan tombolnya
+    // hidup di kepala grup.
+    val threshold = state.deliveryContext?.barangBesarThreshold
+    val groups = remember(state.items) { groupJobsBySpk(state.items) }
+
     val terbitkanLangsung = status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && viewModel.access.note
-    var terbitkanJob by remember { mutableStateOf<DeliveryJobDto?>(null) }
-    terbitkanJob?.let { job ->
+    val konfirmasiKasir = status == DeliveryStatusKey.PENDING_SPK && viewModel.access.kasir
+    val antrianPdi = status == DeliveryStatusKey.PENDING_PDI && viewModel.access.pdi
+
+    var terbitkanGrup by remember { mutableStateOf<SpkBatchGroup?>(null) }
+    terbitkanGrup?.let { grup ->
         TerbitkanSuratJalanDialog(
-            job = job,
+            grup = grup,
             submitting = state.submitting,
-            onDismiss = { terbitkanJob = null },
+            onDismiss = { terbitkanGrup = null },
             onSubmit = { cabang ->
-                viewModel.issueDeliveryNote(job.id, cabang) {
-                    terbitkanJob = null
-                    viewModel.loadQueue(status, view, asDriver)
+                // Anchor = unit pertama grup; server menyeret sisanya.
+                viewModel.issueDeliveryNote(grup.jobs.first().id, cabang) {
+                    terbitkanGrup = null
+                    muatUlang()
+                }
+            },
+        )
+    }
+
+    var kasirGrup by remember { mutableStateOf<SpkBatchGroup?>(null) }
+    kasirGrup?.let { grup ->
+        KonfirmasiSpkGrupDialog(
+            grup = grup,
+            submitting = state.submitting,
+            onDismiss = { kasirGrup = null },
+            onSubmit = { noTransaksi, konfirmasiBayar, units ->
+                val anchor = grup.jobs.first()
+                viewModel.confirmSpk(
+                    id = anchor.id,
+                    noTransaksi = noTransaksi,
+                    kasirKonfirmasiPembayaran = konfirmasiBayar,
+                    // Field lama dipakai HANYA untuk SPK satu unit — di SPK
+                    // banyak unit `units[]` sudah memuat nominal anchor juga,
+                    // dan mengirim keduanya membuat dua sumber untuk angka yang
+                    // sama.
+                    kasirDpDiterima = if (grup.jobs.size == 1) units.firstOrNull()?.kasirDpDiterima else null,
+                    units = if (grup.jobs.size > 1) units else null,
+                ) {
+                    kasirGrup = null
+                    muatUlang()
                 }
             },
         )
@@ -333,8 +387,13 @@ fun DeliveryQueueScreen(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    itemsIndexed(state.items, key = { _, it -> it.id }) { index, job ->
-                        if (reorderable) {
+                    if (reorderable) {
+                        // Manifest driver SENGAJA tetap daftar RATA per unit:
+                        // `POST /delivery/driver/reorder` mengurutkan id unit,
+                        // dan panah naik/turun di sini bekerja atas indeks
+                        // daftar itu. Mengelompokkannya per SPK membuat indeks
+                        // yang dikirim tak lagi sama dengan yang dilihat driver.
+                        itemsIndexed(state.items, key = { _, it -> it.id }) { index, job ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.weight(1f)) { JobCard(job, onClick = { onOpen(job.id) }, currentUserId = viewModel.currentUserId) }
                                 Column {
@@ -346,23 +405,35 @@ fun DeliveryQueueScreen(
                                     }
                                 }
                             }
-                        } else if (terbitkanLangsung) {
-                            // Terbitkan surat jalan LANGSUNG dari daftar (2026-07-28):
-                            // DC sebelumnya harus membuka detail tiap SPK dulu untuk
-                            // menemukan tombolnya — satu ketukan ekstra per unit pada
-                            // tahap yang justru paling sering diproses borongan.
-                            // Ketuk kartunya tetap membuka detail seperti biasa.
-                            Column {
-                                JobCard(job, onClick = { onOpen(job.id) }, currentUserId = viewModel.currentUserId)
-                                Spacer(Modifier.height(6.dp))
-                                ExpressiveFilledButton(
-                                    onClick = { terbitkanJob = job },
-                                    enabled = !state.submitting,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("Terbitkan Surat Jalan") }
+                        }
+                    } else {
+                        groups.forEach { grup ->
+                            if (grup.jobs.size > 1) {
+                                item(key = "hdr-${grup.kode}") { SpkGrupHeader(grup) }
                             }
-                        } else {
-                            JobCard(job, onClick = { onOpen(job.id) }, currentUserId = viewModel.currentUserId)
+                            items(grup.jobs, key = { it.id }) { job ->
+                                JobCard(job, onClick = { onOpen(job.id) }, currentUserId = viewModel.currentUserId)
+                            }
+                            // Tahap tanpa aksi level-SPK (riwayat, konfirmasi
+                            // pembayaran) tak menyisipkan item kosong — daftar
+                            // ini ber-`spacedBy`, jadi item nol-tinggi tetap
+                            // memakan satu jarak dan terlihat sebagai lubang.
+                            if (terbitkanLangsung || konfirmasiKasir || antrianPdi) item(key = "aksi-${grup.kode}") {
+                                SpkGrupAksi(
+                                    grup = grup,
+                                    threshold = threshold,
+                                    submitting = state.submitting,
+                                    currentUserId = viewModel.currentUserId,
+                                    terbitkanLangsung = terbitkanLangsung,
+                                    konfirmasiKasir = konfirmasiKasir,
+                                    antrianPdi = antrianPdi,
+                                    onTerbitkan = { terbitkanGrup = grup },
+                                    onKonfirmasiKasir = { kasirGrup = grup },
+                                    onKlaimPdi = { viewModel.claimPdiAntrian(it) { muatUlang() } },
+                                    onLepasKlaimPdi = { viewModel.releasePdiClaimAntrian(it) { muatUlang() } },
+                                    onPdiKecil = { anchorId -> viewModel.submitPdiKecil(anchorId) { muatUlang() } },
+                                )
+                            }
                         }
                     }
                 }
@@ -371,24 +442,155 @@ fun DeliveryQueueScreen(
     }
 }
 
-/** Dialog terbit surat jalan dari daftar antrian — isian sama dengan aksi di
- *  layar detail (`DeliveryNoteAction`), cuma dibungkus dialog supaya DC tak
- *  perlu keluar-masuk detail satu per satu. */
+/**
+ * Kepala grup SPK — dirender HANYA untuk SPK berisi lebih dari satu unit.
+ * SPK satu unit (mayoritas) sengaja tak diberi header supaya antrian tak penuh
+ * bingkai yang tak menerangkan apa pun.
+ */
+@Composable
+private fun SpkGrupHeader(grup: SpkBatchGroup) {
+    val konsumen = grup.jobs.firstOrNull()?.customerName?.trim().orEmpty()
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "SPK ${grup.kode}",
+            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f),
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
+            Text(
+                "${grup.jobs.size} unit", style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+        }
+    }
+    if (konsumen.isNotEmpty()) {
+        Text(
+            konsumen, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * Tombol tahap di level SPK. Semua endpoint yang dipanggil di sini FAN-OUT
+ * se-SPK di server, jadi satu ketukan menyelesaikan seluruh grup — teksnya
+ * menyebut jumlah unit supaya petugas tahu itu memang disengaja, bukan
+ * kelalaian yang menyisakan unit lain.
+ */
+@Composable
+private fun SpkGrupAksi(
+    grup: SpkBatchGroup,
+    threshold: Double?,
+    submitting: Boolean,
+    currentUserId: String,
+    terbitkanLangsung: Boolean,
+    konfirmasiKasir: Boolean,
+    antrianPdi: Boolean,
+    onTerbitkan: () -> Unit,
+    onKonfirmasiKasir: () -> Unit,
+    onKlaimPdi: (String) -> Unit,
+    onLepasKlaimPdi: (String) -> Unit,
+    onPdiKecil: (String) -> Unit,
+) {
+    val n = grup.jobs.size
+    val suffix = if (n > 1) " ($n unit)" else ""
+    when {
+        // Surat jalan: satu lembar fisik untuk satu pengiriman — server memakai
+        // ulang nomor yang sama untuk seluruh unit SPK.
+        terbitkanLangsung -> {
+            Spacer(Modifier.height(6.dp))
+            ExpressiveFilledButton(
+                onClick = onTerbitkan, enabled = !submitting, modifier = Modifier.fillMaxWidth(),
+            ) { Text("Terbitkan Surat Jalan$suffix") }
+        }
+        konfirmasiKasir -> {
+            Spacer(Modifier.height(6.dp))
+            ExpressiveFilledButton(
+                onClick = onKonfirmasiKasir, enabled = !submitting, modifier = Modifier.fillMaxWidth(),
+            ) { Text("Konfirmasi SPK$suffix") }
+        }
+        antrianPdi -> {
+            val kecil = unitPdiKecil(grup.jobs, threshold)
+            val besar = grup.jobs.size - kecil.size
+            // Klaim dinilai atas unit yang BELUM dipegang siapa pun. Unit yang
+            // sudah dipegang orang lain sengaja dibiarkan — server melewatinya
+            // (tak merebut), jadi menawarkan "Ambil PDI" selama masih ada yang
+            // bebas tetap benar.
+            val bebas = grup.jobs.filter { it.pdiClaimedBy.isNullOrBlank() }
+            val milikSaya = grup.jobs.filter { it.pdiClaimedBy == currentUserId && currentUserId.isNotBlank() }
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (bebas.isNotEmpty()) {
+                    ExpressiveOutlinedButton(
+                        onClick = { onKlaimPdi(bebas.first().id) }, enabled = !submitting,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (n > 1) "Ambil PDI SPK Ini (${bebas.size} unit)" else "Ambil PDI") }
+                } else if (milikSaya.isNotEmpty()) {
+                    ExpressiveOutlinedButton(
+                        onClick = { onLepasKlaimPdi(milikSaya.first().id) }, enabled = !submitting,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (n > 1) "Lepas Klaim (${milikSaya.size} unit)" else "Lepas Klaim") }
+                }
+                if (kecil.isNotEmpty()) {
+                    ExpressiveFilledButton(
+                        onClick = { onPdiKecil(kecil.first().id) }, enabled = !submitting,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Selesaikan PDI (${kecil.size} barang kecil)") }
+                    Text(
+                        "Barang di bawah ambang harga selesai tanpa checklist & nomor rangka." +
+                            if (besar > 0) " $besar barang besar tetap di-PDI satu per satu lewat detailnya." else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dialog terbit surat jalan dari daftar antrian — isian sama dengan aksi di
+ * layar detail (`DeliveryNoteAction`), cuma dibungkus dialog supaya DC tak
+ * perlu keluar-masuk detail satu per satu.
+ *
+ * Sejak 2026-08-05 endpoint-nya fan-out se-SPK: SATU nomor surat jalan untuk
+ * seluruh unit, karena dokumen fisiknya memang satu lembar untuk satu
+ * pengiriman.
+ */
 @Composable
 private fun TerbitkanSuratJalanDialog(
-    job: DeliveryJobDto,
+    grup: SpkBatchGroup,
     submitting: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit,
 ) {
-    var cabang by remember(job.id) { mutableStateOf(job.kodeDealer.orEmpty()) }
+    val anchor = grup.jobs.first()
+    var cabang by remember(grup.kode) { mutableStateOf(anchor.kodeDealer.orEmpty()) }
     AlertDialog(
         onDismissRequest = { if (!submitting) onDismiss() },
         title = { Text("Terbitkan Surat Jalan") },
         text = {
             Column {
-                Text(job.kodePengiriman, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(job.namaBarang.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("SPK ${grup.kode}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                grup.jobs.forEach { j ->
+                    Text(
+                        "• ${j.namaBarang ?: j.kodeBarang ?: "-"}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (grup.jobs.size > 1) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Satu nomor surat jalan untuk ${grup.jobs.size} unit — satu pengiriman, satu lembar.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 ExpressiveTextField(cabang, { cabang = it }, label = "Cabang sumber unit (wajib)", modifier = Modifier.fillMaxWidth())
             }
@@ -396,6 +598,123 @@ private fun TerbitkanSuratJalanDialog(
         confirmButton = {
             TextButton(onClick = { onSubmit(cabang) }, enabled = !submitting && cabang.trim().isNotEmpty()) {
                 Text(if (submitting) "Menerbitkan…" else "Terbitkan")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text("Batal") } },
+    )
+}
+
+/**
+ * Konfirmasi SPK kasir untuk SELURUH unit sekaligus — cerminan modal "Sudah
+ * SPK" di `KasirDashboardPage` web.
+ *
+ * Nomor transaksi GS diketik SEKALI: di GS, SPK banyak barang adalah satu
+ * transaksi satu nomor. Nominal DP diketik PER UNIT karena tiap unit COD `dp`
+ * punya DP-nya sendiri, dan server menolak (400) daftar `units[]` yang
+ * menyisakan salah satunya kosong.
+ */
+@Composable
+private fun KonfirmasiSpkGrupDialog(
+    grup: SpkBatchGroup,
+    submitting: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (String, Boolean?, List<com.krisoft.tridjayaelektronik.data.model.ConfirmSpkUnitBody>) -> Unit,
+) {
+    var noTransaksi by remember(grup.kode) { mutableStateOf(grup.jobs.first().noTransaksi.orEmpty()) }
+    var konfirmasiBayar by remember(grup.kode) { mutableStateOf(false) }
+    // Nominal DP per unit-id, hanya untuk unit COD mode `dp`.
+    val dp = remember(grup.kode) { mutableStateMapOf<String, String>() }
+
+    val adaCod = grup.jobs.any { it.driverTerimaUang == true }
+    val unitCodDp = grup.jobs.filter { it.driverTerimaUang == true && it.codPaymentMode == "dp" }
+    val dpLengkap = unitCodDp.all { (dp[it.id]?.toDoubleOrNull() ?: 0.0) > 0.0 }
+
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        title = { Text("Konfirmasi SPK", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("SPK ${grup.kode}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    grup.jobs.first().customerName ?: "-",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                ExpressiveTextField(
+                    noTransaksi, { noTransaksi = it },
+                    label = "No. Transaksi GS (wajib)", modifier = Modifier.fillMaxWidth(),
+                )
+                if (grup.jobs.size > 1) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Satu nomor untuk ${grup.jobs.size} unit — di GS, SPK banyak barang adalah satu transaksi.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                grup.jobs.forEach { j ->
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        j.namaBarang ?: j.kodeBarang ?: "-",
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        j.kodePengiriman, style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (j.driverTerimaUang == true) {
+                        Text(
+                            "COD ${if (j.codPaymentMode == "dp") "DP" else "Full Payment"} · sisa diambil driver: " +
+                                (j.driverTerimaNominal?.let { rupiah(it) } ?: "-"),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (j.codPaymentMode == "dp") {
+                            Spacer(Modifier.height(4.dp))
+                            MoneyTextField(
+                                dp[j.id].orEmpty(), { v -> dp[j.id] = v },
+                                label = "DP diterima kasir (wajib) *", modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+                if (adaCod) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { konfirmasiBayar = !konfirmasiBayar },
+                    ) {
+                        Checkbox(checked = konfirmasiBayar, onCheckedChange = { konfirmasiBayar = it })
+                        Text("Sudah cek pembayaran benar (opsional)", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text(
+                        "Uang yang ditagih driver dikonfirmasi nanti di tab Setoran Driver, setelah barang diantar.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !submitting && noTransaksi.trim().isNotEmpty() && dpLengkap,
+                onClick = {
+                    onSubmit(
+                        noTransaksi,
+                        if (adaCod) konfirmasiBayar else null,
+                        unitCodDp.map {
+                            com.krisoft.tridjayaelektronik.data.model.ConfirmSpkUnitBody(
+                                id = it.id, kasirDpDiterima = dp[it.id]?.toDoubleOrNull(),
+                            )
+                        },
+                    )
+                },
+            ) {
+                Text(
+                    when {
+                        submitting -> "Menyimpan…"
+                        !dpLengkap -> "Isi DP tiap unit"
+                        else -> "Konfirmasi" + if (grup.jobs.size > 1) " (${grup.jobs.size} unit)" else ""
+                    }
+                )
             }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text("Batal") } },
@@ -523,7 +842,7 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                 // TIDAK dirender kalau syaratnya tak terpenuhi (bukan
                 // dirender-lalu-dinonaktifkan): tombol mati yang servernya
                 // jawab 400 cuma bikin orang menebak.
-                if (viewModel.isAdminViewer && spkBolehDisunting(job)) {
+                if (bolehSuntingSpk(job, viewModel.isAdminViewer, viewModel.currentUserId)) {
                     Spacer(Modifier.height(14.dp))
                     EditSpkAction(job, viewModel, state.submitting)
                 }
@@ -582,7 +901,15 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal ->
                         AssignAction(job, viewModel, state.submitting, state.drivers)
                     job.status == DeliveryStatusKey.ASSIGNED && isMyDriverJob ->
-                        SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
+                        Column {
+                            // Fan-out `dispatch` (2026-08-05): unit lain SPK ini
+                            // yang dipegang driver yang SAMA ikut berangkat.
+                            // Unit driver lain tak tersentuh — SPK yang dipecah
+                            // ke dua driver tetap berangkat masing-masing.
+                            SpkFanOutNote("Sekali tekan memberangkatkan semua unit SPK ini yang ditugaskan ke kamu.")
+                            Spacer(Modifier.height(8.dp))
+                            SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
+                        }
                     job.status == DeliveryStatusKey.IN_TRANSIT && isMyDriverJob ->
                         DeliverAction(job, viewModel, state.submitting, state.driverChecklist, state.driverChecklistError)
                     // Unit sudah sampai konsumen tapi uangnya belum tercatat masuk.
@@ -590,6 +917,14 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                     // non-COD tak punya titik konfirmasi sama sekali.
                     job.status == DeliveryStatusKey.DELIVERED && access.kasir && job.setoranKasirAt.isNullOrBlank() ->
                         SetoranKasirAction(job, viewModel, state.submitting)
+                    // Diskon DITOLAK = SPK kembali ke sales (2026-08-06). Sebelum
+                    // ini penolakan otomatis melepas unit ke antrian PDI; sekarang
+                    // unitnya TETAP tertahan sampai sales memilih. Tanpa cabang ini
+                    // layar cuma bilang "Tidak ada aksi pada tahap ini" dan SPK-nya
+                    // mandek selamanya dari sisi app — tanpa satu pun error.
+                    job.status == DeliveryStatusKey.PENDING_DISCOUNT &&
+                        (viewModel.isAdminViewer || (!job.salesUserId.isNullOrBlank() && job.salesUserId == viewModel.currentUserId)) ->
+                        DiskonTertahanAction(job, state.jobDiscounts, viewModel, state.submitting)
                     else -> Text(
                         when (job.status) {
                             DeliveryStatusKey.PENDING_PDI -> "Tahap ini ditangani tim PDI cabang."
@@ -865,6 +1200,22 @@ private fun SimpleAction(label: String, submitting: Boolean, onClick: () -> Unit
         else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
         Spacer(Modifier.width(4.dp)); Text(label)
     }
+}
+
+/**
+ * Catatan "aksi ini berlaku se-SPK".
+ *
+ * Layar detail hanya memuat SATU unit — ia tak punya daftar saudaranya, jadi
+ * kalimatnya sengaja tak menyebut jumlah. Menyebut angka yang tidak diketahui
+ * lebih buruk daripada tidak menyebut: petugas akan memercayainya.
+ */
+@Composable
+private fun SpkFanOutNote(teks: String) {
+    Text(
+        teks,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 @Composable
@@ -1229,6 +1580,103 @@ private fun KasirConfirmSpkAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel
  * Kasir menutup buku satu unit: nominal yang benar-benar diterima + foto bukti.
  * Non-blocking (tak mengubah status) dan boleh diulang — server menimpa.
  */
+/**
+ * SPK tertahan di `pending_discount` — apa yang bisa dilakukan pemiliknya.
+ *
+ * Sampai 2026-08-05, penolakan diskon melepas unit ke antrian PDI dengan
+ * sendirinya, jadi tahap ini tak pernah butuh tombol. Sejak 2026-08-06
+ * penolakan MENAHAN unit dan mengembalikan SPK ke sales — perubahan yang tak
+ * menghasilkan error apa pun di app lama, cuma SPK yang diam.
+ *
+ * Tiga jalan keluar versi server: ajukan ulang diskon, sunting isi SPK, atau
+ * lanjut tanpa diskon. Yang kedua ditawarkan lewat kartu "Ubah Isi SPK" yang
+ * terpisah, yang ketiga tombol di sini. Yang PERTAMA belum ada di app —
+ * `POST /inventory/discount-requests` tak pernah dipanggil dari HP (diskon
+ * hanya lahir bersama SPK), jadi kalimatnya menunjuk ke web alih-alih memberi
+ * tombol yang tak akan bekerja.
+ */
+@Composable
+private fun DiskonTertahanAction(
+    job: DeliveryJobDto,
+    riwayat: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>,
+    vm: DeliveryFlowViewModel,
+    submitting: Boolean,
+) {
+    // `createdAt` ISO-8601 → urut leksikografis = urut waktu.
+    val terakhir = riwayat.maxByOrNull { it.createdAt }
+    val ditolak = terakhir?.takeIf { it.status == "rejected" }
+    var konfirmasi by remember(job.id) { mutableStateOf(false) }
+
+    Text("Menunggu Keputusan Diskon", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(6.dp))
+
+    if (ditolak == null) {
+        Text(
+            if (terakhir == null) {
+                "Pengajuan diskon SPK ini sedang menunggu approver. Unit belum masuk antrian PDI sampai ada keputusan."
+            } else {
+                "Pengajuan diskon masih menunggu keputusan approver."
+            },
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.error.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                "Diskon ditolak", style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error,
+            )
+            ditolak.decisionNote?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                Spacer(Modifier.height(4.dp))
+                Text("Alasan: $it", style = MaterialTheme.typography.bodySmall)
+            }
+            ditolak.decidedByName?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                Text("Oleh $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "SPK ini TIDAK otomatis lanjut. Pilihanmu: ubah isi SPK lewat tombol di atas, " +
+                    "ajukan ulang diskon lewat web, atau lanjutkan tanpa diskon.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    ExpressiveFilledButton(
+        onClick = { konfirmasi = true }, enabled = !submitting, modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        else Text("Lanjut Tanpa Diskon")
+    }
+
+    if (konfirmasi) {
+        AlertDialog(
+            onDismissRequest = { if (!submitting) konfirmasi = false },
+            title = { Text("Lanjut tanpa diskon?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Harga kembali ke harga normal dan SELURUH barang SPK ini masuk antrian PDI. " +
+                        "Tak bisa dibatalkan dari sini — kalau masih mau menawar, batalkan dan ajukan diskon lagi lewat web."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !submitting,
+                    onClick = { vm.lanjutTanpaDiskon(ditolak.id, job.id); konfirmasi = false },
+                ) { Text("Ya, lanjutkan") }
+            },
+            dismissButton = { TextButton(onClick = { konfirmasi = false }, enabled = !submitting) { Text("Batal") } },
+        )
+    }
+}
+
 @Composable
 private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
     val id = job.id
@@ -1270,6 +1718,8 @@ private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
 private fun DeliveryNoteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
     var source by remember { mutableStateOf(job.kodeDealer.orEmpty()) }
     Text("Terbitkan Surat Jalan", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(4.dp))
+    SpkFanOutNote("Nomor surat jalan yang sama dipakai untuk SELURUH unit SPK ini — satu pengiriman, satu lembar.")
     Spacer(Modifier.height(8.dp))
     ExpressiveTextField(source, { source = it }, label = "Cabang sumber unit (wajib)", modifier = Modifier.fillMaxWidth())
     Spacer(Modifier.height(14.dp))
@@ -1289,6 +1739,17 @@ private fun AssignAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitt
     var mapUrl by remember { mutableStateOf(job.customerMapUrl.orEmpty()) }
 
     Text("Assign Driver + Jadwal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(4.dp))
+    // Fan-out `assign_driver` (2026-08-05). Konsekuensi operasional yang WAJIB
+    // disebut: memecah satu SPK ke dua driver tak lagi bisa lewat assign
+    // satu-satu — tugaskan sekali, lalu pindahkan unitnya lewat "reassign" di
+    // web (jalur itu sengaja TIDAK difan-out justru supaya pemecahan tetap
+    // mungkin). Tanpa kalimat ini DC akan mengira app-nya rusak.
+    SpkFanOutNote(
+        "Driver & jadwal ini berlaku untuk SELURUH unit SPK yang masih menunggu penjadwalan. " +
+            "Unit \"diambil sendiri\" dilewati. Mau dipecah ke dua driver? Tugaskan sekali dulu, " +
+            "lalu pindahkan unitnya lewat menu reassign di web."
+    )
     Spacer(Modifier.height(8.dp))
     // Filter driver SE-REGION (paritas web `driversForRegion` 2026-07-21): job
     // Jawa hanya driver Jawa, Manado (D-06/D-07) hanya driver Manado. Region
@@ -1417,6 +1878,20 @@ private fun DeliverAction(
     }
 
     Text("Serah Terima", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(4.dp))
+    // Fan-out `deliver` (2026-08-05): foto + rating + checklist SEKALI berlaku
+    // untuk semua unit SPK ini yang kamu pegang. Yang TIDAK ikut: unit driver
+    // lain. Gate-nya (chat H-1 / checklist / foto uang) dinilai server atas
+    // unit yang dipanggil — karena itu buka SPK dari unit COD kalau ada, supaya
+    // foto uangnya tetap ditagih. Baris DB tetap per unit, jadi hitungan
+    // kiriman driver tidak berubah.
+    SpkFanOutNote(
+        "Foto, rating, dan checklist ini berlaku untuk semua unit SPK ini yang kamu antar sekaligus." +
+            if (!needCash) {
+                " Kalau SPK ini punya barang COD, buka serah terimanya DARI barang COD itu — " +
+                    "foto uang cuma diminta pada barang yang dibuka."
+            } else ""
+    )
     Spacer(Modifier.height(8.dp))
     GpsStatusRow(photoState) { vm.refreshGps() }
     Spacer(Modifier.height(8.dp))
@@ -2337,8 +2812,24 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
-                items(state.discounts, key = { it.id }) { d ->
-                    DiscountCard(d, state.submitting, state.diskonBuktiPhotos[d.id], onApprove = { viewModel.approveDiscount(d.id, "") }, onReject = { rejectId = d.id })
+                // Satu kartu per SPK (2026-08-06): approve/reject di server
+                // FAN-OUT ke seluruh pengajuan `pending` sebatch, jadi daftar
+                // per-baris membuat approver menekan N tombol untuk keputusan
+                // yang sudah selesai pada tekanan pertama — sisanya dijawab
+                // "sudah diputuskan" dan terbaca sebagai kegagalan. Nilai tiap
+                // barang tetap dari pengajuannya sendiri; kartu ini yang
+                // menotalkannya supaya keputusannya diambil atas angka SPK utuh.
+                val grup = state.discounts.groupBy { it.spkBatchKode }.entries.toList()
+                items(grup, key = { it.key }) { (kode, pengajuan) ->
+                    DiscountSpkCard(
+                        kode = kode,
+                        pengajuan = pengajuan,
+                        submitting = state.submitting,
+                        buktiFoto = state.diskonBuktiPhotos,
+                        // Anchor = pengajuan pertama; server menyeret sisanya.
+                        onApprove = { viewModel.approveDiscount(pengajuan.first().id, "") },
+                        onReject = { rejectId = pengajuan.first().id },
+                    )
                 }
             }
         }
@@ -2354,12 +2845,26 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
             onDismissRequest = { rejectId = null },
             title = { Text("Tolak diskon?", fontWeight = FontWeight.Bold) },
             text = {
-                ExpressiveTextField(
-                    note, { note = it },
-                    label = "Alasan penolakan (wajib)",
-                    singleLine = false,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column {
+                    // Dua hal yang berubah 2026-08-06 dan sama-sama tak terlihat
+                    // dari tombolnya: keputusan ini menyapu SELURUH barang SPK,
+                    // dan penolakan TIDAK melepas unit — SPK berhenti sampai
+                    // sales-nya memilih. Approver yang mengira "ditolak = lanjut
+                    // tanpa diskon" akan menahan SPK orang tanpa sadar.
+                    Text(
+                        "Penolakan berlaku untuk SEMUA barang SPK ini, dan unitnya TIDAK otomatis lanjut — " +
+                            "SPK kembali ke sales untuk direvisi atau dilanjutkan tanpa diskon.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    ExpressiveTextField(
+                        note, { note = it },
+                        label = "Alasan penolakan (wajib)",
+                        singleLine = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
@@ -2372,48 +2877,58 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
     }
 }
 
+/**
+ * Satu SPK = satu kartu, berisi baris per barang + total potongan.
+ *
+ * Keputusan diambil di level SPK karena begitulah server memutuskannya
+ * (fan-out ke seluruh pengajuan `pending` sebatch). Nilai per barang tetap
+ * ditampilkan apa adanya — approver perlu melihat komposisinya, bukan cuma
+ * jumlahnya, dan server memang menerapkan nilai masing-masing baris, bukan
+ * nilai anchor.
+ */
 @Composable
-private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto, submitting: Boolean, bukti: AkiPhotoState?, onApprove: () -> Unit, onReject: () -> Unit) {
+private fun DiscountSpkCard(
+    kode: String,
+    pengajuan: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>,
+    submitting: Boolean,
+    buktiFoto: Map<String, AkiPhotoState>,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+) {
+    val total = pengajuan.sumOf { it.value }
+    val konsumen = pengajuan.firstOrNull()?.jobSummary?.customerName ?: "-"
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(d.spkBatchKode + (d.baris?.let { " · baris $it" } ?: ""), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("Diskon ${rupiah(d.value)}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(d.jobSummary?.namaBarang ?: d.jobSummary?.kodeBarang ?: "-", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(d.jobSummary?.customerName ?: "-", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            InfoLine("Harga sebelum", d.hargaSebelum?.let { rupiah(it) })
-            InfoLine("Harga sesudah", d.hargaSesudah?.let { rupiah(it) })
-            InfoLine("Alasan", d.reason)
-            if (!d.accOleh.isNullOrBlank()) InfoLine("Acc oleh (di luar sistem)", d.accOleh)
-            when (bukti) {
-                // Bisa ditekan untuk ukuran penuh — tulisan di tangkapan layar
-                // WA/kwitansi tak terbaca pada thumbnail 140dp ber-Crop.
-                is AkiPhotoState.Ada -> {
-                    Spacer(Modifier.height(8.dp))
-                    BuktiFotoThumbnail(
-                        bitmap = bukti.bitmap,
-                        deskripsi = "Bukti acc diskon",
-                        modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp)),
-                    )
-                }
-                is AkiPhotoState.Memuat -> {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Memuat bukti acc…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                is AkiPhotoState.Gagal -> {
-                    Spacer(Modifier.height(8.dp))
+                Text(
+                    kode, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
                     Text(
-                        "Bukti acc gagal dimuat — file tidak ada di server atau jaringan putus.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        "${pengajuan.size} barang", style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     )
                 }
-                null -> Unit // sales memang tak melampirkan bukti — bukan kegagalan
             }
-            InfoLine("Diajukan", d.requestedByName)
+            Text(konsumen, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            pengajuan.forEach { d ->
+                Spacer(Modifier.height(10.dp))
+                DiscountBaris(d, buktiFoto[d.id])
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Total potongan SPK", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(rupiah(total), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
+            }
+            if (pengajuan.size > 1) {
+                Text(
+                    "Satu keputusan berlaku untuk ${pengajuan.size} barang SPK ini.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ExpressiveOutlinedButton(onClick = onReject, enabled = !submitting, modifier = Modifier.weight(1f)) {
@@ -2426,6 +2941,55 @@ private fun DiscountCard(d: com.krisoft.tridjayaelektronik.data.model.DiscountRe
                 }
             }
         }
+    }
+}
+
+/** Satu barang di dalam kartu SPK — isinya sama persis dengan kartu per-baris
+ *  yang lama, minus tombol keputusan (yang kini milik level SPK). */
+@Composable
+private fun DiscountBaris(d: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto, bukti: AkiPhotoState?) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                d.jobSummary?.namaBarang ?: d.jobSummary?.kodeBarang ?: "-",
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            Text("−${rupiah(d.value)}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
+        }
+        d.baris?.let {
+            Text("baris $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        InfoLine("Harga sebelum", d.hargaSebelum?.let { rupiah(it) })
+        InfoLine("Harga sesudah", d.hargaSesudah?.let { rupiah(it) })
+        InfoLine("Alasan", d.reason)
+        if (!d.accOleh.isNullOrBlank()) InfoLine("Acc oleh (di luar sistem)", d.accOleh)
+        when (bukti) {
+            // Bisa ditekan untuk ukuran penuh — tulisan di tangkapan layar
+            // WA/kwitansi tak terbaca pada thumbnail 140dp ber-Crop.
+            is AkiPhotoState.Ada -> {
+                Spacer(Modifier.height(8.dp))
+                BuktiFotoThumbnail(
+                    bitmap = bukti.bitmap,
+                    deskripsi = "Bukti acc diskon",
+                    modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp)),
+                )
+            }
+            is AkiPhotoState.Memuat -> {
+                Spacer(Modifier.height(8.dp))
+                Text("Memuat bukti acc…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            is AkiPhotoState.Gagal -> {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Bukti acc gagal dimuat — file tidak ada di server atau jaringan putus.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            null -> Unit // sales memang tak melampirkan bukti — bukan kegagalan
+        }
+        InfoLine("Diajukan", d.requestedByName)
     }
 }
 

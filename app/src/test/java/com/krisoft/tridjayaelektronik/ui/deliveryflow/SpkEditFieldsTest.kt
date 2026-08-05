@@ -102,6 +102,40 @@ class SpkEditFieldsTest {
         }
     }
 
+    /**
+     * Gate "Ubah Isi SPK" dilebarkan 2026-08-06: sales PEMILIK boleh menyunting
+     * selagi `pending_discount` (SPK memang sedang di tangannya sejak penolakan
+     * diskon berhenti melepas unit). Yang TIDAK boleh melebar ikut: sales lain,
+     * dan pemilik pada tahap mana pun selain `pending_discount`.
+     */
+    @Test
+    fun `sales pemilik boleh menyunting hanya saat pending_discount`() {
+        val diskon = job.copy(status = DeliveryStatusKey.PENDING_DISCOUNT, salesUserId = "U1")
+        assertTrue(bolehSuntingSpk(diskon, isAdmin = false, currentUserId = "U1"))
+        // Sales LAIN: 403 di server, jadi tombolnya tak boleh muncul.
+        assertFalse(bolehSuntingSpk(diskon, isAdmin = false, currentUserId = "U2"))
+        // Pemilik di tahap lain yang masih boleh disunting ADMIN — tetap bukan haknya.
+        assertFalse(
+            bolehSuntingSpk(
+                job.copy(status = DeliveryStatusKey.PENDING_PDI, salesUserId = "U1"),
+                isAdmin = false, currentUserId = "U1",
+            )
+        )
+        // Admin tak kehilangan apa pun.
+        assertTrue(bolehSuntingSpk(job.copy(status = DeliveryStatusKey.PENDING_PDI), isAdmin = true, currentUserId = ""))
+        // Sudah tercatat di GS = tertutup untuk SEMUA orang, admin sekalipun.
+        assertFalse(bolehSuntingSpk(diskon.copy(noTransaksi = "INV-1"), isAdmin = true, currentUserId = "U1"))
+    }
+
+    /** `salesUserId` kosong + `currentUserId` kosong TIDAK boleh saling cocok —
+     *  itu akan memberi hak sunting ke siapa pun yang membuka SPK lama. */
+    @Test
+    fun `pemilik kosong bukan berarti semua orang pemilik`() {
+        val tanpaPemilik = job.copy(status = DeliveryStatusKey.PENDING_DISCOUNT, salesUserId = null)
+        assertFalse(bolehSuntingSpk(tanpaPemilik, isAdmin = false, currentUserId = ""))
+        assertFalse(bolehSuntingSpk(tanpaPemilik.copy(salesUserId = ""), isAdmin = false, currentUserId = ""))
+    }
+
     @Test
     fun `ambang alasan sama dengan server`() {
         assertFalse(spkEditAlasanValid("oops"))
