@@ -140,6 +140,59 @@ disentuh. Siapa-melihat-apa di Activity diatur **registri ber-gate** `ActivityRe
 `routeForNavKey` (fungsi murni, diuji `ActivityNavHostRouteTest`) — kontrak stringly-typed tanpa
 pemeriksa kompiler, jangan menambah item baru tanpa menambah kasusnya di sana juga.
 
+**Alur SPK = SATU pencatatan per SPK, kerja fisik tetap per unit.** Pipeline
+backend memecah SPK banyak barang jadi satu baris `delivery_jobs` per unit
+fisik — itu benar untuk PDI/serial/serah terima, dan baris per unit itulah yang
+menghitung statistik kiriman. Tapi sejak 2026-08-05/06 (`b6cbb132`, `b68e2792`,
+`c0ee01ac` di repo **tridjaya**) hampir semua endpoint tahap **FAN-OUT se-SPK**:
+konfirmasi kasir, klaim PDI (POST+DELETE), surat jalan, penugasan driver,
+`dispatch`, `deliver`, dan approve/reject diskon — satu panggilan menyelesaikan
+seluruh unit sebatch. Di GS, SPK banyak barang memang SATU transaksi satu nomor.
+
+Konsekuensi yang mengikat app:
+- **Jangan pernah memanggil endpoint tahap dalam loop per unit.** Panggilan
+  ke-2 dst dijawab 400 "sudah tidak di tahap ini" — pekerjaannya sudah selesai
+  di panggilan pertama, tapi layarnya membacanya sebagai kegagalan. Antrian
+  (`DeliveryQueueScreen`) mengelompokkan unit lewat `groupJobsBySpk`
+  (`SpkBatch.kt`, cerminan `batch_prefix` backend + `utils/spkBatch.ts` web).
+- **Tiga bentuk antrian, sengaja berbeda:**
+  (a) **Kasir** (`pending_spk`) = SATU kartu per SPK (`SpkRingkasCard`), ketuk
+  membuka detail; tombol konfirmasinya HANYA di detail. Kasir menyalin satu
+  penjualan ke GS sebagai satu transaksi satu nomor — N baris untuk satu
+  penjualan membuatnya mengira ada N pekerjaan.
+  (b) **PDI & surat jalan** = baris per unit + header grup + tombol di kepala
+  grup; kerja fisiknya memang per unit (serial, checklist), keputusannya per
+  SPK.
+  (c) **Manifest driver** (`reorderable`) = daftar RATA per unit tanpa grup —
+  `POST /delivery/driver/reorder` mengurutkan id unit dan panah naik/turun
+  bekerja atas indeks daftar itu.
+- **Layar detail memuat saudara se-SPK lewat `loadBatchUnits`**, TAPI hanya
+  untuk `pending_spk` (satu-satunya tahap yang isiannya butuh daftar itu:
+  `units[]` menuntut nominal DP tiap unit COD `dp` sebatch). Sumbernya antrian
+  kasir itu sendiri (`GET /delivery?status=pending_spk`) sehingga himpunannya
+  sama persis dengan `siblings` yang divalidasi `confirm_spk`. Fail-soft: gagal
+  = jatuh balik ke satu unit. Kalau nanti tahap lain butuh daftar saudara,
+  perluas fungsi ini — jangan menebak dari `state.items` (isinya antrian mana
+  pun yang terakhir dibuka).
+- **Ambang barang besar datang dari server**, `GET /delivery/context` field
+  `barangBesarThreshold`. Barang besar tetap PDI per unit (checklist + no.
+  rangka); barang kecil tuntas sekali klik lewat `POST /delivery/{id}/pdi-kecil`.
+  `isBarangBesar` FAIL-CLOSED — harga/ambang tak diketahui = besar, jadi server
+  lama otomatis kembali ke perilaku per unit. **Jangan hardcode 1.500.000.**
+- **Diskon ditolak TIDAK lagi melepas unit.** SPK kembali ke sales dan unitnya
+  tetap `pending_discount` sampai dia memilih: revisi diskon (lewat web —
+  `POST /discount-requests` tak pernah dipanggil dari app), sunting isi SPK
+  (`bolehSuntingSpk`: admin, ATAU sales PEMILIK saat `pending_discount`), atau
+  `POST /discount-requests/{id}/lanjut-tanpa-diskon`. Tanpa jalan keluar itu SPK
+  mandek permanen dari sisi app **tanpa satu pun pesan error**.
+- **Gate serah terima dinilai atas unit yang DIBUKA, bukan se-SPK.** Driver yang
+  membuka unit non-COD menuntaskan unit COD sekamar tanpa pernah diminta foto
+  uang. App belum bisa memilih anchor sendiri (layar detail tak memuat saudara
+  se-SPK) — mitigasinya label "COD · tagih Rp…" di kartu antrian + kalimat
+  pengarah di form serah terima. Kalau nanti ada endpoint "unit se-batch",
+  inilah tempat pertama yang harus memakainya (`loadBatchUnits` sudah jadi
+  polanya — tinggal dilebarkan ke tahap driver).
+
 **Token refresh is synchronized + proactive.** `NetworkModule.kt` has one `TokenRefresher`
 (`synchronized`) shared by two callers: `AuthHeaderInterceptor` refreshes **proactively** when the
 access token is within ~1 min of its `expires_in`-derived expiry (so most requests skip the 401

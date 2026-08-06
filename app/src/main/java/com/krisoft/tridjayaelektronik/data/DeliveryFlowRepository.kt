@@ -143,6 +143,10 @@ class DeliveryFlowRepository @Inject constructor(
     suspend fun submitPdi(id: String, body: PdiBody): AuthResult<DeliveryJobDto> =
         call("Gagal simpan PDI") { api.submitPdi(id, body) }
 
+    /** PDI massal barang kecil se-SPK — [id] harus unit KECIL, lihat `submitPdiKecil` di API. */
+    suspend fun submitPdiKecil(id: String): AuthResult<DeliveryJobDto> =
+        call("Gagal menyelesaikan PDI barang kecil") { api.submitPdiKecil(id) }
+
     suspend fun confirmSpk(id: String, body: ConfirmSpkBody): AuthResult<DeliveryJobDto> =
         call("Gagal konfirmasi SPK") { api.confirmSpk(id, body) }
 
@@ -332,6 +336,10 @@ class DeliveryFlowRepository @Inject constructor(
     suspend fun rejectDiscount(id: String, note: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = decision("Gagal menolak diskon") {
         api.rejectDiscount(id, com.krisoft.tridjayaelektronik.data.model.DecisionBody(note.ifBlank { null }))
     }
+
+    /** Lepas seluruh baris `rejected` sebatch dari `pending_discount` → `pending_pdi`. */
+    suspend fun lanjutTanpaDiskon(id: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> =
+        decision("Gagal melanjutkan tanpa diskon") { api.lanjutTanpaDiskon(id) }
 
     private inline fun decision(
         fallback: String,

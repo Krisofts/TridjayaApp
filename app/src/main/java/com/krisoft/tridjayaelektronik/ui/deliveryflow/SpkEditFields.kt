@@ -147,6 +147,27 @@ fun spkBolehDisunting(job: DeliveryJobDto): Boolean =
         (job.status == DeliveryStatusKey.PENDING_PDI || job.status == DeliveryStatusKey.PENDING_DISCOUNT ||
             job.status == DeliveryStatusKey.PENDING_PERBAIKAN)
 
+/**
+ * Siapa yang boleh menekan "Ubah Isi SPK" pada unit ini.
+ *
+ * Cerminan guard `edit_job` yang DILEBARKAN 2026-08-06: selain administrator,
+ * **sales PEMILIK SPK** boleh menyunting selagi status `pending_discount`.
+ * Alasannya bukan kemurahan hati — sejak penolakan diskon tidak lagi melepas
+ * unit, SPK memang sedang berada di tangan sales, dan "revisi isi SPK" adalah
+ * satu dari tiga jalan keluar yang ditawarkan kepadanya. Tanpa gate ini
+ * tombolnya tak pernah muncul di HP dan sales harus membuka web hanya untuk
+ * mengubah satu angka.
+ *
+ * Kepemilikan tetap satu-satunya batas: sales LAIN dijawab 403 server, dan
+ * jendelanya sempit (hanya `pending_discount`, hanya sebelum tercatat di GS).
+ */
+fun bolehSuntingSpk(job: DeliveryJobDto, isAdmin: Boolean, currentUserId: String): Boolean {
+    if (!spkBolehDisunting(job)) return false
+    if (isAdmin) return true
+    val pemilik = !job.salesUserId.isNullOrBlank() && job.salesUserId == currentUserId
+    return pemilik && job.status == DeliveryStatusKey.PENDING_DISCOUNT
+}
+
 /** Alasan koreksi wajib — jejaknya hidup di `activity_log` gateway, dan jejak
  *  tanpa alasan cuma memberi tahu bahwa sesuatu berubah. Ambangnya SAMA dengan
  *  server (5 karakter) supaya tombol tak hidup untuk permintaan yang pasti 400. */

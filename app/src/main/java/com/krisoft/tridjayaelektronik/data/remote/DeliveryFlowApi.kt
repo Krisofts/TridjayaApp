@@ -128,6 +128,20 @@ interface DeliveryFlowApi {
     @POST("api/inventory/delivery/{id}/pdi")
     suspend fun submitPdi(@Path("id") id: String, @Body body: PdiBody): Response<ApiResponse<DeliveryJobDto>>
 
+    /**
+     * PDI MASSAL barang kecil se-SPK (2026-08-05) — tanpa body, tanpa
+     * checklist/serial, tapi jejak `pdiBy`/`pdiAt` tetap tercatat. Satu
+     * panggilan menuntaskan SEMUA unit `pending_pdi` sebatch yang harga OTR-nya
+     * <= `barangBesarThreshold` (`/context`).
+     *
+     * [id] WAJIB unit KECIL — unit besar dijawab 400 (barang besar tetap lewat
+     * [submitPdi] per unit). Unit kecil berkategori wajib-aki yang formnya belum
+     * disetujui DILEWATI diam-diam (tetap `pending_pdi`, disebut di `message`)
+     * kecuali kalau dia sendiri yang jadi [id] → 400.
+     */
+    @POST("api/inventory/delivery/{id}/pdi-kecil")
+    suspend fun submitPdiKecil(@Path("id") id: String): Response<ApiResponse<DeliveryJobDto>>
+
     @POST("api/inventory/delivery/{id}/spk")
     suspend fun confirmSpk(@Path("id") id: String, @Body body: ConfirmSpkBody): Response<ApiResponse<DeliveryJobDto>>
 
@@ -321,8 +335,31 @@ interface DeliveryFlowApi {
     @POST("api/inventory/discount-requests/{id}/approve")
     suspend fun approveDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
 
+    /**
+     * Menolak SATU pengajuan = menolak SELURUH pengajuan `pending` sebatch
+     * (2026-08-06, alasan yang sama dipakai semuanya).
+     *
+     * **BERUBAH & breaking alur**: penolakan TIDAK lagi melepas unit dari
+     * `pending_discount`. Baris-barisnya TETAP tertahan dan SPK kembali ke
+     * sales, yang memilih salah satu dari tiga: ajukan ulang diskon, sunting
+     * isi SPK (`PATCH /delivery/{id}`, kini menerima sales PEMILIK saat
+     * `pending_discount`), atau [lanjutTanpaDiskon]. App yang masih
+     * mengasumsikan "ditolak → unit masuk antrian PDI" akan meninggalkan SPK
+     * mandek tanpa satu pun pesan error.
+     */
     @POST("api/inventory/discount-requests/{id}/reject")
     suspend fun rejectDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
+
+    /**
+     * Sales menyerah pada diskon (2026-08-06, tanpa body): SELURUH baris
+     * ber-status `rejected` sebatch dilepas dari `pending_discount` →
+     * `pending_pdi`, jadi SPK bergerak utuh.
+     *
+     * Hanya untuk pengajuan ber-status `rejected` (selain itu 400); pemanggil
+     * harus PENGAJU pengajuan itu atau admin (selain itu 403).
+     */
+    @POST("api/inventory/discount-requests/{id}/lanjut-tanpa-diskon")
+    suspend fun lanjutTanpaDiskon(@Path("id") id: String): Response<ApiResponse<DiscountRequestDto>>
 
     // Preferensi per-user: terima/opt-out notifikasi WhatsApp alur SPK (setting mobile).
     @GET("api/inventory/discount-requests/wa-pref")

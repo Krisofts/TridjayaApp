@@ -220,7 +220,23 @@ data class DeliveryContextDto(
      *  penanda server sudah kenal klaim PDI; `null` (server lama ATAU konteks
      *  gagal dimuat) → app TIDAK menawarkan "Ambil PDI" sama sekali dan alur
      *  PDI persis seperti sebelumnya. */
-    val pdiClaimTtlHours: Int? = null
+    val pdiClaimTtlHours: Int? = null,
+    /**
+     * Ambang "barang besar" dalam RUPIAH (2026-08-05) — `app_settings`
+     * `spk_barang_besar_threshold`, default Rp 1.500.000. Harga OTR DI ATAS
+     * ambang = PDI per unit (checklist + no. rangka); di bawah/sama = boleh
+     * lewat jalur massal `POST /delivery/{id}/pdi-kecil`.
+     *
+     * **Jangan hardcode 1.500.000** — angkanya bisa diubah di `app_settings`
+     * tanpa deploy, dan app yang memakai angka sendiri akan menawarkan jalur
+     * massal untuk unit yang server tolak 400 (atau sebaliknya menyembunyikannya
+     * untuk unit yang sebenarnya boleh).
+     *
+     * `null` = server lama ATAU konteks gagal dimuat → [isBarangBesar]
+     * memperlakukan SEMUA unit sebagai besar, jadi app kembali persis ke
+     * perilaku PDI per unit sebelum fitur ini ada.
+     */
+    val barangBesarThreshold: Double? = null
 )
 
 /** Response upload foto (`POST /delivery/upload-photo`). */
@@ -606,6 +622,28 @@ data class ConfirmSpkBody(
     val noTransaksi: String,
     val kasirDpDiterima: Double? = null,
     val kasirKonfirmasiPembayaran: Boolean? = null,
+    /**
+     * Nominal DP AKTUAL per unit (2026-08-05) untuk SPK yang unit COD `dp`-nya
+     * lebih dari satu. Konfirmasi kasir kini FAN-OUT se-SPK: satu panggilan
+     * mengonfirmasi seluruh unit `pending_spk` sebatch dengan `noTransaksi`
+     * yang sama, jadi tanpa daftar ini tak ada tempat menyebutkan DP unit
+     * SELAIN unit yang dipanggil.
+     *
+     * Aturan server: **kalau dikirim, tiap unit COD `dp` sebatch wajib
+     * bernominal** (kalau tidak → 400 `"Nominal DP unit <kode> wajib diisi"`,
+     * divalidasi SEBELUM ada status yang bergerak). Kalau TIDAK dikirim
+     * (`null`, jalur APK lama), unit lain memakai fallback `codDpAmount`
+     * rencana sales — bukan salah, tapi angkanya rencana, bukan yang benar-benar
+     * diterima kasir.
+     */
+    val units: List<ConfirmSpkUnitBody>? = null,
+)
+
+/** Satu unit di dalam [ConfirmSpkBody.units]. */
+@Serializable
+data class ConfirmSpkUnitBody(
+    val id: String,
+    val kasirDpDiterima: Double? = null,
 )
 
 /**
@@ -681,6 +719,20 @@ data class AkiFormDto(
     val tujuanLainnya: String? = null,
     val merkTipe: String = "",
     val jumlahPcs: Int = 0,
+    /**
+     * Kapasitas/charger/spion — DIKIRIM server sejak dulu (`aki.rs` struct
+     * respons), tapi baru dibaca app 2026-08-06. Sebelumnya keempat field ini
+     * hanya ada di [CreateAkiFormBody] (arah KIRIM), sehingga app bisa membuat
+     * form ber-charger lalu tak pernah bisa menampilkannya lagi — charger &
+     * kaca spion praktis tak terlihat di mana pun dari HP.
+     *
+     * Dipakai [kelengkapanDariAkiForms] untuk menurunkan baris baterai/charger
+     * yang ikut diserahkan bersama unitnya.
+     */
+    val kapasitas: String? = null,
+    val jumlahKeterangan: String? = null,
+    val ambilCharger: Boolean = false,
+    val ambilKacaSpion: Boolean = false,
     /** Foto bukti aki (2026-07-24) — wajib diisi PDI saat submit. `null` = form lama sebelum fitur ini. */
     val photoUrl: String? = null,
     val akiBekasStatus: String = "belum",
