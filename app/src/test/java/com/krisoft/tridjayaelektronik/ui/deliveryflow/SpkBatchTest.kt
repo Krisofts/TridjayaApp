@@ -35,13 +35,21 @@ class SpkBatchTest {
     }
 
     /**
-     * Kode enroll GS lama tak berpola `-{baris}u{seq}`. Memotong di hubung
-     * terakhir (bukan regex) menjaga app tetap sepakat dengan `batch_prefix`
-     * backend untuk kode-kode itu.
+     * Kode enroll GS lama (`GS-2026-0007`) TIDAK berpola `-{baris}u{seq}`, jadi
+     * ia jadi grupnya sendiri. Insiden nyata 2026-08-06: aturan lama
+     * (potong-di-hubung-terakhir, meniru `batch_prefix` backend) memberi
+     * `GS-2026-0007` dan `GS-2026-0008` prefix yang SAMA, sehingga dua penjualan
+     * milik konsumen berbeda menyatu jadi satu kartu SPK — dan di layar detail
+     * ikut mencemari daftar barang serta seluruh angka Total.
      */
     @Test
-    fun `kode tanpa pola baris-unit tetap dipotong di hubung terakhir`() {
-        assertEquals("GS-2026", spkBatchPrefix("GS-2026-0007"))
+    fun `kode tanpa pola baris-unit jadi grupnya sendiri`() {
+        assertEquals("GS-2026-0007", spkBatchPrefix("GS-2026-0007"))
+        assertEquals("GS-2026-0008", spkBatchPrefix("GS-2026-0008"))
+        assertEquals(
+            2,
+            groupJobsBySpk(listOf(job("GS-2026-0007"), job("GS-2026-0008"))).size,
+        )
     }
 
     @Test
@@ -49,11 +57,16 @@ class SpkBatchTest {
         assertEquals("TANPAHUBUNG", spkBatchPrefix("TANPAHUBUNG"))
     }
 
-    /** Hubung di posisi 0 bukan pemisah batch — `substring(0,0)` = string kosong,
-     *  yang akan menggabungkan SEMUA kode aneh ke satu grup hantu. */
+    /** Pola harus di UJUNG. `-1u1` di tengah kode bukan penanda unit. */
     @Test
-    fun `hubung di awal tidak menghasilkan prefix kosong`() {
-        assertEquals("-X1", spkBatchPrefix("-X1"))
+    fun `pola unit hanya diakui di akhir kode`() {
+        assertEquals("DLV-1u1-LAIN", spkBatchPrefix("DLV-1u1-LAIN"))
+    }
+
+    /** Baris/seq berapa digit pun ikut, bukan cuma satu digit. */
+    @Test
+    fun `baris dan seq banyak digit tetap dikenali`() {
+        assertEquals("DLV-M1", spkBatchPrefix("DLV-M1-12u34"))
     }
 
     // ── grouping ─────────────────────────────────────────────────────────────

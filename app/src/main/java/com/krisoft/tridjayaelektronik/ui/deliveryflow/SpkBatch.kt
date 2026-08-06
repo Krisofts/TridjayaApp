@@ -2,25 +2,34 @@ package com.krisoft.tridjayaelektronik.ui.deliveryflow
 
 import com.krisoft.tridjayaelektronik.data.model.DeliveryJobDto
 
+/** Akhiran unit pada kode SPK manual: `-{baris}u{seq}`, mis. `-2u1`. */
+private val AKHIRAN_UNIT = Regex("""-\d+u\d+$""")
+
 /**
  * Identitas SPK dari kode pengiriman unit: `DLV-M{8hex}-{baris}u{seq}` →
- * `DLV-M{8hex}`.
+ * `DLV-M{8hex}`. Kode yang TIDAK berakhiran pola itu dikembalikan APA ADANYA,
+ * jadi ia jadi grup berisi dirinya sendiri.
  *
- * CERMINAN `batch_prefix` backend (`delivery.rs`) dan `spkBatchPrefix` web
- * (`frontend/src/utils/spkBatch.ts`) — potong di tanda hubung TERAKHIR, BUKAN
- * regex pola `-\d+u\d+`. Bedanya nyata: kode enroll GS lama formatnya tidak
- * mengikuti pola itu, dan regex akan menempatkan tiap unitnya di grup sendiri
- * sementara backend tetap mem-fan-out-kannya. Grup klien yang tak sama dengan
- * grup server = tombol "berlaku N unit" yang menyebut angka salah.
+ * **SENGAJA BERBEDA dari `batch_prefix` backend** (`delivery.rs`), yang memotong
+ * di tanda hubung TERAKHIR tanpa memeriksa pola. Perbedaan ini dibuat setelah
+ * dilaporkan dari lapangan (2026-08-06): kode SPK lama hasil enroll GS
+ * berbentuk `GS-2026-0007`, dan aturan potong-di-hubung-terakhir memberi
+ * keduanya prefix `GS-2026` — sehingga `GS-2026-0007` dan `GS-2026-0008`, DUA
+ * PENJUALAN BERBEDA milik konsumen berbeda, menyatu jadi satu kartu SPK. Di
+ * layar detail akibatnya lebih parah: daftar "Barang dalam SPK ini" dan seluruh
+ * angka "Total" ikut memuat job orang lain.
  *
- * Kode tanpa tanda hubung dikembalikan apa adanya (grup berisi dirinya
- * sendiri). Backend untuk kasus itu mengembalikan string kosong lalu
- * MELEWATKAN fan-out — jadi dua sisi sama-sama memperlakukannya sebagai SPK
- * berisi satu unit, cuma diwakili nilai yang berbeda.
+ * Menyamakan diri dengan backend TIDAK menyelamatkan apa pun di sini, karena
+ * klien tak pernah mengirim prefix ini ke server — ia cuma dipakai
+ * mengelompokkan tampilan dan menyaring daftar unit. Yang dikirim ke server
+ * selalu `id` job. Jadi ketatnya aturan di sini murni keuntungan.
+ *
+ * (Fan-out server atas kode GS lama adalah persoalan tersendiri di backend;
+ * worker enroll-nya sudah nonaktif, dan memperbaikinya bukan wewenang klien.)
  */
 fun spkBatchPrefix(kodePengiriman: String): String {
-    val i = kodePengiriman.lastIndexOf('-')
-    return if (i > 0) kodePengiriman.substring(0, i) else kodePengiriman
+    val akhiran = AKHIRAN_UNIT.find(kodePengiriman) ?: return kodePengiriman
+    return kodePengiriman.substring(0, akhiran.range.first)
 }
 
 /** Satu SPK + seluruh unit fisiknya. */

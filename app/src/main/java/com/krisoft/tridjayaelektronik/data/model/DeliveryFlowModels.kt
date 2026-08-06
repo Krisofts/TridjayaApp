@@ -719,6 +719,20 @@ data class AkiFormDto(
     val tujuanLainnya: String? = null,
     val merkTipe: String = "",
     val jumlahPcs: Int = 0,
+    /**
+     * Kapasitas/charger/spion — DIKIRIM server sejak dulu (`aki.rs` struct
+     * respons), tapi baru dibaca app 2026-08-06. Sebelumnya keempat field ini
+     * hanya ada di [CreateAkiFormBody] (arah KIRIM), sehingga app bisa membuat
+     * form ber-charger lalu tak pernah bisa menampilkannya lagi — charger &
+     * kaca spion praktis tak terlihat di mana pun dari HP.
+     *
+     * Dipakai [kelengkapanDariAkiForms] untuk menurunkan baris baterai/charger
+     * yang ikut diserahkan bersama unitnya.
+     */
+    val kapasitas: String? = null,
+    val jumlahKeterangan: String? = null,
+    val ambilCharger: Boolean = false,
+    val ambilKacaSpion: Boolean = false,
     /** Foto bukti aki (2026-07-24) — wajib diisi PDI saat submit. `null` = form lama sebelum fitur ini. */
     val photoUrl: String? = null,
     val akiBekasStatus: String = "belum",

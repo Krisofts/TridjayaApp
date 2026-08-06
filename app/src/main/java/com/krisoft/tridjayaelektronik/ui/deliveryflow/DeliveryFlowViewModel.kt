@@ -25,6 +25,7 @@ import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -114,6 +115,21 @@ data class DeliveryFlowUiState(
      * satu unit, persis seperti sebelum fitur ini ada.
      */
     val batchUnits: List<DeliveryJobDto> = emptyList(),
+    /**
+     * Form pengambilan aki SELURUH unit SPK yang sedang dibuka — sumber baris
+     * "kelengkapan" (baterai/charger/kaca spion) di daftar barang.
+     *
+     * Beda dari [akiForms] yang di-scope SATU job dan hanya dimuat di tahap
+     * PDI: yang ini se-SPK dan di semua tahap, karena kelengkapan itu bagian
+     * dari isi penjualan, bukan urusan tahap PDI saja.
+     *
+     * FAIL-SOFT: `GET /delivery/{id}/aki-form` di-gate `can_use_aki ||
+     * may_do_pdi_work`, jadi kasir/DC/driver dijawab 403 — daftarnya dibiarkan
+     * kosong tanpa pesan error, dan kartu SPK kembali menampilkan unit fisik
+     * saja. Menampilkan error di sini akan menutupi detail SPK yang justru jadi
+     * alasan orang membuka layarnya.
+     */
+    val batchAkiForms: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
     /** Daftar riwayat (menu "Pengambilan Aki", beda dari [akiForms] yang di-scope satu job). */
     val akiList: List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto> = emptyList(),
     /** Status foto bukti aki per form id (key = form.id). Sengaja BUKAN
@@ -241,15 +257,30 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     /** Geser urutan muatan driver (manifest). Optimistic; gagal → reload + error. */
-    fun moveLoad(id: String, up: Boolean) {
-        val current = _state.value.items
-        val idx = current.indexOfFirst { it.id == id }
+    /**
+     * Geser urutan muatan driver SATU SPK PENUH (2026-08-06), bukan satu unit.
+     *
+     * Manifest driver kini satu kartu per SPK — satu konsumen, satu alamat, satu
+     * pemberhentian. Mengurutkan per unit tak pernah masuk akal di lapangan:
+     * dua barang untuk rumah yang sama tak bisa dimuat di urutan berjauhan.
+     *
+     * Kontrak servernya TIDAK berubah: `POST /delivery/driver/reorder` tetap
+     * menerima daftar ID UNIT: grup ditukar posisinya, lalu diratakan lagi jadi
+     * urutan id. Jadi seluruh unit satu SPK selalu berdampingan — yang justru
+     * mustahil dijamin oleh penggeseran per unit yang lama.
+     *
+     * Optimistic: daftar lokal digeser lebih dulu; gagal → pesan + muat ulang.
+     */
+    fun moveLoadSpk(kode: String, up: Boolean) {
+        val groups = groupJobsBySpk(_state.value.items)
+        val idx = groups.indexOfFirst { it.kode == kode }
         val target = if (up) idx - 1 else idx + 1
-        if (idx == -1 || target < 0 || target >= current.size) return
-        val swapped = current.toMutableList().apply { val t = this[idx]; this[idx] = this[target]; this[target] = t }
-        _state.update { it.copy(items = swapped) }
+        if (idx == -1 || target < 0 || target >= groups.size) return
+        val swapped = groups.toMutableList().apply { val t = this[idx]; this[idx] = this[target]; this[target] = t }
+        val rata = swapped.flatMap { it.jobs }
+        _state.update { it.copy(items = rata) }
         viewModelScope.launch {
-            when (val res = repository.reorderLoads(swapped.map { it.id })) {
+            when (val res = repository.reorderLoads(rata.map { it.id })) {
                 is AuthResult.Success -> {}
                 is AuthResult.Failure -> {
                     _state.update { it.copy(actionError = res.message) }
@@ -263,7 +294,7 @@ class DeliveryFlowViewModel @Inject constructor(
         _state.update {
             it.copy(
                 loading = true, error = null, actionDone = false, actionError = null,
-                kontributor = emptyList(), driverChecklist = emptyList(), batchUnits = emptyList(),
+                kontributor = emptyList(), driverChecklist = emptyList(), batchUnits = emptyList(), batchAkiForms = emptyList(),
                 driverChecklistError = null, jobPhotos = emptyMap(),
                 pdiPhoto = null, deliverPhoto = null, cashPhoto = null,
                 pdiPhotoConfirmed = false, deliverPhotoConfirmed = false, cashPhotoConfirmed = false
@@ -380,35 +411,76 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     /**
-     * Muat unit saudara se-SPK untuk job yang sedang dibuka.
+     * Muat unit saudara se-SPK untuk job yang sedang dibuka. Dipanggil di SEMUA
+     * tahap sejak 2026-08-06.
      *
-     * HANYA untuk `pending_spk`: di tahap itu kasir memutuskan satu SPK sebagai
-     * satu transaksi GS (satu nomor), dan `units[]` menuntut nominal DP tiap
-     * unit COD `dp` sebatch — tanpa daftar saudaranya, layar detail tak punya
-     * tempat untuk menanyakannya. Tahap lain tidak memanggil ini: tak ada
-     * gunanya menambah satu request untuk daftar yang tak dirender.
+     * Dulu hanya `pending_spk` (satu-satunya tahap yang isiannya butuh daftar
+     * ini: `units[]` menuntut nominal DP tiap unit COD `dp`). Dilebarkan setelah
+     * antrian Riwayat & Konfirmasi Pembayaran ikut tampil satu baris per SPK:
+     * kartunya menjanjikan "buka untuk rinciannya", lalu layar detail cuma
+     * memperlihatkan SATU barang — janji yang tak pernah ditepati. Seksi "Total"
+     * lebih parah lagi: ia menulis "1 unit" dan menjumlah harga satu barang saja
+     * untuk SPK berisi tiga, yaitu angka salah yang tidak terlihat salah.
      *
-     * Sumbernya `GET /delivery?status=pending_spk`, yaitu ANTRIAN KASIR itu
-     * sendiri — sudah di-scope cabang oleh server, jadi himpunannya sama persis
-     * dengan `siblings` yang divalidasi `confirm_spk`. Menyaringnya di klien
-     * pakai [spkBatchPrefix] yang juga cerminan `batch_prefix` server.
+     * DUA sumber, dan bedanya bukan selera:
+     * - `pending_spk` → `?status=pending_spk`. Himpunannya WAJIB sama persis
+     *   dengan `siblings` yang divalidasi `confirm_spk` (unit sebatch berstatus
+     *   `pending_spk` dalam scope cabang). Memakai riwayat di sini akan menarik
+     *   unit yang TIDAK ikut dikonfirmasi, lalu form menagih nominal DP untuk
+     *   unit itu dan tombolnya terkunci selamanya.
+     * - tahap lain → `?view=history` (semua status dalam scope role). Ini yang
+     *   memberi gambaran SPK utuh untuk daftar barang + total.
+     *
+     * `?q=` TIDAK dipakai walau backend punya pencarian bebas atas
+     * `kode_pengiriman`: `filter.q` hanya diisi di cabang admin/manager
+     * (`delivery.rs`), sengaja, supaya kotak cari tak jadi pintu enumerasi SPK
+     * lintas cabang. Mengirimkannya sebagai role cabang cuma diabaikan diam-diam.
+     *
+     * ONGKOS: satu request tambahan tiap membuka detail. Tak di-cache — antrian
+     * bergerak (petugas lain ikut memproses), dan daftar basi di sini berarti
+     * `units[]` yang salah.
      *
      * FAIL-SOFT: gagal / kosong = `batchUnits` dibiarkan kosong dan layar jatuh
-     * balik ke satu unit (perilaku lama). Konfirmasi satu unit tetap sah —
-     * server tetap mem-fan-out-kannya, cuma unit lain memakai `codDpAmount`
-     * rencana sales alih-alih nominal yang diketik kasir.
+     * balik ke satu unit (perilaku lama). Riwayat di luar 200 baris terakhir
+     * juga mendarat di sini — tak lengkap, tapi tak pernah salah alamat.
      */
     private fun loadBatchUnits(job: DeliveryJobDto) {
-        if (job.status != com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_SPK) return
+        val kasir = job.status == com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey.PENDING_SPK
         val prefix = spkBatchPrefix(job.kodePengiriman)
         viewModelScope.launch {
-            val semua = (repository.list(status = job.status) as? AuthResult.Success)?.data.orEmpty()
+            val res = if (kasir) repository.list(status = job.status) else repository.list(view = "history")
+            val semua = (res as? AuthResult.Success)?.data.orEmpty()
             val sebatch = semua.filter { spkBatchPrefix(it.kodePengiriman) == prefix }
             // Job yang dibuka WAJIB ada di daftar walau antrian tak memuatnya
             // (halaman terpotong / baru berpindah status) — kalau tidak, layar
             // memperlihatkan SPK tanpa unit yang justru sedang dibaca orangnya.
             val lengkap = if (sebatch.any { it.id == job.id }) sebatch else listOf(job) + sebatch
             _state.update { it.copy(batchUnits = lengkap) }
+            loadBatchAkiForms(lengkap)
+        }
+    }
+
+    /**
+     * Form aki SELURUH unit SPK — sumber baris kelengkapan (baterai/charger/
+     * kaca spion) di daftar barang.
+     *
+     * Satu request PER UNIT karena endpoint-nya memang per job
+     * (`GET /delivery/{id}/aki-form`); tak ada rute "form aki se-batch". N di
+     * sini jumlah barang satu SPK — praktis 1-5, bukan skala yang perlu
+     * dioptimasi. Dijalankan paralel dan tiap unit fail-soft sendiri, jadi satu
+     * unit yang dijawab 403 (kasir/DC/driver tak berhak baca form aki) tidak
+     * menghapus kelengkapan unit lain yang berhasil dibaca.
+     */
+    private fun loadBatchAkiForms(units: List<DeliveryJobDto>) {
+        if (units.isEmpty()) return
+        viewModelScope.launch {
+            val semua = units.map { u ->
+                async { (repository.jobAkiForms(u.id) as? AuthResult.Success)?.data.orEmpty() }
+            }.flatMap { it.await() }
+            // Satu job bisa punya beberapa form (pengajuan ulang setelah
+            // ditolak); dedup by id supaya baris kelengkapan tak berlipat kalau
+            // dua unit entah bagaimana mengembalikan form yang sama.
+            _state.update { it.copy(batchAkiForms = semua.distinctBy { f -> f.id }) }
         }
     }
 
@@ -978,32 +1050,6 @@ class DeliveryFlowViewModel @Inject constructor(
     fun claimPdi(id: String) = jobUpdate { repository.claimPdi(id) }
 
     fun releasePdiClaim(id: String) = jobUpdate { repository.releasePdiClaim(id) }
-
-    /**
-     * Klaim / lepas klaim PDI dari ANTRIAN, bukan dari layar detail.
-     *
-     * Sengaja bukan [jobUpdate]: wrapper itu menaruh hasilnya di `detail`, yang
-     * di layar antrian tidak dirender sama sekali — tombolnya akan terlihat
-     * "tidak bereaksi" padahal servernya sudah mengunci seluruh SPK. Yang harus
-     * dimuat ulang di sini adalah daftarnya.
-     */
-    fun claimPdiAntrian(id: String, onDone: () -> Unit) = klaimAntrian(onDone) { repository.claimPdi(id) }
-
-    fun releasePdiClaimAntrian(id: String, onDone: () -> Unit) = klaimAntrian(onDone) { repository.releasePdiClaim(id) }
-
-    private fun klaimAntrian(onDone: () -> Unit, block: suspend () -> AuthResult<DeliveryJobDto>) {
-        if (_state.value.submitting) return
-        _state.update { it.copy(submitting = true, actionError = null) }
-        viewModelScope.launch {
-            when (val res = block()) {
-                is AuthResult.Success -> {
-                    _state.update { it.copy(submitting = false) }
-                    onDone()
-                }
-                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
-            }
-        }
-    }
 
     /** Aksi yang MEMUTAKHIRKAN job yang sedang dibuka, bukan menyelesaikan
      *  tahapnya — sengaja TIDAK menyetel `actionDone` (layar detail memakai
