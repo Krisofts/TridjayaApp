@@ -39,10 +39,10 @@ class RankingListViewModel @Inject constructor(
         load()
     }
 
-    fun load() {
+    fun load(forceRefresh: Boolean = false) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         viewModelScope.launch {
-            when (val result = getRankingListUseCase()) {
+            when (val result = getRankingListUseCase(forceRefresh)) {
                 is AuthResult.Success -> _uiState.update {
                     it.copy(
                         isLoading = false,

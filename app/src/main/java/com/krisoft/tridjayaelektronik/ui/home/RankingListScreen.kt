@@ -15,11 +15,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,6 +42,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RankingListScreen(
     onBack: () -> Unit,
@@ -49,18 +54,40 @@ fun RankingListScreen(
     val title = if (viewModel.kind == RankingKind.BRANCH) "Semua Cabang" else "Semua Sales"
 
     TridjayaCollapsibleHeader(title = title, onBack = onBack) { contentModifier ->
-        Box(modifier = contentModifier) {
+        val pullState = rememberPullToRefreshState()
+        val punyaData = state.branches.isNotEmpty() || state.sales.isNotEmpty()
+        // Pola ActivityScreen: `isLoading` menutup load PERTAMA maupun refresh susulan, jadi
+        // dipakai mentah ia menumpuk spinner di atas daftar. "Sedang memuat TAPI sudah punya
+        // data" = refresh beneran.
+        val isRefreshing = state.isLoading && punyaData
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.load(forceRefresh = true) },
+            state = pullState,
+            modifier = contentModifier.fillMaxSize(),
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    isRefreshing = isRefreshing,
+                    state = pullState,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        ) {
             when {
-                state.isLoading -> {
+                state.isLoading && !punyaData -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
-                state.errorMessage != null && state.branches.isEmpty() && state.sales.isEmpty() -> {
+                state.errorMessage != null && !punyaData -> {
                     Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                         ExpressiveErrorState(
                             message = state.errorMessage ?: "Tidak bisa memuat peringkat.",
-                            onRetry = viewModel::load
+                            // Coba-lagi WAJIB memaksa jaringan: retry yang membaca cache Room
+                            // hanya mengulang kegagalan yang sama sampai TTL habis.
+                            onRetry = { viewModel.load(forceRefresh = true) }
                         )
                     }
                 }

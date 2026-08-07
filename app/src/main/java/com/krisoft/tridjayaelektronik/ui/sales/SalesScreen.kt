@@ -23,9 +23,13 @@ import androidx.compose.material.icons.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.TrackChanges
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -62,6 +66,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
  * bundle Home does ([com.krisoft.tridjayaelektronik.domain.home.GetSalesDashboardUseCase]), so
  * opening this right after Home never forces a redundant network round-trip.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SalesScreen(
     onBack: () -> Unit,
@@ -97,18 +102,45 @@ fun SalesScreen(
             }
         }
     ) { contentModifier ->
-        Box(modifier = contentModifier) {
+        // Klasemen di sini dulu hanya bisa disegarkan lewat satu IconButton kecil di dalam
+        // seksinya, dan blok KPI/Target/Tren di atasnya tak punya jalan sama sekali — layar
+        // ini memuat sekali di `init{}` dan ViewModel-nya bertahan di backstack, jadi kembali
+        // ke sini dari layar lain tidak memuat ulang apa pun. Tarik-turun menyegarkan KEDUA
+        // sumbernya sekaligus (bundle dashboard + baris omset klasemen).
+        val pullState = rememberPullToRefreshState()
+        val punyaData = state.kpi != null || state.target != null ||
+            state.topBranches.isNotEmpty() || state.topSales.isNotEmpty() ||
+            klasemenState.rows.isNotEmpty()
+        val isRefreshing = (state.isLoading || klasemenState.isLoading) && punyaData
+        val muatUlang = {
+            viewModel.load(forceRefresh = true)
+            klasemenViewModel.load(forceRefresh = true)
+        }
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = muatUlang,
+            state = pullState,
+            modifier = contentModifier.fillMaxSize(),
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    isRefreshing = isRefreshing,
+                    state = pullState,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        ) {
             when {
-                state.isLoading -> HomeLoadingSkeleton()
-                state.errorMessage != null && state.kpi == null && state.target == null &&
-                    state.topBranches.isEmpty() && state.topSales.isEmpty() -> {
+                state.isLoading && !punyaData -> HomeLoadingSkeleton()
+                state.errorMessage != null && !punyaData -> {
                     Box(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         ExpressiveErrorState(
                             message = state.errorMessage ?: "Tidak bisa memuat data sales.",
-                            onRetry = { viewModel.load(forceRefresh = true) }
+                            onRetry = muatUlang
                         )
                     }
                 }

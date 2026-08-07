@@ -22,7 +22,18 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val DASHBOARD_CACHE_TTL_MILLIS = java.util.concurrent.TimeUnit.HOURS.toMillis(5)
+/**
+ * Umur cache dashboard/klasemen di Room. MENIT — sebelumnya `HOURS.toMillis(5)` sementara
+ * komentar di [SalesRepository.homeDashboard] dan [SalesRepository.klasemenRows] sama-sama
+ * menulis "5 minutes"; salah-satuan itu bertahan lama justru karena tak menimbulkan galat,
+ * cuma angka klasemen yang tak berubah setengah hari (keluhan lapangan 2026-08-07).
+ *
+ * Lantai kesegaran di server sendiri ±30 menit (mirror ERP 900 dtk → snapshot finance 15 mnt),
+ * jadi TTL di bawah itu tak menambah kesegaran nyata — 5 menit dipilih supaya penjualan yang
+ * baru tiba di snapshot tampil pada pembukaan layar berikutnya, bukan supaya tiap buka layar
+ * memukul jaringan.
+ */
+private val DASHBOARD_CACHE_TTL_MILLIS = java.util.concurrent.TimeUnit.MINUTES.toMillis(5)
 
 /** Month-to-date range vs the same range one month back, for the *-performance endpoints. */
 private data class DateRange(val start: String, val end: String, val compareStart: String, val compareEnd: String)
@@ -37,8 +48,8 @@ class SalesRepository @Inject constructor(
     private val errorJson = Json { ignoreUnknownKeys = true }
 
     /** Bundle dashboard terakhir yang sudah ter-parse, di-key `cachedAtMillis` — tiga use case
-     *  (Home, Sales, Lihat Semua) membaca cache yang sama dalam jendela 5 jam; tanpa memo ini
-     *  blob JSON besar di Room di-decode ulang pada setiap perpindahan layar. */
+     *  (Home, Sales, Lihat Semua) membaca cache yang sama dalam jendela [DASHBOARD_CACHE_TTL_MILLIS];
+     *  tanpa memo ini blob JSON besar di Room di-decode ulang pada setiap perpindahan layar. */
     @Volatile
     private var dashboardMemo: Pair<Long, HomeDashboardCache>? = null
 
@@ -46,8 +57,9 @@ class SalesRepository @Inject constructor(
     private val klasemenMemo = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<OmsetRowDto>>>()
 
     /**
-     * KPI + monthly target + full branch/sales ranking, bundled and cached in Room for 5 minutes
-     * so switching tabs or opening "Lihat Semua" doesn't re-hit the API every time.
+     * KPI + monthly target + full branch/sales ranking, bundled and cached in Room for
+     * [DASHBOARD_CACHE_TTL_MILLIS] so switching tabs or opening "Lihat Semua" doesn't re-hit
+     * the API every time.
      */
     suspend fun homeDashboard(forceRefresh: Boolean = false): AuthResult<HomeDashboardCache> {
         if (!forceRefresh) {
