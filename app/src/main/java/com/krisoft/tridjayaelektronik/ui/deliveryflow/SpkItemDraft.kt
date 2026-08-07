@@ -87,6 +87,16 @@ data class SpkItemDraft(
         val q = qtyInt
         if (q == null || q < 1) out += "Qty minimal 1"
         else stokTersedia?.let { if (q > it) out += "Qty melebihi stok ($it)" }
+        // Cerminan guard server (`create_delivery`, 2026-08-07): satu serial
+        // menandai SATU unit fisik. Dulu nilainya disalin ke seluruh unit baris
+        // (`for unit_seq in 1..=line.qty`), jadi qty=3 melahirkan tiga job
+        // ber-SN identik dan SN berhenti menjadi identitas unit.
+        //
+        // Menempel ke "serial diisi DAN qty>1", BUKAN ke qty>1 saja — SPK qty
+        // banyak tanpa serial adalah alur normal dan tak boleh ikut mati.
+        if (serialNumber.trim().isNotBlank() && (q ?: 1) > 1) {
+            out += "Serial hanya untuk qty 1 — pisahkan jadi baris sendiri, atau isi saat PDI"
+        }
         if (isKbk && (kbkBrokerKode.isBlank() || kbkBrokerNama.isBlank())) out += "Broker KBK wajib dipilih"
         if (driverTerimaUang) {
             when (codPaymentMode) {

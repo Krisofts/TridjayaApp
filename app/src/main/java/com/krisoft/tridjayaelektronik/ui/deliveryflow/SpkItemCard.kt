@@ -99,11 +99,27 @@ fun SpkItemCard(
                     ExpressiveTextField(item.qty, { onUpdate(item.copy(qty = it.filter { c -> c.isDigit() })) }, label = "Qty" + (item.stokTersedia?.let { " (stok $it)" } ?: ""), keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(10.dp))
+                // Satu serial menandai SATU unit fisik, jadi field ini mati saat
+                // qty>1. Dikunci di sini supaya sales tahu sebelum menekan Simpan;
+                // server tetap penegaknya (create_delivery menolak 400).
+                val qtyLebihSatu = (item.qtyInt ?: 1) > 1
                 ExpressiveTextField(
-                    item.serialNumber, { onUpdate(item.copy(serialNumber = it)) }, label = "No. Rangka/Serial (opsional)", modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = { BarcodeScanButton { sn -> onUpdate(item.copy(serialNumber = sn)) } }
+                    item.serialNumber, { onUpdate(item.copy(serialNumber = it)) },
+                    label = if (qtyLebihSatu) "No. Rangka/Serial — isi saat PDI" else "No. Rangka/Serial (opsional)",
+                    enabled = !qtyLebihSatu,
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = if (qtyLebihSatu) null else ({ BarcodeScanButton { sn -> onUpdate(item.copy(serialNumber = sn)) } })
                 )
-                val availSerial = serialOptions.filter { it != item.serialNumber }
+                if (qtyLebihSatu) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Qty ${item.qtyInt} = ${item.qtyInt} unit fisik dengan serial berbeda. " +
+                            "Pecah jadi baris sendiri kalau serialnya mau dicatat sekarang.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                val availSerial = if (qtyLebihSatu) emptyList() else serialOptions.filter { it != item.serialNumber }
                 if (availSerial.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text("Serial tersedia (ketuk):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -114,8 +130,10 @@ fun SpkItemCard(
                             }
                         }
                     }
-                } else {
-                    // Trigger fetch lazy saat kartu dibuka (fail-soft, cache di VM)
+                } else if (!qtyLebihSatu) {
+                    // Trigger fetch lazy saat kartu dibuka (fail-soft, cache di VM).
+                    // Dilewati saat qty>1: serialnya toh tak bisa dipakai di baris ini,
+                    // jadi menariknya cuma memanggil endpoint tanpa pemakai.
                     onSerialFocus()
                 }
                 Spacer(Modifier.height(10.dp))

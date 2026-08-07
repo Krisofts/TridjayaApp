@@ -207,11 +207,15 @@ fun ExpressiveTextField(
     singleLine: Boolean = true,
     keyboardType: KeyboardType = KeyboardType.Text,
     visualTransformation: VisualTransformation = VisualTransformation.None,
-    trailingIcon: @Composable (() -> Unit)? = null
+    trailingIcon: @Composable (() -> Unit)? = null,
+    // Default `true` supaya seluruh pemanggil lama tak berubah. `disabledBorderColor`
+    // di bawah sudah lama ada tapi tak pernah bisa terpakai tanpa parameter ini.
+    enabled: Boolean = true
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
+        enabled = enabled,
         modifier = modifier,
         label = label?.let { { Text(it) } },
         placeholder = placeholder?.let { { Text(it) } },
