@@ -3145,7 +3145,11 @@ private fun AkiOptionDropdown(
 // yang belum tuntas tak boleh ikut terpotong (tombolnya ada di barisnya).
 
 @Composable
-fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
+fun DiscountApprovalScreen(
+    onBack: () -> Unit,
+    onDetailSpk: (String) -> Unit,
+    viewModel: DeliveryFlowViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.loadDiscounts("pending") }
     // Id PENGAJUAN yang sedang ditolak — bukan lagi "anchor" se-SPK: sejak
@@ -3197,21 +3201,12 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
                             buktiFoto = state.diskonBuktiPhotos,
                             onApprove = { id -> viewModel.approveDiscount(id, "") },
                             onReject = { id -> rejectId = id },
-                            onDetail = { viewModel.bukaDetailSpkDiskon(kode) },
+                            onDetail = { onDetailSpk(kode) },
                         )
                     }
                 }
             }
         }
-    }
-
-    state.spkDiskonDetailKode?.let { kode ->
-        SpkDiskonDetailDialog(
-            kode = kode,
-            detail = state.spkDiskonDetail,
-            error = state.spkDiskonDetailError,
-            onTutup = { viewModel.tutupDetailSpkDiskon() },
-        )
     }
 
     rejectId?.let { id ->
@@ -3434,31 +3429,11 @@ private fun DiscountBaris(
                 "−${rupiah(potonganPengajuan(d))}", style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold, color = Color(0xFFB5670C),
             )
-            // Keputusan PER BARANG (2026-08-07): ikon kecil di ujung baris, bukan
-            // sepasang tombol lebar — 10 barang × tombol setinggi 40dp mendorong
-            // separuh kartu keluar layar, dan itulah alasan bentuk ringkas ini
-            // ada. Barang yang sudah diputus menampilkan status, bukan tombol:
-            // tekanan kedua cuma memanen "sudah diputuskan" dari server.
-            Spacer(Modifier.width(4.dp))
-            when {
-                d.status != "pending" -> StatusBarisChip(d.status)
-                submitting -> Box(Modifier.size(64.dp, 32.dp), Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                }
-                else -> Row {
-                    IconButton(onClick = onReject, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            Icons.Rounded.Close, contentDescription = "Tolak diskon barang ini",
-                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    IconButton(onClick = onApprove, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            Icons.Rounded.CheckCircle, contentDescription = "Setujui diskon barang ini",
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
+            // Barang yang SUDAH diputus cukup menampilkan statusnya di sini —
+            // tekanan kedua hanya memanen "sudah diputuskan" dari server.
+            if (d.status != "pending") {
+                Spacer(Modifier.width(4.dp))
+                StatusBarisChip(d.status)
             }
         }
         // Penolakan TIDAK melepas unit: barang ini menunggu SALES, bukan
@@ -3492,6 +3467,58 @@ private fun DiscountBaris(
                         " selengkapnya", style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
                     )
+                }
+            }
+        }
+        // Tombol keputusan: BARIS SENDIRI, berlabel teks, rata kanan.
+        //
+        // Sebelumnya dua ikon 32dp tanpa label menempel di ujung baris harga.
+        // Itu menghemat ruang tapi salah untuk tombol yang MENYETUJUI UANG:
+        // pengguna harus menebak arti ✕ dan ✓, target sentuhnya di bawah
+        // anjuran 48dp, dan keduanya bersebelahan tanpa jarak — satu meleset
+        // menyetujui diskon yang mestinya ditolak. Satu baris tambahan per
+        // barang jauh lebih murah daripada satu keputusan uang yang salah.
+        if (d.status == "pending") {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (submitting) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    ExpressiveOutlinedButton(
+                        onClick = onReject,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Close, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Tolak", style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    // Jarak 12dp antara Tolak dan Setujui: dua tombol berdempetan
+                    // membuat salah-pencet jadi soal milimeter.
+                    Spacer(Modifier.width(12.dp))
+                    ExpressiveFilledButton(
+                        onClick = onApprove,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.CheckCircle, contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Setujui", style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
             }
         }
@@ -3571,17 +3598,25 @@ private fun StatusBarisChip(status: String) {
  * bisa siapa saja pemegang page-grant, LINTAS CABANG — jangan menambahkannya.
  */
 @Composable
-private fun SpkDiskonDetailDialog(
+fun SpkDiskonDetailScreen(
     kode: String,
-    detail: com.krisoft.tridjayaelektronik.data.model.SpkDiscountContextDto?,
-    error: String?,
-    onTutup: () -> Unit,
+    onBack: () -> Unit,
+    viewModel: DeliveryFlowViewModel = hiltViewModel(),
 ) {
-    AlertDialog(
-        onDismissRequest = onTutup,
-        title = { Text(kode, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+    val state by viewModel.state.collectAsState()
+    // Halaman ini memakai ViewModel yang SAMA dengan layar approval, jadi tak
+    // ada state ganda: membukanya memicu pemuatan yang sama.
+    LaunchedEffect(kode) { viewModel.bukaDetailSpkDiskon(kode) }
+    val detail = state.spkDiskonDetail
+    val error = state.spkDiskonDetailError
+
+    TridjayaCollapsibleHeader(title = kode, onBack = onBack) { contentModifier ->
+        Column(
+            contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
                 when {
                     error != null -> Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     detail == null -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3677,10 +3712,9 @@ private fun SpkDiskonDetailDialog(
                         )
                     }
                 }
-            }
-        },
-        confirmButton = { TextButton(onClick = onTutup) { Text("Tutup") } },
-    )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
 }
 
 

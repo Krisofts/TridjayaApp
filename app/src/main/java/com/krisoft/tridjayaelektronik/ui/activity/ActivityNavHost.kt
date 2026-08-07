@@ -28,6 +28,7 @@ import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiListScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.CreateSpkScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DiscountApprovalScreen
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkDiskonDetailScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryJobDetailScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.DeliveryQueueScreen
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.SpkHubScreen
@@ -93,11 +94,18 @@ const val ROUTE_DLV_NOTE = "home_dlv_note"
 const val ROUTE_DLV_SCHEDULE = "home_dlv_schedule"
 const val ROUTE_DLV_DRIVER = "home_dlv_driver"
 private const val ROUTE_DLV_DETAIL = "home_dlv_detail/{id}"
+// Detail SPK milik approval diskon: HALAMAN sendiri, bukan dialog. Isinya
+// (pembiayaan + seluruh unit se-SPK + tiga total) tak muat di AlertDialog —
+// di layar sempit ia jadi kotak bergulir di dalam kotak, dan tombol tutupnya
+// terdorong keluar. Route TERPISAH dari ROUTE_DLV_DETAIL karena kuncinya
+// berbeda: yang itu id job, yang ini kode batch SPK.
+private const val ROUTE_DLV_DISKON_DETAIL = "home_dlv_diskon_detail/{kode}"
 const val ROUTE_DLV_HISTORY = "home_dlv_history"
 const val ROUTE_DLV_PENDING_PAYMENT = "home_dlv_pending_payment"
 const val ROUTE_SPK_HUB = "home_spk_hub"
 
 private fun dlvDetailRoute(id: String) = "home_dlv_detail/${Uri.encode(id)}"
+private fun dlvDiskonDetailRoute(kode: String) = "home_dlv_diskon_detail/${Uri.encode(kode)}"
 
 private fun eventLeadRoute(eventId: String) = "home_event_lead/${Uri.encode(eventId)}"
 
@@ -391,7 +399,23 @@ fun ActivityNavHost(
                 },
             )
         }
-        composable(ROUTE_DLV_DISKON) { DiscountApprovalScreen(onBack = { navController.popBackStack() }) }
+        composable(ROUTE_DLV_DISKON) {
+            DiscountApprovalScreen(
+                onBack = { navController.popBackStack() },
+                onDetailSpk = { kode ->
+                    navController.navigate(dlvDiskonDetailRoute(kode)) { launchSingleTop = true }
+                },
+            )
+        }
+        composable(
+            route = ROUTE_DLV_DISKON_DETAIL,
+            arguments = listOf(navArgument("kode") { type = NavType.StringType })
+        ) { entry ->
+            SpkDiskonDetailScreen(
+                kode = entry.arguments?.getString("kode").orEmpty(),
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(ROUTE_DLV_PDI) {
             DeliveryQueueScreen("Antri PDI", DeliveryStatusKey.PENDING_PDI, onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
