@@ -42,6 +42,75 @@ fun totalPotonganSpk(pengajuan: List<DiscountRequestDto>): Double =
     pengajuan.sumOf { potonganPengajuan(it) }
 
 /**
+ * 7000000 → "7.000.000". Diekstrak dari `rupiah()` supaya baris ringkas kartu
+ * diskon ("2 unit · 7.000.000 → 6.700.000") memakai format yang SAMA persis;
+ * dua penulis format berarti dua penulisan berbeda untuk angka yang sama.
+ *
+ * ponytail: negatif di bawah 1000 salah pisah ("-100" → "-.100"). Nominal
+ * harga/potongan di sini selalu positif; kalau nanti dipakai untuk selisih
+ * bertanda, pisahkan tandanya dulu sebelum `chunked`.
+ */
+fun ribuan(v: Double?): String {
+    val n = (v ?: 0.0).toLong()
+    return n.toString().reversed().chunked(3).joinToString(".").reversed()
+}
+
+/**
+ * Baris kedua satu barang: "2 unit · 7.000.000 → 6.700.000 · acc Pak Kiryanto".
+ *
+ * Menggantikan DUA baris `InfoLine` ("Harga sebelum" + "Harga sesudah") yang
+ * memakan dua baris penuh untuk satu informasi yang dibaca sebagai satu
+ * kalimat. Harga tak lengkap (pengajuan lama) → cuma jumlah unit; angka yang
+ * tak ada TIDAK ditebak, sama seperti [potonganPengajuan].
+ *
+ * [accOleh] ikut DI SINI, bukan sebagai baris `InfoLine` sendiri: label
+ * "Acc oleh (di luar sistem)" memakan satu baris penuh per barang, dan karena
+ * `InfoLine` merentang selebar kartu ia keluar dari indentasi barangnya —
+ * terbaca seperti keterangan milik SPK, bukan milik barang di atasnya.
+ * Dipakai HANYA saat nilainya tak seragam se-SPK; yang seragam naik ke header
+ * lewat [nilaiSeragam].
+ */
+fun ringkasHarga(d: DiscountRequestDto, sertakanAcc: Boolean = false): String {
+    val n = unitTerdampak(d)
+    // "1 unit ·" disembunyikan saat memang satu unit: itu keadaan MAYORITAS,
+    // dan menuliskannya menghabiskan ±9 karakter di baris yang paling sering
+    // membungkus. Jumlah unit hanya berarti ketika lebih dari satu — di situlah
+    // diskon dikali dan angkanya bisa mengejutkan approver.
+    val unit = if (n > 1) "$n unit" else ""
+    val acc = d.accOleh?.takeIf { sertakanAcc && it.isNotBlank() }?.let { "acc $it" } ?: ""
+    val harga = when {
+        d.hargaSebelum == null || d.hargaSesudah == null -> ""
+        else -> "${ribuan(d.hargaSebelum)} → ${ribuan(d.hargaSesudah)}"
+    }
+    // Gabung dengan pemisah HANYA di antara bagian yang benar-benar ada —
+    // supaya tak pernah ada "· " menggantung di ujung baris saat salah satu
+    // bagian kosong.
+    val bagian = listOf(unit, harga, acc).filter { it.isNotBlank() }
+    return if (bagian.isEmpty()) "1 unit" else bagian.joinToString(" · ")
+}
+
+/**
+ * Nilai yang SAMA di seluruh pengajuan satu SPK → boleh naik ke header kartu
+ * dan ditulis SEKALI. Beda, atau ada satu saja yang kosong → null, artinya
+ * nilainya tetap tinggal di barisnya masing-masing.
+ *
+ * "Diajukan: Administrator" yang berulang di tiap barang adalah pemakan tinggi
+ * terbesar kartu ini tanpa menambah satu pun informasi. Tapi menghapusnya
+ * begitu saja salah: satu SPK bisa memuat pengajuan dari orang berbeda, dan
+ * approver yang tak melihat perbedaan itu justru kehilangan informasi penting.
+ *
+ * Pemanggil yang menormalkan (mis. `?.trim()?.ifBlank { null }`) — fungsi ini
+ * cuma membandingkan apa yang diberikan.
+ */
+fun <T : Any> nilaiSeragam(
+    pengajuan: List<DiscountRequestDto>,
+    ambil: (DiscountRequestDto) -> T?,
+): T? {
+    val pertama = pengajuan.firstOrNull()?.let(ambil) ?: return null
+    return pertama.takeIf { pengajuan.all { d -> ambil(d) == pertama } }
+}
+
+/**
  * Urutkan isi kartu menurut nomor baris SPK.
  *
  * Server mengirim antrian `created_at DESC`, jadi barang ke-3 bisa tampil di

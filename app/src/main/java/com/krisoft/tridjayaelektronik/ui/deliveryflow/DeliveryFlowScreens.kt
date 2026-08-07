@@ -82,6 +82,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -175,10 +176,7 @@ internal fun pdiClaimLabel(view: PdiClaimView, claimedByName: String?): String? 
     else -> null
 }
 
-private fun rupiah(v: Double?): String {
-    val n = (v ?: 0.0).toLong()
-    return "Rp" + n.toString().reversed().chunked(3).joinToString(".").reversed()
-}
+private fun rupiah(v: Double?): String = "Rp" + ribuan(v)
 
 @Composable
 private fun StatusChip(status: String) {
@@ -193,8 +191,22 @@ private fun StatusChip(status: String) {
 private fun InfoLine(label: String, value: String?) {
     if (value.isNullOrBlank()) return
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        // Jarak label→nilai HARUS dari padding, BUKAN dari `SpaceBetween`.
+        // `SpaceBetween` cuma membagikan ruang SISA: begitu nilainya cukup
+        // panjang untuk membungkus (mis. alasan diskon), sisanya nol dan
+        // celahnya ikut nol — labelnya menempel ke nilainya dan terbaca sebagai
+        // kerusakan ("AlasanKonsumen ambil 2 unit sekaligus…"). Terlihat di
+        // screenshot HP; cuma baris bernilai multi-baris yang kena, itu sebabnya
+        // ia lama tak ketahuan. `weight(fill = false)` mengurung nilainya di
+        // ruang sisa supaya labelnya tak pernah terdorong keluar.
+        Text(
+            label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 12.dp),
+        )
+        Text(
+            value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f, fill = false), textAlign = TextAlign.End,
+        )
     }
 }
 
@@ -3112,6 +3124,11 @@ private fun AkiOptionDropdown(
 
 // ── Approval Diskon per-baris ────────────────────────────────────────────────
 
+// Barang yang langsung tampil di kartu SPK sebelum daftarnya dipotong. 4 dipilih
+// supaya kartu SPK biasa (1-4 barang) tak berubah sama sekali, dan SPK 10 barang
+// tetap menaruh tombol keputusannya di dalam satu layar.
+private const val BATAS_RINGKAS = 4
+
 @Composable
 fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
@@ -3249,6 +3266,24 @@ private fun DiscountSpkCard(
     // server menempelkannya ke SETIAP unit sebaris.
     val total = totalPotonganSpk(pengajuan)
     val konsumen = pengajuan.firstOrNull()?.jobSummary?.customerName ?: "-"
+    // Yang SAMA untuk seluruh SPK ditulis SEKALI di header; yang berbeda tetap
+    // di barisnya (lihat [nilaiSeragam] — keseragamannya dihitung di sana, di
+    // luar composable, supaya bisa diuji).
+    val pengaju = nilaiSeragam(pengajuan) { it.requestedByName?.trim()?.ifBlank { null } }
+    val accSeragam = nilaiSeragam(pengajuan) { it.accOleh?.trim()?.ifBlank { null } }
+    // Tanggal lewat `formatWaktuId` DULU baru dipotong: `createdAt` itu UTC,
+    // jadi memotong 10 karakter pertamanya salah tanggal untuk pengajuan sore
+    // (kontrak repo: semua waktu WIB).
+    val tanggal = nilaiSeragam(pengajuan) { formatWaktuId(it.createdAt).substringBefore(' ').takeIf { t -> t != "-" } }
+    // Tombol keputusan ada di DASAR kartu dan memang harus di situ (server
+    // fan-out se-batch — tombol per-baris membuat tekanan ke-2 dijawab "sudah
+    // diputuskan"). Agar tetap terjangkau saat 10 barang, daftarnya dipotong di
+    // BATAS_RINGKAS dan sisanya dibuka satu ketuk. Dipilih daripada bar sticky
+    // karena bar sticky butuh konsep "kartu terpilih" + overlay di atas
+    // LazyColumn; ini 4 baris. Angka keputusannya (total potongan) TIDAK pernah
+    // ikut disembunyikan.
+    var semuaBarang by remember(kode) { mutableStateOf(false) }
+    val tampil = if (semuaBarang) pengajuan else pengajuan.take(BATAS_RINGKAS)
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3266,9 +3301,32 @@ private fun DiscountSpkCard(
                 }
             }
             Text(konsumen, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            pengajuan.forEach { d ->
+            listOfNotNull(
+                pengaju?.let { "Diajukan $it" },
+                tanggal,
+                accSeragam?.let { "acc $it (di luar sistem)" },
+            ).takeIf { it.isNotEmpty() }?.let {
+                Text(
+                    it.joinToString(" · "), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            tampil.forEach { d ->
                 Spacer(Modifier.height(10.dp))
-                DiscountBaris(d, buktiFoto[d.id])
+                DiscountBaris(
+                    d = d,
+                    bukti = buktiFoto[d.id],
+                    tampilkanPengaju = pengaju == null,
+                    tampilkanAcc = accSeragam == null,
+                )
+            }
+            if (pengajuan.size > BATAS_RINGKAS) {
+                TextButton(onClick = { semuaBarang = !semuaBarang }, modifier = Modifier.align(Alignment.Start)) {
+                    Text(
+                        if (semuaBarang) "Ringkas daftar" else "Lihat ${pengajuan.size - BATAS_RINGKAS} barang lainnya",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
             }
             Spacer(Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -3305,36 +3363,84 @@ private fun DiscountSpkCard(
     }
 }
 
-/** Satu barang di dalam kartu SPK — isinya sama persis dengan kartu per-baris
- *  yang lama, minus tombol keputusan (yang kini milik level SPK). */
+/**
+ * Satu barang di dalam kartu SPK — 2 baris (3 kalau ada alasan), bukan 6.
+ *
+ * Bentuk lama (tabel `InfoLine` 6 baris per barang) menghabiskan satu layar
+ * penuh untuk SPK 3 barang, sementara batas SPK sekarang 10. Yang dibuang
+ * BUKAN informasinya melainkan pengulangannya: "Harga sebelum"/"Harga sesudah"
+ * jadi satu baris panah ([ringkasHarga]), dan field yang seragam se-SPK naik ke
+ * header kartu ([nilaiSeragam]) — kalau tidak seragam ia dikembalikan ke sini
+ * lewat [tampilkanPengaju]/[tampilkanAcc].
+ *
+ * Jumlah unit tetap WAJIB kelihatan: potongan baris = potongan per unit ×
+ * jumlah unit, dan tanpa angka itu approver tak bisa memeriksa sendiri kenapa
+ * "harga sesudah" 12,5 jt menghasilkan potongan 1 jt.
+ */
 @Composable
-private fun DiscountBaris(d: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto, bukti: AkiPhotoState?) {
+private fun DiscountBaris(
+    d: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto,
+    bukti: AkiPhotoState?,
+    tampilkanPengaju: Boolean,
+    tampilkanAcc: Boolean,
+) {
+    // Alasan panjang di-clamp 1 baris; approver TETAP wajib bisa membacanya
+    // utuh, jadi barisnya bisa diketuk untuk membuka. `terpotong` diisi dari
+    // hasil layout — "selengkapnya" cuma muncul kalau memang ada yang terpotong,
+    // supaya alasan pendek tak menambah tinggi kartu tanpa guna.
+    var alasanPenuh by remember(d.id) { mutableStateOf(false) }
+    var terpotong by remember(d.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.Top) {
+            // Nomor baris = penanda kecil, bukan baris teks sendiri.
             Text(
-                d.jobSummary?.namaBarang ?: d.jobSummary?.kodeBarang ?: "-",
-                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                d.baris?.toString() ?: "·", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(18.dp),
             )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    d.jobSummary?.namaBarang ?: d.jobSummary?.kodeBarang ?: "-",
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    ringkasHarga(d, sertakanAcc = tampilkanAcc),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             Text(
                 "−${rupiah(potonganPengajuan(d))}", style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold, color = Color(0xFFB5670C),
             )
         }
-        // Jumlah unit WAJIB kelihatan: potongan baris = potongan per unit ×
-        // jumlah unit, dan tanpa angka ini approver tak bisa memeriksa sendiri
-        // kenapa "harga sesudah" 12,5 jt menghasilkan potongan 1 jt.
-        val unit = unitTerdampak(d)
-        d.baris?.let {
-            Text(
-                "baris $it · $unit unit", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        if (d.reason.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = 18.dp, top = 2.dp)
+                    .clickable { alasanPenuh = !alasanPenuh },
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    "“${d.reason}”", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (alasanPenuh) Int.MAX_VALUE else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                    onTextLayout = { if (!alasanPenuh) terpotong = it.hasVisualOverflow },
+                )
+                if (terpotong && !alasanPenuh) {
+                    Text(
+                        " selengkapnya", style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
         }
-        InfoLine(if (unit > 1) "Harga sebelum (per unit)" else "Harga sebelum", d.hargaSebelum?.let { rupiah(it) })
-        InfoLine(if (unit > 1) "Harga sesudah (per unit)" else "Harga sesudah", d.hargaSesudah?.let { rupiah(it) })
-        InfoLine("Alasan", d.reason)
-        if (!d.accOleh.isNullOrBlank()) InfoLine("Acc oleh (di luar sistem)", d.accOleh)
+        // "Acc oleh" TIDAK lagi punya baris sendiri — ia ikut `ringkasHarga` di
+        // atas. Sebagai `InfoLine` ia merentang selebar kartu sehingga keluar
+        // dari indentasi barangnya dan terbaca sebagai keterangan SPK.
         when (bukti) {
             // Bisa ditekan untuk ukuran penuh — tulisan di tangkapan layar
             // WA/kwitansi tak terbaca pada thumbnail 140dp ber-Crop.
@@ -3374,7 +3480,7 @@ private fun DiscountBaris(d: com.krisoft.tridjayaelektronik.data.model.DiscountR
             }
             null -> Unit // sales memang tak melampirkan bukti — bukan kegagalan
         }
-        InfoLine("Diajukan", d.requestedByName)
+        if (tampilkanPengaju) InfoLine("Diajukan", d.requestedByName)
     }
 }
 
