@@ -44,8 +44,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 /**
  * Input Serial Number (admin-stok) — pilih produk stok cabang sendiri, lalu masukkan serial
@@ -99,20 +101,23 @@ fun SerialInputScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 placeholder = "Cari kode atau nama produk"
             )
-            Box(modifier = Modifier.fillMaxSize()) {
+            TridjayaPullRefresh(
+                isRefreshing = state.itemsLoading && state.items.isNotEmpty(),
+                onRefresh = viewModel::refreshStok
+            ) {
                 when {
-                    state.loadingContext || state.itemsLoading -> {
+                    (state.loadingContext || state.itemsLoading) && state.items.isEmpty() -> {
                         Column(modifier = Modifier.padding(top = 4.dp)) {
                             repeat(6) { SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                         }
                     }
                     state.contextError != null && state.items.isEmpty() -> {
-                        Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                        ScrollableCenter {
                             ExpressiveErrorState(message = state.contextError ?: "Gagal memuat", onRetry = viewModel::load)
                         }
                     }
                     filtered.isEmpty() -> {
-                        Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                        ScrollableCenter {
                             ExpressiveEmptyState(
                                 icon = { Icon(Icons.Rounded.Numbers, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                                 title = "Produk tidak ditemukan",

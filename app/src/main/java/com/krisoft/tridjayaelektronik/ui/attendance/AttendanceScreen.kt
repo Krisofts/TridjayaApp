@@ -87,7 +87,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import kotlinx.coroutines.delay
 import java.io.File
 import java.text.SimpleDateFormat
@@ -149,68 +151,75 @@ fun AttendanceScreen(
     }
 
     TridjayaCollapsibleHeader(title = "Absen", onBack = onBack) { contentModifier ->
-        when {
-            state.loading && state.today == null && state.history.isEmpty() -> {
-                Box(modifier = contentModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+        val adaData = state.today != null || state.history.isNotEmpty()
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && adaData,
+            // Riwayat di layar ini gabungan DUA sumber (buildTimeline: absensi + izin);
+            // load() saja membuat izin yang baru disetujui tak pernah ikut tersegarkan.
+            onRefresh = { viewModel.load(); viewModel.loadOff() },
+            modifier = contentModifier
+        ) {
+            when {
+                state.loading && !adaData -> {
+                    ScrollableCenter { CircularProgressIndicator() }
                 }
-            }
-            state.loadError != null && state.today == null && state.history.isEmpty() -> {
-                Box(modifier = contentModifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    ExpressiveErrorState(
-                        message = state.loadError ?: "Gagal memuat absensi.",
-                        onRetry = { viewModel.load() }
-                    )
-                }
-            }
-            else -> {
-                // Sisakan ruang untuk navigation bar sistem agar item riwayat terakhir tidak
-                // terpotong di tepi bawah (edge-to-edge).
-                val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                // Riwayat gabungan absensi + hari izin/OFF disetujui (dihitung di luar
-                // LazyListScope karena remember bukan @Composable yg boleh dipanggil di sana).
-                val timeline = remember(state.history, state.offRequests) {
-                    buildTimeline(state.history, state.offRequests)
-                }
-                LazyColumn(
-                    modifier = contentModifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp + navBottom),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    item(key = "clock") { ClockCard(viewModel.userName, viewModel.cabang, state) }
-                    item(key = "absen") {
-                        AbsenCard(
-                            state = state,
-                            onRefreshLocation = requestLocation,
-                            onTakeSelfie = { cameraLauncher.launch(selfieUri) },
-                            onCheckIn = viewModel::checkIn,
-                            onCheckOut = viewModel::checkOut,
-                            onUploadBuktiChat = onUploadBuktiChat
+                state.loadError != null && !adaData -> {
+                    ScrollableCenter {
+                        ExpressiveErrorState(
+                            message = state.loadError ?: "Gagal memuat absensi.",
+                            onRetry = { viewModel.load() }
                         )
                     }
-                    item(key = "aturan") { WorkRuleInfo() }
-                    item(key = "rekap") { RekapStrip(state.rekap) }
-                    item(key = "izin") { OffSection(state.offRequests, onAjukan = { showOffForm = true }) }
-                    if (timeline.isNotEmpty()) {
-                        item(key = "riwayat_header") {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                                Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Riwayat Kehadiran", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            }
+                }
+                else -> {
+                    // Sisakan ruang untuk navigation bar sistem agar item riwayat terakhir tidak
+                    // terpotong di tepi bawah (edge-to-edge).
+                    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                    // Riwayat gabungan absensi + hari izin/OFF disetujui (dihitung di luar
+                    // LazyListScope karena remember bukan @Composable yg boleh dipanggil di sana).
+                    val timeline = remember(state.history, state.offRequests) {
+                        buildTimeline(state.history, state.offRequests)
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp + navBottom),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item(key = "clock") { ClockCard(viewModel.userName, viewModel.cabang, state) }
+                        item(key = "absen") {
+                            AbsenCard(
+                                state = state,
+                                onRefreshLocation = requestLocation,
+                                onTakeSelfie = { cameraLauncher.launch(selfieUri) },
+                                onCheckIn = viewModel::checkIn,
+                                onCheckOut = viewModel::checkOut,
+                                onUploadBuktiChat = onUploadBuktiChat
+                            )
                         }
-                        items(
-                            timeline,
-                            key = {
-                                when (it) {
-                                    is TimelineEntry.Attendance -> "att_" + it.record.id.ifBlank { it.record.tanggal }
-                                    is TimelineEntry.Off -> "off_" + it.off.id.ifBlank { it.off.tanggal }
+                        item(key = "aturan") { WorkRuleInfo() }
+                        item(key = "rekap") { RekapStrip(state.rekap) }
+                        item(key = "izin") { OffSection(state.offRequests, onAjukan = { showOffForm = true }) }
+                        if (timeline.isNotEmpty()) {
+                            item(key = "riwayat_header") {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                                    Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Riwayat Kehadiran", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                 }
                             }
-                        ) { entry ->
-                            when (entry) {
-                                is TimelineEntry.Attendance -> HistoryRow(entry.record)
-                                is TimelineEntry.Off -> OffHistoryRow(entry.off)
+                            items(
+                                timeline,
+                                key = {
+                                    when (it) {
+                                        is TimelineEntry.Attendance -> "att_" + it.record.id.ifBlank { it.record.tanggal }
+                                        is TimelineEntry.Off -> "off_" + it.off.id.ifBlank { it.off.tanggal }
+                                    }
+                                }
+                            ) { entry ->
+                                when (entry) {
+                                    is TimelineEntry.Attendance -> HistoryRow(entry.record)
+                                    is TimelineEntry.Off -> OffHistoryRow(entry.off)
+                                }
                             }
                         }
                     }

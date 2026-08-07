@@ -90,7 +90,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextButton
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -111,15 +113,22 @@ fun ProductDetailScreen(
     var showFlyerSheet by remember { mutableStateOf(false) }
 
     TridjayaCollapsibleHeader(title = "Detail Produk", onBack = onBack) { contentModifier ->
-        Box(modifier = contentModifier) {
+        TridjayaPullRefresh(
+            isRefreshing = state.isRefreshing,
+            onRefresh = viewModel::refresh,
+            modifier = contentModifier
+        ) {
             when {
-                state.isLoading -> {
+                // Spinner layar penuh HANYA untuk load pertama: saat tarik-turun, detail yang
+                // sudah tampil tak boleh diganti spinner, dan dari keadaan kosong pun jangan —
+                // indikator tarik sudah jadi penanda "sedang memuat", dua sekaligus menumpuk.
+                state.isLoading && state.product == null && !state.isRefreshing -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
                 state.product == null && state.errorMessage != null -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    ScrollableCenter {
                         ExpressiveErrorState(
                             message = state.errorMessage ?: "Tidak bisa memuat detail produk.",
                             onRetry = viewModel::load
@@ -127,7 +136,7 @@ fun ProductDetailScreen(
                     }
                 }
                 state.product == null -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    ScrollableCenter {
                         Text("Produk tidak ditemukan")
                     }
                 }

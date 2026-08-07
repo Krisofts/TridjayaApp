@@ -78,6 +78,16 @@ class SerialInputViewModel @Inject constructor(
         viewModelScope.launch { loadStok(kodeDealer) }
     }
 
+    /**
+     * Tarik-turun daftar produk: muat ulang stok cabang yang SEDANG dipilih saja.
+     * Sengaja bukan [load] — `load` membaca ulang cabang default akun dan menimpa
+     * cabang yang dipilih manual lewat [changeCabang].
+     */
+    fun refreshStok() {
+        val dealer = _state.value.dealerCode ?: return
+        viewModelScope.launch { loadStok(dealer) }
+    }
+
     private suspend fun loadStok(dealer: String) {
         _state.update { it.copy(itemsLoading = true) }
         when (val stok = repository.stokCabang(dealer)) {

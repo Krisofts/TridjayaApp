@@ -3,7 +3,6 @@ package com.krisoft.tridjayaelektronik.ui.chatactivity
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -55,7 +54,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import java.io.File
 
 /**
@@ -84,70 +85,76 @@ fun ChatReviewScreen(
 
     TridjayaCollapsibleHeader(title = "Periksa Bukti Chat", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        when {
-            state.reviewLoading && state.daftarReview.isEmpty() ->
-                Box(contentModifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+        TridjayaPullRefresh(
+            isRefreshing = state.reviewLoading && state.daftarReview.isNotEmpty(),
+            onRefresh = { viewModel.muatReview() },
+            modifier = contentModifier,
+        ) {
+            when {
+                state.reviewLoading && state.daftarReview.isEmpty() ->
+                    ScrollableCenter { CircularProgressIndicator() }
 
-            state.pesanError != null && state.daftarReview.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveErrorState(
-                        message = state.pesanError ?: "Gagal memuat antrian.",
-                        onRetry = { viewModel.muatReview() },
-                    )
-                }
-
-            state.daftarReview.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveEmptyState(
-                        icon = {
-                            Icon(
-                                Icons.Rounded.Forum,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(30.dp),
-                            )
-                        },
-                        title = "Tidak ada bukti yang menunggu.",
-                        subtitle = "Semua bukti chat hari ini sudah diperiksa.",
-                    )
-                }
-
-            else -> LazyColumn(
-                modifier = contentModifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item(key = "hitungan") {
-                    // Kepala cabang perlu tahu sisa yang mengunci absen pulangnya SENDIRI.
-                    Text(
-                        "${state.daftarReview.size} bukti menunggu",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                (pesanPutar ?: state.pesanError)?.let { pesan ->
-                    item(key = "pesan") {
-                        Text(pesan, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                state.pesanError != null && state.daftarReview.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveErrorState(
+                            message = state.pesanError ?: "Gagal memuat antrian.",
+                            onRetry = { viewModel.muatReview() },
+                        )
                     }
-                }
-                items(state.daftarReview, key = { it.id }) { bukti ->
-                    BarisReview(
-                        bukti = bukti,
-                        sibuk = state.memutuskanId == bukti.id,
-                        mengunduh = mengunduhId == bukti.id,
-                        onPutar = {
-                            pesanPutar = null
-                            mengunduhId = bukti.id
-                            viewModel.bukaVideo(bukti.videoUrl.orEmpty(), context.cacheDir) { berkas ->
-                                mengunduhId = null
-                                if (berkas != null && !bukaPemutarVideo(context, berkas)) {
-                                    pesanPutar = "Tidak ada aplikasi pemutar video di HP ini."
+
+                state.daftarReview.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveEmptyState(
+                            icon = {
+                                Icon(
+                                    Icons.Rounded.Forum,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(30.dp),
+                                )
+                            },
+                            title = "Tidak ada bukti yang menunggu.",
+                            subtitle = "Semua bukti chat hari ini sudah diperiksa.",
+                        )
+                    }
+
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item(key = "hitungan") {
+                        // Kepala cabang perlu tahu sisa yang mengunci absen pulangnya SENDIRI.
+                        Text(
+                            "${state.daftarReview.size} bukti menunggu",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    (pesanPutar ?: state.pesanError)?.let { pesan ->
+                        item(key = "pesan") {
+                            Text(pesan, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    items(state.daftarReview, key = { it.id }) { bukti ->
+                        BarisReview(
+                            bukti = bukti,
+                            sibuk = state.memutuskanId == bukti.id,
+                            mengunduh = mengunduhId == bukti.id,
+                            onPutar = {
+                                pesanPutar = null
+                                mengunduhId = bukti.id
+                                viewModel.bukaVideo(bukti.videoUrl.orEmpty(), context.cacheDir) { berkas ->
+                                    mengunduhId = null
+                                    if (berkas != null && !bukaPemutarVideo(context, berkas)) {
+                                        pesanPutar = "Tidak ada aplikasi pemutar video di HP ini."
+                                    }
                                 }
-                            }
-                        },
-                        onSetuju = { viewModel.putuskan(bukti.id, "approved") },
-                        onTolak = { tolakId = bukti.id; alasan = "" },
-                    )
+                            },
+                            onSetuju = { viewModel.putuskan(bukti.id, "approved") },
+                            onTolak = { tolakId = bukti.id; alasan = "" },
+                        )
+                    }
                 }
             }
         }

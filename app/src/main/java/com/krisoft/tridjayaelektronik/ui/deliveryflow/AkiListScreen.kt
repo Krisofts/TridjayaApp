@@ -49,7 +49,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 /** Menu "Pengambilan Aki" — riwayat form (082) + tandai aki bekas dikembalikan. Pola loading/error/empty
  *  sama dengan [DeliveryQueueScreen]/[DiscountApprovalScreen]; RBAC (admin/manager/pdi) di backend. */
@@ -63,40 +65,46 @@ fun AkiListScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltVie
 
     TridjayaCollapsibleHeader(title = "Pengambilan Aki", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        when {
-            state.loading && state.akiList.isEmpty() ->
-                Box(contentModifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-            state.error != null && state.akiList.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadAkiForms() })
-                }
-            state.akiList.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveEmptyState(
-                        icon = { Icon(Icons.Rounded.BatteryChargingFull, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
-                        title = "Belum ada form aki", subtitle = "Belum ada pengambilan aki yang tercatat."
-                    )
-                }
-            else -> LazyColumn(
-                modifier = contentModifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
-                items(state.akiList, key = { it.id }) { form ->
-                    AkiCard(
-                        form, state.submitting, state.akiPhotos[form.id],
-                        // Tombol approve/reject HANYA utk approver pusat (page-grant
-                        // aki-approval) / admin/manager — redesain 2026-07-24 (dulu
-                        // juga kepala-cabang/admin-penjualan/kasir, 3-pihak/089).
-                        // Pembaca lain (PDI) jangan lihat tombol yang pasti 403.
-                        canApprove = viewModel.canApproveAki,
-                        // Tandai-dikembalikan: backend pdi (cabang form) / admin saja.
-                        canReturn = viewModel.access.pdi,
-                        onApprove = { viewModel.approveAki(form.id) },
-                        onReject = { rejectId = form.id; rejectReason = "" },
-                        onMarkReturned = { confirmId = form.id }
-                    )
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && state.akiList.isNotEmpty(),
+            onRefresh = { viewModel.loadAkiForms() },
+            modifier = contentModifier
+        ) {
+            when {
+                state.loading && state.akiList.isEmpty() ->
+                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                state.error != null && state.akiList.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadAkiForms() })
+                    }
+                state.akiList.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveEmptyState(
+                            icon = { Icon(Icons.Rounded.BatteryChargingFull, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
+                            title = "Belum ada form aki", subtitle = "Belum ada pengambilan aki yang tercatat."
+                        )
+                    }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
+                    items(state.akiList, key = { it.id }) { form ->
+                        AkiCard(
+                            form, state.submitting, state.akiPhotos[form.id],
+                            // Tombol approve/reject HANYA utk approver pusat (page-grant
+                            // aki-approval) / admin/manager — redesain 2026-07-24 (dulu
+                            // juga kepala-cabang/admin-penjualan/kasir, 3-pihak/089).
+                            // Pembaca lain (PDI) jangan lihat tombol yang pasti 403.
+                            canApprove = viewModel.canApproveAki,
+                            // Tandai-dikembalikan: backend pdi (cabang form) / admin saja.
+                            canReturn = viewModel.access.pdi,
+                            onApprove = { viewModel.approveAki(form.id) },
+                            onReject = { rejectId = form.id; rejectReason = "" },
+                            onMarkReturned = { confirmId = form.id }
+                        )
+                    }
                 }
             }
         }

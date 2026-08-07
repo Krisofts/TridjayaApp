@@ -5,7 +5,6 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -54,7 +53,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import kotlinx.coroutines.delay
 
 private val HIJAU = Color(0xFF12B76A)
@@ -106,87 +107,93 @@ fun ChatActivityScreen(
     TridjayaCollapsibleHeader(title = "Bukti Chat Harian", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val today = state.today
-        when {
-            state.loading && today == null ->
-                Box(contentModifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && today != null,
+            onRefresh = { viewModel.muat() },
+            modifier = contentModifier,
+        ) {
+            when {
+                state.loading && today == null ->
+                    ScrollableCenter { CircularProgressIndicator() }
 
-            today == null ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveErrorState(
-                        message = state.pesanError ?: "Gagal memuat status hari ini.",
-                        onRetry = { viewModel.muat() },
-                    )
-                }
+                today == null ->
+                    ScrollableCenter {
+                        ExpressiveErrorState(
+                            message = state.pesanError ?: "Gagal memuat status hari ini.",
+                            onRetry = { viewModel.muat() },
+                        )
+                    }
 
-            else -> Column(
-                modifier = contentModifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
-            ) {
-                KartuStatus(today, state)
+                else -> Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                ) {
+                    KartuStatus(today, state)
 
-                val bukti = today.bukti
-                if (bukti?.status == "rejected") {
-                    Spacer(Modifier.height(12.dp))
-                    Banner(
-                        warna = MERAH,
-                        ikon = Icons.Rounded.Warning,
-                        judul = "Bukti ditolak kepala cabang",
-                        isi = bukti.alasanTolak?.takeIf { it.isNotBlank() }
-                            ?: "Tanpa alasan tertulis — tanyakan ke kepala cabang.",
-                    ) {
-                        Spacer(Modifier.height(10.dp))
-                        ExpressiveOutlinedButton(
-                            onClick = { pilihVideo.launch("video/*") },
-                            modifier = Modifier.fillMaxWidth(),
+                    val bukti = today.bukti
+                    if (bukti?.status == "rejected") {
+                        Spacer(Modifier.height(12.dp))
+                        Banner(
+                            warna = MERAH,
+                            ikon = Icons.Rounded.Warning,
+                            judul = "Bukti ditolak kepala cabang",
+                            isi = bukti.alasanTolak?.takeIf { it.isNotBlank() }
+                                ?: "Tanpa alasan tertulis — tanyakan ke kepala cabang.",
                         ) {
-                            Icon(Icons.Rounded.Movie, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Ganti Video")
+                            Spacer(Modifier.height(10.dp))
+                            ExpressiveOutlinedButton(
+                                onClick = { pilihVideo.launch("video/*") },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(Icons.Rounded.Movie, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Ganti Video")
+                            }
                         }
                     }
-                }
 
-                Spacer(Modifier.height(12.dp))
-                BannerCheckout(today)
-
-                if (bukti?.videoPurged == true) {
                     Spacer(Modifier.height(12.dp))
-                    Banner(
-                        warna = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ikon = Icons.Rounded.DeleteForever,
-                        judul = "Video sudah dihapus (retensi 24 jam)",
-                        isi = "Jumlah chat dan hasil pemeriksaannya tetap tercatat.",
-                    )
-                }
+                    BannerCheckout(today)
 
-                Spacer(Modifier.height(12.dp))
-                if (!today.wajib) {
-                    // Hari libur / saklar fitur mati / belum check-in — form disembunyikan,
-                    // alasannya datang dari server supaya tak berselisih dengan aturan absen.
-                    Banner(
-                        warna = MaterialTheme.colorScheme.primary,
-                        ikon = Icons.Rounded.Info,
-                        judul = "Bukti chat tidak diminta hari ini",
-                        isi = today.alasanTidakWajib?.takeIf { it.isNotBlank() },
-                    )
-                } else {
-                    FormKirim(
-                        state = state,
-                        onUbahJumlah = viewModel::ubahJumlah,
-                        onPilihVideo = { pilihVideo.launch("video/*") },
-                        onKirim = { viewModel.kirim(context.contentResolver) },
-                    )
-                }
+                    if (bukti?.videoPurged == true) {
+                        Spacer(Modifier.height(12.dp))
+                        Banner(
+                            warna = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ikon = Icons.Rounded.DeleteForever,
+                            judul = "Video sudah dihapus (retensi 24 jam)",
+                            isi = "Jumlah chat dan hasil pemeriksaannya tetap tercatat.",
+                        )
+                    }
 
-                state.pesanSukses?.let {
                     Spacer(Modifier.height(12.dp))
-                    Banner(warna = HIJAU, ikon = Icons.Rounded.CheckCircle, judul = it, isi = null)
-                }
-                state.pesanError?.let {
-                    Spacer(Modifier.height(12.dp))
-                    Banner(warna = MERAH, ikon = Icons.Rounded.Warning, judul = it, isi = null)
+                    if (!today.wajib) {
+                        // Hari libur / saklar fitur mati / belum check-in — form disembunyikan,
+                        // alasannya datang dari server supaya tak berselisih dengan aturan absen.
+                        Banner(
+                            warna = MaterialTheme.colorScheme.primary,
+                            ikon = Icons.Rounded.Info,
+                            judul = "Bukti chat tidak diminta hari ini",
+                            isi = today.alasanTidakWajib?.takeIf { it.isNotBlank() },
+                        )
+                    } else {
+                        FormKirim(
+                            state = state,
+                            onUbahJumlah = viewModel::ubahJumlah,
+                            onPilihVideo = { pilihVideo.launch("video/*") },
+                            onKirim = { viewModel.kirim(context.contentResolver) },
+                        )
+                    }
+
+                    state.pesanSukses?.let {
+                        Spacer(Modifier.height(12.dp))
+                        Banner(warna = HIJAU, ikon = Icons.Rounded.CheckCircle, judul = it, isi = null)
+                    }
+                    state.pesanError?.let {
+                        Spacer(Modifier.height(12.dp))
+                        Banner(warna = MERAH, ikon = Icons.Rounded.Warning, judul = it, isi = null)
+                    }
                 }
             }
         }

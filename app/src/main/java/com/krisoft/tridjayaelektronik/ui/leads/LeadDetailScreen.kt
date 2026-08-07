@@ -81,7 +81,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveShapes
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import com.krisoft.tridjayaelektronik.ui.theme.rememberHapticClick
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,15 +98,20 @@ fun LeadDetailScreen(
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     TridjayaCollapsibleHeader(title = "Detail Prospek", onBack = onBack) { contentModifier ->
-        Box(modifier = contentModifier) {
+        TridjayaPullRefresh(
+            isRefreshing = state.isLoading && state.lead != null,
+            // Tarik saat mutasi tahap/status masih jalan akan menimpa hasilnya dengan data lama.
+            onRefresh = { if (!state.isMovingStage && !state.isUpdatingStatus) viewModel.load() },
+            modifier = contentModifier
+        ) {
             when {
-                state.isLoading -> {
+                state.isLoading && state.lead == null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
                 state.lead == null && state.errorMessage != null -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    ScrollableCenter {
                         ExpressiveErrorState(
                             message = state.errorMessage ?: "Tidak bisa memuat prospek.",
                             onRetry = viewModel::load
@@ -112,7 +119,7 @@ fun LeadDetailScreen(
                     }
                 }
                 state.lead == null -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    ScrollableCenter {
                         Text(text = "Prospek tidak ditemukan")
                     }
                 }

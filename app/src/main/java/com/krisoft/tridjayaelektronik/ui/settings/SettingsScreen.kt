@@ -59,6 +59,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.Material3SettingsGroup
 import com.krisoft.tridjayaelektronik.ui.theme.Material3SettingsItem
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import com.krisoft.tridjayaelektronik.ui.update.UpdateDialog
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -147,6 +148,14 @@ fun SettingsScreen(
                 }
                 state.user != null -> {
                     val user = state.user!!
+                    // Cabang ini sudah menjamin profil ada, jadi `isLoading` di sini berarti
+                    // "memuat ulang sambil menampilkan data". Profil dimuat
+                    // stale-while-revalidate (`loadProfile`), jadi penyegaran berjalan diam-diam
+                    // di belakang dan indikatornya memang jarang sempat berputar.
+                    TridjayaPullRefresh(
+                        isRefreshing = state.isLoading,
+                        onRefresh = viewModel::loadProfile
+                    ) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -318,6 +327,7 @@ fun SettingsScreen(
                         )
 
                         Spacer(modifier = Modifier.height(24.dp))
+                    }
                     }
                 }
                 state.errorMessage != null -> {

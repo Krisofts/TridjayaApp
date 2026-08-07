@@ -55,8 +55,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 @Composable
 fun IndentListScreen(
@@ -133,9 +135,12 @@ fun IndentListScreen(
                         placeholder = "Cari nama barang atau pemesan"
                     )
                 }
-                Box(modifier = Modifier.fillMaxSize()) {
+                TridjayaPullRefresh(
+                    isRefreshing = state.isLoading && state.items.isNotEmpty(),
+                    onRefresh = viewModel::load
+                ) {
                     when {
-                        state.isLoading -> {
+                        state.isLoading && state.items.isEmpty() -> {
                             Column(modifier = Modifier.padding(top = 8.dp)) {
                                 repeat(6) {
                                     SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -143,7 +148,7 @@ fun IndentListScreen(
                             }
                         }
                         state.errorMessage != null && state.items.isEmpty() -> {
-                            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                            ScrollableCenter {
                                 ExpressiveErrorState(
                                     message = state.errorMessage ?: "Tidak bisa memuat daftar indent.",
                                     onRetry = viewModel::load
@@ -151,7 +156,7 @@ fun IndentListScreen(
                             }
                         }
                         state.items.isEmpty() -> {
-                            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                            ScrollableCenter {
                                 ExpressiveEmptyState(
                                     icon = { Icon(Icons.Rounded.Inventory2, contentDescription = null) },
                                     title = "Belum ada indent",

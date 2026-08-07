@@ -306,7 +306,6 @@ class DeliveryFlowViewModel @Inject constructor(
     fun loadDetail(id: String) {
         _state.update {
             it.copy(
-                loading = true, error = null, actionDone = false, actionError = null,
                 kontributor = emptyList(), driverChecklist = emptyList(), batchUnits = emptyList(), batchAkiForms = emptyList(),
                 driverChecklistError = null, jobPhotos = emptyMap(),
                 pdiPhoto = null, deliverPhoto = null, cashPhoto = null,
@@ -316,6 +315,18 @@ class DeliveryFlowViewModel @Inject constructor(
         deliverPhotoBytes = null
         pdiPhotoBytes = null
         cashPhotoBytes = null
+        refreshDetail(id)
+    }
+
+    /**
+     * Muat ulang job yang SEDANG dibuka (tarik-turun) — sengaja TIDAK menyentuh
+     * state kamera. [loadDetail] membuang `pdiPhoto`/`deliverPhoto`/`cashPhoto`
+     * beserta byte & flag `*Confirmed`-nya karena ia berpindah job; memakainya
+     * sebagai aksi tarik-turun berarti satu gestur tak sengaja menghapus foto
+     * bukti yang sudah dijepret tapi belum terkirim, tanpa peringatan apa pun.
+     */
+    fun refreshDetail(id: String) {
+        _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null) }
         viewModelScope.launch {
             when (val res = repository.detail(id)) {
                 is AuthResult.Success -> {

@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -68,8 +67,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveInlineError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -189,16 +190,23 @@ fun OpnameDetailScreen(
         }
     ) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        TridjayaPullRefresh(
+            isRefreshing = state.isLoading && detail != null,
+            // paksaStock: daftar barang hanya diambil sekali saat masuk layar, jadi tanpa ini
+            // tarik-turun cuma menyegarkan angka header.
+            onRefresh = { viewModel.load(sessionId, paksaStock = true) },
+            modifier = contentModifier
+        ) {
         when {
             state.isLoading && detail == null -> {
-                Column(modifier = contentModifier.padding(top = 8.dp)) {
+                Column(modifier = Modifier.padding(top = 8.dp)) {
                     repeat(5) {
                         SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                     }
                 }
             }
             detail == null -> {
-                Box(modifier = contentModifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                ScrollableCenter {
                     ExpressiveErrorState(
                         message = state.errorMessage ?: "Tidak bisa memuat sesi opname.",
                         onRetry = { viewModel.load(sessionId) }
@@ -216,7 +224,7 @@ fun OpnameDetailScreen(
                 }
 
                 LazyColumn(
-                    modifier = contentModifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom)
                 ) {
                     item(key = "header") {
@@ -522,6 +530,7 @@ fun OpnameDetailScreen(
                     }
                 }
             }
+        }
         }
     }
 

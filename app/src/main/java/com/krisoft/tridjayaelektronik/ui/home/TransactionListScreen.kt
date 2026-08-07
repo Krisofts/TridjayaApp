@@ -32,7 +32,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 @Composable
 fun TransactionListScreen(
@@ -43,48 +45,53 @@ fun TransactionListScreen(
 
     TridjayaCollapsibleHeader(title = viewModel.displayName, onBack = onBack) { contentModifier ->
         Box(modifier = contentModifier) {
-            when {
-                state.isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                }
-                state.errorMessage != null && state.items.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        ExpressiveErrorState(
-                            message = state.errorMessage ?: "Tidak bisa memuat transaksi.",
-                            onRetry = viewModel::load
-                        )
-                    }
-                }
-                state.items.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        ExpressiveEmptyState(
-                            icon = { Icon(Icons.Rounded.ReceiptLong, contentDescription = null) },
-                            title = "Belum ada transaksi",
-                            subtitle = "Belum ada transaksi bulan ini untuk ${viewModel.displayName}."
-                        )
-                    }
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
-                    ) {
-                        items(state.items, key = { it.noTransaksi }) { tx ->
-                            TransactionRow(tx = tx, showSalesName = viewModel.kind == RankingKind.BRANCH)
+            TridjayaPullRefresh(
+                isRefreshing = state.isLoading && state.items.isNotEmpty(),
+                onRefresh = viewModel::load
+            ) {
+                when {
+                    state.isLoading && state.items.isEmpty() -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
                         }
-                        if (state.canLoadMore) {
-                            item(key = "load_more") {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (state.isLoadingMore) {
-                                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                                    } else {
-                                        ExpressiveOutlinedButton(onClick = viewModel::loadMore) {
-                                            Text("Muat lebih banyak")
+                    }
+                    state.errorMessage != null && state.items.isEmpty() -> {
+                        ScrollableCenter {
+                            ExpressiveErrorState(
+                                message = state.errorMessage ?: "Tidak bisa memuat transaksi.",
+                                onRetry = viewModel::load
+                            )
+                        }
+                    }
+                    state.items.isEmpty() -> {
+                        ScrollableCenter {
+                            ExpressiveEmptyState(
+                                icon = { Icon(Icons.Rounded.ReceiptLong, contentDescription = null) },
+                                title = "Belum ada transaksi",
+                                subtitle = "Belum ada transaksi bulan ini untuk ${viewModel.displayName}."
+                            )
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
+                        ) {
+                            items(state.items, key = { it.noTransaksi }) { tx ->
+                                TransactionRow(tx = tx, showSalesName = viewModel.kind == RankingKind.BRANCH)
+                            }
+                            if (state.canLoadMore) {
+                                item(key = "load_more") {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (state.isLoadingMore) {
+                                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                        } else {
+                                            ExpressiveOutlinedButton(onClick = viewModel::loadMore) {
+                                                Text("Muat lebih banyak")
+                                            }
                                         }
                                     }
                                 }

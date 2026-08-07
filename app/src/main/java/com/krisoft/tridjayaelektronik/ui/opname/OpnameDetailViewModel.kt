@@ -107,7 +107,12 @@ class OpnameDetailViewModel @Inject constructor(
     private var sessionId: String = ""
     private var unitsJob: Job? = null
 
-    fun load(id: String) {
+    /**
+     * [paksaStock] dipakai jalur tarik-turun: tanpa itu daftar barang hanya diambil sekali
+     * (guard `stock.isEmpty()`), jadi refresh cuma menyegarkan angka header sementara daftar
+     * barangnya tetap basi.
+     */
+    fun load(id: String, paksaStock: Boolean = false) {
         sessionId = id
         observeUnits(id)
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -125,7 +130,7 @@ class OpnameDetailViewModel @Inject constructor(
                     // Coverage list matters for any viewer while the session is still
                     // draft (owner counting, or kepala-cabang/manager verifying progress)
                     // — completed sessions already have their own reconciled `items`.
-                    if (result.data.status == "draft" && _uiState.value.stock.isEmpty()) {
+                    if (result.data.status == "draft" && (paksaStock || _uiState.value.stock.isEmpty())) {
                         (repository.stockList(id) as? AuthResult.Success)?.let { stock ->
                             _uiState.update { it.copy(stock = stock.data) }
                         }

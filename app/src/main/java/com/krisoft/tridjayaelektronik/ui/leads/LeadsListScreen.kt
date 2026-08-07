@@ -84,8 +84,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import com.krisoft.tridjayaelektronik.ui.theme.rememberHapticClick
 
 private enum class LeadFilter(val label: String, val icon: ImageVector) {
@@ -282,9 +284,13 @@ fun LeadsListScreen(
                     }
                 }
 
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                TridjayaPullRefresh(
+                    isRefreshing = state.isSyncing,
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                ) {
                     when {
-                        state.isLoading -> {
+                        state.isLoading && state.items.isEmpty() -> {
                             Column(modifier = Modifier.padding(top = 4.dp)) {
                                 repeat(6) {
                                     SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
@@ -292,7 +298,7 @@ fun LeadsListScreen(
                             }
                         }
                         state.errorMessage != null && state.items.isEmpty() -> {
-                            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                            ScrollableCenter {
                                 ExpressiveErrorState(
                                     message = state.errorMessage ?: "Tidak bisa memuat prospek.",
                                     onRetry = viewModel::refresh
@@ -300,7 +306,7 @@ fun LeadsListScreen(
                             }
                         }
                         visibleLeads.isEmpty() -> {
-                            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                            ScrollableCenter {
                                 ExpressiveEmptyState(
                                     icon = { Icon(filter.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                                     title = if (filter == LeadFilter.ALL && scope == LeadScope.ALL) "Belum Ada Prospek"

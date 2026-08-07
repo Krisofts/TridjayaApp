@@ -3,7 +3,6 @@ package com.krisoft.tridjayaelektronik.ui.raport
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -47,8 +46,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveInlineError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import java.io.File
 
 /**
@@ -79,26 +80,26 @@ fun RaportScreen(
 
     TridjayaCollapsibleHeader(title = "Input Aktivitas", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        Box(modifier = contentModifier.fillMaxSize()) {
+        TridjayaPullRefresh(
+            isRefreshing = state.isLoading && state.jobdesks.isNotEmpty(),
+            // Selagi satu baris sedang mengunggah, refresh() akan menimpa `submitted`
+            // dan membuat baris itu tampak mundur — abaikan tariknya sampai selesai.
+            onRefresh = { if (state.busyIndex == null) viewModel.refresh() },
+            modifier = contentModifier
+        ) {
             when {
-                state.isLoading -> Column(modifier = Modifier.padding(top = 4.dp)) {
+                state.isLoading && state.jobdesks.isEmpty() -> Column(modifier = Modifier.padding(top = 4.dp)) {
                     repeat(5) { SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 }
 
-                state.error != null -> Box(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                state.error != null -> ScrollableCenter {
                     ExpressiveErrorState(
                         message = state.error ?: "Gagal memuat",
                         onRetry = viewModel::refresh
                     )
                 }
 
-                state.jobdesks.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                state.jobdesks.isEmpty() -> ScrollableCenter {
                     ExpressiveEmptyState(
                         icon = {
                             Icon(

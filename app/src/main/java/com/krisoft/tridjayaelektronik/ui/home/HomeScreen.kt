@@ -97,9 +97,11 @@ import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.sales.KlasemenRowCard
 import com.krisoft.tridjayaelektronik.ui.sales.KlasemenViewModel
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterViewModel
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonBox
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonLine
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 @Composable
 fun HomeScreen(
@@ -147,6 +149,11 @@ fun HomeScreen(
     val notifState by notifViewModel.state.collectAsState()
     LaunchedEffect(Unit) { notifViewModel.refreshUnreadCount() }
 
+    // Instance yang SAMA dengan yang dipakai `HomeKlasemenCard` (hiltViewModel() tanpa key →
+    // satu instance per ViewModelStoreOwner), cuma di-resolve di sini supaya tarik-turun bisa
+    // ikut menyegarkan widget Klasemen — tanpa itu, refresh cuma menyegarkan separuh layar.
+    val klasemenViewModel: KlasemenViewModel = hiltViewModel()
+
     TridjayaCollapsibleHeader(
         title = "Tridjaya App",
         actions = {
@@ -162,51 +169,60 @@ fun HomeScreen(
         }
     ) { contentModifier ->
         Box(modifier = contentModifier) {
-            when {
-                state.isLoading -> HomeLoadingSkeleton()
-                state.errorMessage != null && state.kpi == null && state.target == null -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        ExpressiveErrorState(
-                            message = state.errorMessage ?: "Tidak bisa memuat dashboard.",
-                            onRetry = { viewModel.loadDashboard(forceRefresh = true) }
-                        )
-                    }
+            TridjayaPullRefresh(
+                isRefreshing = state.isLoading && state.user != null,
+                // Layar ini menampung EMPAT sumber data dari ViewModel berbeda; `loadDashboard`
+                // saja cuma menyegarkan seksi KPI/target/CRM, sisanya tetap basi.
+                onRefresh = {
+                    viewModel.loadDashboard(forceRefresh = true)
+                    eventViewModel.muat()
+                    notifViewModel.refreshUnreadCount()
+                    klasemenViewModel.load(forceRefresh = true)
                 }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomClearance),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // Banner izin notifikasi kini di ActivityScreen (layar pertama app,
-                        // Task B6) — dicabut dari sini supaya tak dobel di tab Operasional.
-                        // Kartu sapaan PINDAH ke `ui/activity/GreetingCard.kt` (layar
-                        // pertama app) — slot ini kini murni milik kartu event, dan cuma
-                        // muncul kalau server bilang user ini sales (`bolehIsi`) DAN ada
-                        // event aktif. Daftar kosong menampung SEMUA keadaan lain
-                        // sekaligus: jaringan mati, respons tak terbaca, bukan sales, tak
-                        // ada event — tak ada yang dirender, dashboard langsung mulai dari
-                        // seksinya. Layar utama tak boleh mati karena fitur ini.
-                        val kartuEvent = eventState.kartuEvent
-                        if (kartuEvent.isNotEmpty()) {
-                            item {
-                                EventCarousel(events = kartuEvent, onOpen = { onOpenEvent(it.id) })
-                            }
-                        }
-                        // Tiap bagian dirender sebagai kartu selebar layar berjudul (gaya sama
-                        // dengan daftar klasemen), dalam urutan tetap [HomeSection.DEFAULT_ORDER].
-                        HomeSection.DEFAULT_ORDER.forEach { section ->
-                            homeSection(
-                                section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
-                                onQuickAccessInventory, onQuickAccessSearch, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
-                                onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessKpi,
-                                onQuickAccessHargaGs,
-                                onQuickAccessSerialInput, onQuickAccessDeadstock, onQuickAccessMutasiHistori,
-                                onSpkMenu
+            ) {
+                when {
+                    state.isLoading && state.user == null -> HomeLoadingSkeleton()
+                    state.errorMessage != null && state.kpi == null && state.target == null -> {
+                        ScrollableCenter {
+                            ExpressiveErrorState(
+                                message = state.errorMessage ?: "Tidak bisa memuat dashboard.",
+                                onRetry = { viewModel.loadDashboard(forceRefresh = true) }
                             )
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomClearance),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Banner izin notifikasi kini di ActivityScreen (layar pertama app,
+                            // Task B6) — dicabut dari sini supaya tak dobel di tab Operasional.
+                            // Kartu sapaan PINDAH ke `ui/activity/GreetingCard.kt` (layar
+                            // pertama app) — slot ini kini murni milik kartu event, dan cuma
+                            // muncul kalau server bilang user ini sales (`bolehIsi`) DAN ada
+                            // event aktif. Daftar kosong menampung SEMUA keadaan lain
+                            // sekaligus: jaringan mati, respons tak terbaca, bukan sales, tak
+                            // ada event — tak ada yang dirender, dashboard langsung mulai dari
+                            // seksinya. Layar utama tak boleh mati karena fitur ini.
+                            val kartuEvent = eventState.kartuEvent
+                            if (kartuEvent.isNotEmpty()) {
+                                item {
+                                    EventCarousel(events = kartuEvent, onOpen = { onOpenEvent(it.id) })
+                                }
+                            }
+                            // Tiap bagian dirender sebagai kartu selebar layar berjudul (gaya sama
+                            // dengan daftar klasemen), dalam urutan tetap [HomeSection.DEFAULT_ORDER].
+                            HomeSection.DEFAULT_ORDER.forEach { section ->
+                                homeSection(
+                                    section, state, onViewMoreBranches, onViewMoreSales, onBranchClick, onSalesClick,
+                                    onQuickAccessInventory, onQuickAccessSearch, onQuickAccessLeads, onQuickAccessIndent, onQuickAccessSales,
+                                    onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessKpi,
+                                    onQuickAccessHargaGs,
+                                    onQuickAccessSerialInput, onQuickAccessDeadstock, onQuickAccessMutasiHistori,
+                                    onSpkMenu
+                                )
+                            }
                         }
                     }
                 }

@@ -51,6 +51,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 private val RewardColor = Color(0xFF12B76A)
 private val PunishmentColor = Color(0xFFF04438)
@@ -87,75 +88,86 @@ fun KpiScreen(
         onBack = { if (viewing != null) viewModel.closeKaryawan() else onBack() }
     ) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        LazyColumn(
-            modifier = contentModifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && state.detail != null,
+            // Meniru shiftMonth(): daftar karyawan ikut dimuat ulang HANYA di layar
+            // "KPI Saya" — saat sedang membuka KPI orang lain daftar itu tak dirender.
+            onRefresh = {
+                viewModel.loadDetail()
+                if (viewing == null && state.canManage) viewModel.loadList()
+            },
+            modifier = contentModifier
         ) {
-            item { BetaNotice() }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item { BetaNotice() }
 
-            item {
-                PeriodeSwitcher(
-                    periode = state.periode,
-                    enabled = !state.loading && state.periode.isNotEmpty(),
-                    onShift = viewModel::shiftMonth
-                )
-            }
-
-            val detail = state.detail
-            when {
-                state.loading && detail == null -> item {
-                    Column { repeat(4) { SkeletonCard(modifier = Modifier.padding(vertical = 4.dp)) } }
-                }
-                state.error != null && detail == null -> item {
-                    Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
-                        ExpressiveErrorState(
-                            message = state.error ?: "Gagal memuat",
-                            onRetry = viewModel::loadDetail
-                        )
-                    }
-                }
-                detail != null -> {
-                    item { SummaryCard(detail) }
-                    if (detail.items.isEmpty()) {
-                        item {
-                            Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
-                                ExpressiveEmptyState(
-                                    icon = { Icon(Icons.Rounded.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                    title = "Belum ada posisi KPI",
-                                    subtitle = "HR belum menetapkan posisi penilaian untuk periode ini."
-                                )
-                            }
-                        }
-                    } else {
-                        items(detail.items, key = { it.indicatorId }) { IndicatorCard(it) }
-                    }
-                }
-            }
-
-            // Daftar karyawan hanya untuk pemegang `kpi.manage`, dan hanya di
-            // layar "KPI Saya" — saat sedang membuka KPI orang lain, daftar di
-            // bawahnya cuma bikin bingung siapa yang sedang dilihat.
-            if (state.canManage && viewing == null) {
                 item {
-                    Text(
-                        text = "KPI Karyawan",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 2.dp)
+                    PeriodeSwitcher(
+                        periode = state.periode,
+                        enabled = !state.loading && state.periode.isNotEmpty(),
+                        onShift = viewModel::shiftMonth
                     )
                 }
-                state.listError?.let { message ->
-                    item {
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
+
+                val detail = state.detail
+                when {
+                    state.loading && detail == null -> item {
+                        Column { repeat(4) { SkeletonCard(modifier = Modifier.padding(vertical = 4.dp)) } }
+                    }
+                    state.error != null && detail == null -> item {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                            ExpressiveErrorState(
+                                message = state.error ?: "Gagal memuat",
+                                onRetry = viewModel::loadDetail
+                            )
+                        }
+                    }
+                    detail != null -> {
+                        item { SummaryCard(detail) }
+                        if (detail.items.isEmpty()) {
+                            item {
+                                Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                                    ExpressiveEmptyState(
+                                        icon = { Icon(Icons.Rounded.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                        title = "Belum ada posisi KPI",
+                                        subtitle = "HR belum menetapkan posisi penilaian untuk periode ini."
+                                    )
+                                }
+                            }
+                        } else {
+                            items(detail.items, key = { it.indicatorId }) { IndicatorCard(it) }
+                        }
                     }
                 }
-                items(state.list, key = { it.karyawanId }) { row ->
-                    KaryawanRow(row, onClick = { viewModel.openKaryawan(row) })
+
+                // Daftar karyawan hanya untuk pemegang `kpi.manage`, dan hanya di
+                // layar "KPI Saya" — saat sedang membuka KPI orang lain, daftar di
+                // bawahnya cuma bikin bingung siapa yang sedang dilihat.
+                if (state.canManage && viewing == null) {
+                    item {
+                        Text(
+                            text = "KPI Karyawan",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 2.dp)
+                        )
+                    }
+                    state.listError?.let { message ->
+                        item {
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    items(state.list, key = { it.karyawanId }) { row ->
+                        KaryawanRow(row, onClick = { viewModel.openKaryawan(row) })
+                    }
                 }
             }
         }

@@ -57,8 +57,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 internal fun opnameStatusLabel(status: String): String = when (status.lowercase()) {
     "draft" -> "Draft"
@@ -121,60 +123,65 @@ fun OpnameListScreen(
 
     TridjayaCollapsibleHeader(title = "Stok Opname", onBack = onBack) { contentModifier ->
         Box(modifier = contentModifier.fillMaxSize()) {
-            when {
-                state.isLoading -> {
-                    Column(modifier = Modifier.padding(top = 8.dp)) {
-                        repeat(6) {
-                            SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            TridjayaPullRefresh(
+                isRefreshing = state.isLoading && state.items.isNotEmpty(),
+                onRefresh = viewModel::load
+            ) {
+                when {
+                    state.isLoading && state.items.isEmpty() -> {
+                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                            repeat(6) {
+                                SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                            }
                         }
                     }
-                }
-                state.errorMessage != null && state.items.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        ExpressiveErrorState(
-                            message = state.errorMessage ?: "Tidak bisa memuat daftar opname.",
-                            onRetry = viewModel::load
-                        )
-                    }
-                }
-                state.items.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        ExpressiveEmptyState(
-                            icon = { Icon(Icons.Rounded.FactCheck, contentDescription = null) },
-                            title = "Belum ada sesi opname",
-                            subtitle = if (state.context?.canCreate == true) {
-                                "Tekan tombol + untuk memulai hitung fisik stok"
-                            } else {
-                                "Belum ada sesi opname yang bisa ditampilkan untuk akunmu"
-                            }
-                        )
-                    }
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 4.dp, bottom = 100.dp)
-                    ) {
-                        item(key = "status_filter") {
-                            OpnameStatusChips(
-                                items = state.items,
-                                selected = statusFilter,
-                                onSelect = { statusFilter = if (statusFilter == it) null else it }
+                    state.errorMessage != null && state.items.isEmpty() -> {
+                        ScrollableCenter {
+                            ExpressiveErrorState(
+                                message = state.errorMessage ?: "Tidak bisa memuat daftar opname.",
+                                onRetry = viewModel::load
                             )
                         }
-                        if (filteredItems.isEmpty()) {
-                            item(key = "no_match") {
-                                Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                                    ExpressiveEmptyState(
-                                        icon = { Icon(Icons.Rounded.FactCheck, contentDescription = null) },
-                                        title = "Tidak ditemukan",
-                                        subtitle = "Tidak ada sesi dengan status itu"
-                                    )
+                    }
+                    state.items.isEmpty() -> {
+                        ScrollableCenter {
+                            ExpressiveEmptyState(
+                                icon = { Icon(Icons.Rounded.FactCheck, contentDescription = null) },
+                                title = "Belum ada sesi opname",
+                                subtitle = if (state.context?.canCreate == true) {
+                                    "Tekan tombol + untuk memulai hitung fisik stok"
+                                } else {
+                                    "Belum ada sesi opname yang bisa ditampilkan untuk akunmu"
                                 }
+                            )
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = 100.dp)
+                        ) {
+                            item(key = "status_filter") {
+                                OpnameStatusChips(
+                                    items = state.items,
+                                    selected = statusFilter,
+                                    onSelect = { statusFilter = if (statusFilter == it) null else it }
+                                )
                             }
-                        } else {
-                            items(filteredItems, key = { it.id }) { session ->
-                                OpnameSessionRow(session, onClick = { selectedId = session.id })
+                            if (filteredItems.isEmpty()) {
+                                item(key = "no_match") {
+                                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                        ExpressiveEmptyState(
+                                            icon = { Icon(Icons.Rounded.FactCheck, contentDescription = null) },
+                                            title = "Tidak ditemukan",
+                                            subtitle = "Tidak ada sesi dengan status itu"
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(filteredItems, key = { it.id }) { session ->
+                                    OpnameSessionRow(session, onClick = { selectedId = session.id })
+                                }
                             }
                         }
                     }

@@ -45,8 +45,10 @@ import com.krisoft.tridjayaelektronik.data.model.PetugasGroupDto
 import com.krisoft.tridjayaelektronik.ui.leads.openWhatsApp
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -138,60 +140,63 @@ fun PanduanAlurScreen(
     TridjayaCollapsibleHeader(title = "Panduan Alur", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val data = state.data
-        when {
-            state.loading && data == null -> Column(contentModifier.fillMaxSize().padding(top = 4.dp)) {
-                repeat(5) { SkeletonCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
-            }
-            data == null -> Box(
-                contentModifier.fillMaxSize().padding(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                ExpressiveErrorState(
-                    message = state.error ?: "Gagal memuat panduan alur",
-                    onRetry = viewModel::load,
-                )
-            }
-            else -> LazyColumn(
-                modifier = contentModifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = navBottom + 24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (state.dariSalinan) {
-                    item { CatatanSalinan() }
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && data != null,
+            onRefresh = viewModel::load,
+            modifier = contentModifier,
+        ) {
+            when {
+                state.loading && data == null -> Column(Modifier.fillMaxSize().padding(top = 4.dp)) {
+                    repeat(5) { SkeletonCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 }
-                item { JudulSeksi("ALUR PENGIRIMAN") }
-                // Nomor urut dari posisi list: urutannya SUDAH benar dari server
-                // (sebaris state machine `delivery.rs`), jangan diurutkan ulang.
-                itemsIndexed(data.tahapan) { index, tahap ->
-                    ClayCard(Modifier.fillMaxWidth()) {
-                        Row(Modifier.fillMaxWidth().padding(14.dp)) {
-                            NomorTahap(index + 1)
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    tahap.aktor,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Text(
-                                    tahap.keterangan,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                data == null -> ScrollableCenter {
+                    ExpressiveErrorState(
+                        message = state.error ?: "Gagal memuat panduan alur",
+                        onRetry = viewModel::load,
+                    )
+                }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = navBottom + 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (state.dariSalinan) {
+                        item { CatatanSalinan() }
+                    }
+                    item { JudulSeksi("ALUR PENGIRIMAN") }
+                    // Nomor urut dari posisi list: urutannya SUDAH benar dari server
+                    // (sebaris state machine `delivery.rs`), jangan diurutkan ulang.
+                    itemsIndexed(data.tahapan) { index, tahap ->
+                        ClayCard(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth().padding(14.dp)) {
+                                NomorTahap(index + 1)
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        tahap.aktor,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Text(
+                                        tahap.keterangan,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                item {
-                    JudulSeksi(
-                        "PETUGAS" + (data.dealerName?.takeIf { it.isNotBlank() }?.let { " — ${it.uppercase()}" } ?: "")
-                    )
-                }
-                data.divisi.forEach { group ->
-                    item(key = "divisi_${group.kunci}") {
-                        KelompokPetugas(group) { petugas ->
-                            openWhatsApp(context, petugas.whatsapp.orEmpty(), "Halo ${petugas.nama}, ")
+                    item {
+                        JudulSeksi(
+                            "PETUGAS" + (data.dealerName?.takeIf { it.isNotBlank() }?.let { " — ${it.uppercase()}" } ?: "")
+                        )
+                    }
+                    data.divisi.forEach { group ->
+                        item(key = "divisi_${group.kunci}") {
+                            KelompokPetugas(group) { petugas ->
+                                openWhatsApp(context, petugas.whatsapp.orEmpty(), "Halo ${petugas.nama}, ")
+                            }
                         }
                     }
                 }
@@ -208,9 +213,7 @@ private fun CatatanSalinan() {
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
     ) {
         Text(
-            // Tak menjanjikan gestur yang tak ada di layar ini (tak ada
-            // pull-to-refresh) — memuat ulang = buka lagi halamannya.
-            "Offline — ini salinan terakhir yang tersimpan. Buka lagi halaman ini saat ada sinyal.",
+            "Offline — ini salinan terakhir yang tersimpan. Tarik ke bawah untuk memuat ulang saat ada sinyal.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
