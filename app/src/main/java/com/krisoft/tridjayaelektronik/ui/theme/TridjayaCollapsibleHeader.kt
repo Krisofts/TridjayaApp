@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.krisoft.tridjayaelektronik.BuildConfig
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -82,14 +84,27 @@ fun TridjayaCollapsibleHeader(
                 Spacer(modifier = Modifier.height(10.dp))
                 TopAppBar(
                     title = {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(start = 14.dp)
-                        )
+                        // Badge BETA menempel di HEADER BERSAMA, bukan di tiap layar:
+                        // 81 pemanggil ikut mendapatkannya tanpa satu pun disentuh, dan
+                        // layar baru otomatis ikut. Digantung pada BuildConfig.IS_BETA,
+                        // jadi build rilis biasa tak merender apa pun.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                // weight(1f, fill = false) supaya judul panjang
+                                // ter-ellipsis dan badge TETAP terlihat — tanpa ini
+                                // judul mendorong badge keluar layar.
+                                modifier = Modifier.padding(start = 14.dp).weight(1f, fill = false)
+                            )
+                            if (BuildConfig.IS_BETA) {
+                                Spacer(Modifier.width(8.dp))
+                                BetaBadge()
+                            }
+                        }
                     },
                     navigationIcon = {
                         if (onBack != null) {

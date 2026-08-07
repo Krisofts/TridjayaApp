@@ -29,6 +29,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.ui.home.NotificationPermissionBanner
 import com.krisoft.tridjayaelektronik.ui.home.findLifecycle
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterViewModel
+import com.krisoft.tridjayaelektronik.ui.theme.BetaBadge
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledIconButton
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonBox
@@ -377,18 +378,7 @@ private fun DailyTaskRow(task: DailyTask, onClick: () -> Unit) {
                     Text(task.item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     if (task.item.beta) {
                         Spacer(Modifier.width(6.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                        ) {
-                            Text(
-                                "BETA",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                            )
-                        }
+                        BetaBadge()
                     }
                 }
                 Text(

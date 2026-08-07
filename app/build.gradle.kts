@@ -34,6 +34,21 @@ android {
         // workaround needed since it's a public domain). Migrated 2026-07-13 from
         // tridjayaelektronik.tech, which now only serves an HTML redirect page.
         buildConfigField("String", "API_BASE_URL", "\"https://tridjaya.com/\"")
+
+        // Penanda "ini bukan build produksi", dibaca UI untuk menampilkan badge BETA
+        // di header. DUA jalur menyalakannya, karena "versi uji coba" di repo ini
+        // ada dua bentuk yang berbeda:
+        //
+        //   1. build DEBUG  — otomatis (blok `debug` di bawah). Ini yang dipasang
+        //      lewat kabel saat mengembangkan.
+        //   2. `-Pbeta`     — RELEASE yang sengaja ditandai uji coba. Perlu karena
+        //      APK yang dibagikan ke karyawan lewat APK_UPLOAD_DIR adalah build
+        //      release bertanda tangan asli (debug tak bisa dipakai: kuncinya beda,
+        //      Android menolak memasangnya di atas app terpasang) — jadi tanpa flag
+        //      ini rilis percobaan tak punya cara membedakan diri dari rilis biasa.
+        //
+        // Default `false`: rilis normal tak boleh diam-diam mengaku beta.
+        buildConfigField("boolean", "IS_BETA", if (project.hasProperty("beta")) "true" else "false")
     }
 
     signingConfigs {
@@ -57,6 +72,10 @@ android {
             }
         }
         debug {
+            // Build debug SELALU beta — ia tak pernah sampai ke tangan karyawan
+            // sebagai app resmi, jadi tak ada kasus di mana penandanya salah.
+            buildConfigField("boolean", "IS_BETA", "true")
+
             // Debug memakai API_BASE_URL default (https://tridjaya.com/) sama seperti
             // release. Untuk uji ke gateway lokal:
             //

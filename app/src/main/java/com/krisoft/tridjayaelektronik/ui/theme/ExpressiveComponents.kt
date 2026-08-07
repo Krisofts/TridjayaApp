@@ -433,3 +433,27 @@ fun ExpressiveSectionHeader(
         trailing?.invoke()
     }
 }
+
+/**
+ * Penanda "build ini bukan produksi" — dipakai di header app (semua layar lewat
+ * [TridjayaCollapsibleHeader]) dan di kartu Aktivitas untuk fitur yang masih beta.
+ *
+ * Bentuknya diangkat dari badge BETA yang sudah dipakai `ActivityScreen` supaya
+ * dua penanda itu tak berbeda rupa; sekarang keduanya membaca satu definisi.
+ */
+@Composable
+fun BetaBadge(modifier: Modifier = Modifier, label: String = "BETA") {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = modifier
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+        )
+    }
+}
