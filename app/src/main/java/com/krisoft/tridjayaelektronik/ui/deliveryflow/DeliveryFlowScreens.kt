@@ -244,13 +244,30 @@ fun DeliveryQueueScreen(
     /** Sales antar sendiri (2026-07-24): treat aktor sales sbg driver (job self-delivery
      *  miliknya sendiri) — dikirim layar "Tugas Antar", driver asli tak terpengaruh. */
     asDriver: Boolean = false,
+    /**
+     * Baris chip periode di atas daftar — HANYA Riwayat SPK. Default `false`
+     * supaya enam layar pemakai lain tak berubah sama sekali.
+     *
+     * SENGAJA tak dipasang di antrian kerja per-tahap: isinya pekerjaan yang
+     * HARUS dikerjakan, dan menyaringnya ke "hari ini" menyembunyikan tunggakan
+     * kemarin tanpa satu pun error — petugas cuma melihat antrian yang lebih
+     * pendek lalu menyimpulkan sudah beres.
+     */
+    periodeFilter: Boolean = false,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     viewModel: DeliveryFlowViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(status, view) { viewModel.loadQueue(status, view, asDriver) }
-    val muatUlang = { viewModel.loadQueue(status, view, asDriver) }
+    var periode by remember { mutableStateOf(PeriodeSpk.HARI_INI) }
+    // Dihitung ulang tiap recomposition (bukan di-`remember`): `muatUlang` di
+    // bawah ikut dibuat ulang bersamanya, jadi pull-to-refresh dan tombol
+    // coba-lagi selalu membawa periode TERPILIH — bukan rentang yang
+    // ter-capture saat komposisi pertama.
+    val rentang = if (periodeFilter) rentangPeriode(periode) else RentangTanggal(null, null)
+    // `rentang` WAJIB ikut jadi kunci; tanpa itu memilih chip lain tak memuat apa pun.
+    LaunchedEffect(status, view, rentang) { viewModel.loadQueue(status, view, asDriver, rentang.dari, rentang.sampai) }
+    val muatUlang = { viewModel.loadQueue(status, view, asDriver, rentang.dari, rentang.sampai) }
 
     // ── Aksi level-SPK (2026-08-06) ──────────────────────────────────────────
     // Backend mem-FAN-OUT surat jalan, penugasan driver, konfirmasi kasir,
@@ -288,18 +305,30 @@ fun DeliveryQueueScreen(
             onRefresh = muatUlang,
             modifier = contentModifier,
         ) {
-            when {
+            Column(modifier = Modifier.fillMaxSize()) {
+              // Baris chip DI LUAR `when` di bawah — kalau ia ikut hilang saat
+              // daftar kosong/gagal/loading, orang yang menyaring ke "Hari ini"
+              // lalu mendapat nol hasil tak punya jalan kembali ke "Semua" dan
+              // membacanya sebagai data yang hilang.
+              if (periodeFilter) PeriodeFilterRow(dipilih = periode, onPilih = { periode = it })
+              Box(modifier = Modifier.weight(1f)) {
+                when {
                 state.loading && state.items.isEmpty() ->
                     Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 state.error != null && state.items.isEmpty() ->
                     ScrollableCenter {
-                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadQueue(status, view) })
+                        // `muatUlang`, bukan `loadQueue(status, view)`: pemanggilan
+                        // pendek itu menjatuhkan `asDriver` DAN rentang periodenya.
+                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = muatUlang)
                     }
                 state.items.isEmpty() ->
                     ScrollableCenter {
                         ExpressiveEmptyState(
                             icon = { Icon(Icons.Rounded.LocalShipping, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
-                            title = "Antrian kosong", subtitle = "Belum ada job pada tahap ini."
+                            title = "Antrian kosong",
+                            // Kosong karena disaring ≠ kosong karena tak ada datanya.
+                            subtitle = if (periodeFilter) "Tidak ada SPK pada periode ini (${periode.keterangan}). Ganti periode di atas."
+                            else "Belum ada job pada tahap ini."
                         )
                     }
                 else -> Column(modifier = Modifier.fillMaxSize()) {
@@ -370,6 +399,8 @@ fun DeliveryQueueScreen(
                         }
                     }
                 }
+                }
+              }
             }
         }
     }
@@ -3151,7 +3182,18 @@ fun DiscountApprovalScreen(
     viewModel: DeliveryFlowViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(Unit) { viewModel.loadDiscounts("pending") }
+    // Default HARI_INI atas permintaan user ("pada approval discount tambahkan
+    // filter serupa"), DENGAN MATA TERBUKA: antrian ini pekerjaan TERTUNGGAK,
+    // jadi default hari-ini menyembunyikan pengajuan kemarin yang belum diputus
+    // — persis kelas kekeliruan yang membuat filter ini tak dipasang di antrian
+    // kerja per-tahap. Penawarnya baris "menampilkan N pengajuan · <periode>" di
+    // bawah chip: approver yang melihat 0 tahu daftarnya sedang TERSARING, bukan
+    // habis. Kalau ada laporan "pengajuan diskon hilang", cek chip ini dulu.
+    var periode by remember { mutableStateOf(PeriodeSpk.HARI_INI) }
+    val rentang = rentangPeriode(periode)
+    // Status "pending" TETAP — periode menyaring tanggal, bukan tahap keputusan.
+    LaunchedEffect(rentang) { viewModel.loadDiscounts("pending", rentang.dari, rentang.sampai) }
+    val muatUlang = { viewModel.loadDiscounts("pending", rentang.dari, rentang.sampai) }
     // Id PENGAJUAN yang sedang ditolak — bukan lagi "anchor" se-SPK: sejak
     // 2026-08-07 penolakan cuma mengenai barang yang ditunjuk.
     var rejectId by remember { mutableStateOf<String?>(null) }
@@ -3160,21 +3202,45 @@ fun DiscountApprovalScreen(
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         TridjayaPullRefresh(
             isRefreshing = state.loading && state.discounts.isNotEmpty(),
-            onRefresh = { viewModel.loadDiscounts("pending") },
+            onRefresh = muatUlang,
             modifier = contentModifier,
         ) {
-            when {
+            Column(modifier = Modifier.fillMaxSize()) {
+              // Chip + baris jumlah DI LUAR `when` di bawah: keduanya harus tetap
+              // terlihat saat daftar kosong/gagal/loading, kalau tidak approver
+              // yang tersaring ke "Hari ini" kehilangan jalan kembali ke "Semua".
+              PeriodeFilterRow(dipilih = periode, onPilih = { periode = it })
+              if (!(state.loading && state.discounts.isEmpty())) {
+                  // `total` server, bukan `discounts.size`: responsnya BERHALAMAN
+                  // (limit 100), jadi ukuran daftar adalah isi halaman. Menyebutnya
+                  // sebagai jumlah membuat approver yakin sudah melihat semuanya.
+                  val ditampilkan = state.discounts.size
+                  Text(
+                      if (state.diskonTotal > ditampilkan)
+                          "Menampilkan $ditampilkan dari ${state.diskonTotal} pengajuan · ${periode.keterangan}"
+                      else "Menampilkan $ditampilkan pengajuan · ${periode.keterangan}",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                  )
+              }
+              Box(modifier = Modifier.weight(1f)) {
+                when {
                 state.loading && state.discounts.isEmpty() ->
                     Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 state.error != null && state.discounts.isEmpty() ->
                     ScrollableCenter {
-                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadDiscounts("pending") })
+                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = muatUlang)
                     }
                 state.discounts.isEmpty() ->
                     ScrollableCenter {
                         ExpressiveEmptyState(
                             icon = { Icon(Icons.Rounded.Discount, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
-                            title = "Tidak ada pengajuan diskon", subtitle = "Semua pengajuan sudah diputuskan."
+                            title = "Tidak ada pengajuan diskon",
+                            // Sudah diputus ≠ tersaring keluar. Menyamakan keduanya
+                            // membuat approver menutup layar padahal tunggakan
+                            // kemarin masih menunggu di periode lain.
+                            subtitle = "Tidak ada pengajuan pending pada ${periode.keterangan}. Ganti periode di atas untuk melihat yang lebih lama."
                         )
                     }
                 else -> LazyColumn(
@@ -3205,6 +3271,8 @@ fun DiscountApprovalScreen(
                         )
                     }
                 }
+                }
+              }
             }
         }
     }

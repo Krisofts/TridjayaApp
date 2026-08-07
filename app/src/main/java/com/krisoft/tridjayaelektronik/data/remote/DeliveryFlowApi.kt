@@ -70,7 +70,11 @@ interface DeliveryFlowApi {
         @Query("limit") limit: Int? = null,
         /** Sales antar sendiri (2026-07-24): treat aktor sales sbg driver
          *  (job self-delivery miliknya sendiri) — paritas web `asDriver`. */
-        @Query("asDriver") asDriver: Boolean? = null
+        @Query("asDriver") asDriver: Boolean? = null,
+        /** Rentang tanggal dibuat (YYYY-MM-DD, inklusif dua-duanya di sisi
+         *  server). Tak dikirim = tanpa batas tanggal, persis perilaku lama. */
+        @Query("dari") dari: String? = null,
+        @Query("sampai") sampai: String? = null
     ): Response<ApiResponse<DeliveryListData>>
 
     @GET("api/inventory/delivery/context")
@@ -297,9 +301,13 @@ interface DeliveryFlowApi {
     @POST("api/inventory/delivery/{id}/aki-form")
     suspend fun createAkiForm(@Path("id") id: String, @Body body: CreateAkiFormBody): Response<ApiResponse<AkiFormCreateData>>
 
-    /** Daftar riwayat form aki (admin/manager lintas cabang; PDI cabang sendiri). */
+    /** Daftar riwayat form aki (admin/manager lintas cabang; PDI cabang sendiri).
+     *  [dari]/[sampai] YYYY-MM-DD, tak dikirim = tanpa batas tanggal. */
     @GET("api/inventory/delivery/aki-forms")
-    suspend fun akiForms(): Response<ApiResponse<AkiFormsData>>
+    suspend fun akiForms(
+        @Query("dari") dari: String? = null,
+        @Query("sampai") sampai: String? = null
+    ): Response<ApiResponse<AkiFormsData>>
 
     /** Tandai aki bekas dikembalikan. */
     @POST("api/inventory/delivery/aki-forms/{id}/return")
@@ -321,7 +329,10 @@ interface DeliveryFlowApi {
     suspend fun discountRequests(
         @Query("status") status: String? = null,
         @Query("page") page: Int = 1,
-        @Query("limit") limit: Int = 100
+        @Query("limit") limit: Int = 100,
+        /** Rentang tanggal pengajuan (YYYY-MM-DD); tak dikirim = tanpa batas. */
+        @Query("dari") dari: String? = null,
+        @Query("sampai") sampai: String? = null
     ): Response<ApiResponse<DiscountListData>>
 
     /** Riwayat pengajuan diskon SATU baris SPK — dipakai timeline detail SPK.

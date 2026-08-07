@@ -75,6 +75,14 @@ data class DeliveryFlowUiState(
     /** Pengajuan diskon menunggu approval (layar approval diskon). */
     val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
     /**
+     * `total` dari server = jumlah SELURUH pengajuan yang cocok filter, yang
+     * bisa LEBIH BANYAK dari [discounts] karena responsnya berhalaman
+     * (`limit` 100, plafon backend). Disimpan terpisah supaya baris "menampilkan
+     * N …" tak mengarang: `discounts.size` adalah isi HALAMAN, dan memakainya
+     * sebagai jumlah membuat approver yakin sudah melihat semuanya.
+     */
+    val diskonTotal: Int = 0,
+    /**
      * Id PENGAJUAN yang keputusannya sedang dikirim — BUKAN boolean global,
      * dan sejak 2026-08-07 bukan kode SPK lagi.
      * [submitting] mematikan tombol SEMUA kartu di antrian sekaligus, jadi
@@ -256,10 +264,24 @@ class DeliveryFlowViewModel @Inject constructor(
 
     private val serialFetched = mutableSetOf<String>()
 
-    fun loadQueue(status: String?, view: String? = null, asDriver: Boolean = false) {
+    fun loadQueue(
+        status: String?,
+        view: String? = null,
+        asDriver: Boolean = false,
+        dari: String? = null,
+        sampai: String? = null,
+    ) {
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
-            when (val res = repository.list(status = status, view = view, asDriver = asDriver)) {
+            when (
+                val res = repository.list(
+                    status = status,
+                    view = view,
+                    asDriver = asDriver,
+                    dari = dari,
+                    sampai = sampai,
+                )
+            ) {
                 is AuthResult.Success -> _state.update { it.copy(loading = false, items = res.data, error = null) }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
             }
@@ -570,14 +592,21 @@ class DeliveryFlowViewModel @Inject constructor(
     fun clearActionError() = _state.update { it.copy(actionError = null) }
 
     // ── Approval diskon per-baris ────────────────────────────────────────────
-    fun loadDiscounts(status: String? = "pending") {
+    fun loadDiscounts(status: String? = "pending", dari: String? = null, sampai: String? = null) {
         // Peta foto dikosongkan di sini, bukan cuma ditimpa: item yang sudah
         // diputuskan hilang dari antrian, dan bitmap-nya ikut dibuang.
         _state.update { it.copy(loading = true, error = null, diskonBuktiPhotos = emptyMap()) }
         viewModelScope.launch {
-            when (val res = repository.discounts(status)) {
+            when (val res = repository.discounts(status, dari = dari, sampai = sampai)) {
                 is AuthResult.Success -> {
-                    _state.update { it.copy(loading = false, discounts = res.data.items, error = null) }
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            discounts = res.data.items,
+                            diskonTotal = res.data.total,
+                            error = null,
+                        )
+                    }
                     loadDiscountPhotos(res.data.items)
                 }
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
@@ -989,10 +1018,10 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     /** Riwayat form aki (menu "Pengambilan Aki"). */
-    fun loadAkiForms() {
+    fun loadAkiForms(dari: String? = null, sampai: String? = null) {
         _state.update { it.copy(loading = true, error = null, akiPhotos = emptyMap()) }
         viewModelScope.launch {
-            when (val res = repository.akiForms()) {
+            when (val res = repository.akiForms(dari = dari, sampai = sampai)) {
                 is AuthResult.Success -> {
                     _state.update { it.copy(loading = false, akiList = res.data, error = null) }
                     loadAkiPhotos(res.data)

@@ -420,7 +420,19 @@ fun ActivityNavHost(
             DeliveryQueueScreen("Antri PDI", DeliveryStatusKey.PENDING_PDI, onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
-        composable(ROUTE_DLV_AKI) { AkiListScreen(onBack = { navController.popBackStack() }) }
+        composable(ROUTE_DLV_AKI) {
+            AkiListScreen(
+                onBack = { navController.popBackStack() },
+                // [dlvDetailRoute], BUKAN [dlvDiskonDetailRoute]: kartu aki
+                // menunjuk satu JOB (unit), sementara detail diskon berkunci
+                // kode batch SPK — dua route berbeda dengan bentuk id yang
+                // mirip, jadi salah pilih tak menghasilkan galat kompilasi,
+                // cuma halaman kosong.
+                onDetailSpk = { id ->
+                    navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true }
+                },
+            )
+        }
         composable(ROUTE_DLV_KASIR) {
             DeliveryQueueScreen("Antri Kasir", DeliveryStatusKey.PENDING_SPK, onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
@@ -446,7 +458,11 @@ fun ActivityNavHost(
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
         composable(ROUTE_DLV_HISTORY) {
-            DeliveryQueueScreen("Riwayat SPK", status = null, view = "history", onBack = { navController.popBackStack() },
+            // SATU-SATUNYA pemakai `periodeFilter`: riwayat itu arsip, jadi
+            // menyaringnya per periode aman. Enam layar lain di berkas ini
+            // adalah antrian kerja — lihat KDoc `periodeFilter`.
+            DeliveryQueueScreen("Riwayat SPK", status = null, view = "history", periodeFilter = true,
+                onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
         composable(
