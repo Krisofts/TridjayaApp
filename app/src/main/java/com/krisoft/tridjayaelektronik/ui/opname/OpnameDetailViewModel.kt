@@ -8,6 +8,8 @@ import com.krisoft.tridjayaelektronik.data.OpnameRepository
 import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
 import com.krisoft.tridjayaelektronik.data.KONDISI_TIDAK_LAYAK
 import com.krisoft.tridjayaelektronik.data.SerialInputRepository
+import com.krisoft.tridjayaelektronik.data.STATUS_DRAFT
+import com.krisoft.tridjayaelektronik.data.VALIDASI_PENDING
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
@@ -149,18 +151,20 @@ class OpnameDetailViewModel @Inject constructor(
                 _uiState.update { it.copy(canPropose = caps["serial.propose"] == true) }
             }
         }
-        // Vonis admin-stok (pending → approved/rejected) hidup di server;
-        // fail-soft, badge lama bertahan bila gagal.
-        viewModelScope.launch { repository.refreshValidationStatuses(id) }
         viewModelScope.launch {
             when (val result = repository.detail(id)) {
                 is AuthResult.Success -> {
                     applyDetail(result.data)
                     _uiState.update { it.copy(isLoading = false) }
+                    // Vonis admin-stok (pending → approved/rejected) hidup di server;
+                    // fail-soft, badge lama bertahan bila gagal. Menunggu detail dulu
+                    // karena rekonsiliasi hanya boleh untuk sesi draft (repositori
+                    // menegakkannya) — sesi batal/selesai buffernya sengaja kosong.
+                    launch { repository.refreshValidationStatuses(id, result.data.status) }
                     // Coverage list matters for any viewer while the session is still
                     // draft (owner counting, or kepala-cabang/manager verifying progress)
                     // — completed sessions already have their own reconciled `items`.
-                    if (result.data.status == "draft" && (paksaStock || _uiState.value.stock.isEmpty())) {
+                    if (result.data.status == STATUS_DRAFT && (paksaStock || _uiState.value.stock.isEmpty())) {
                         (repository.stockList(id) as? AuthResult.Success)?.let { stock ->
                             _uiState.update { it.copy(stock = stock.data) }
                         }
@@ -263,13 +267,18 @@ class OpnameDetailViewModel @Inject constructor(
 
     // ── Unit ketik-manual (barcode rusak → wajib 2 foto + validasi) ─────────
 
-    /** Buka dialog foto untuk serial yang diketik tangan. */
-    fun startManualUnit(serialNumberRaw: String, tidakLayak: Boolean) {
-        val item = _uiState.value.selectedItem ?: return
+    /**
+     * Buka dialog foto untuk serial yang diketik tangan. Mengembalikan `false` bila
+     * dialognya TIDAK jadi terbuka — pemanggil memakai itu untuk memutuskan boleh-tidaknya
+     * mengosongkan kolom ketikan (menghapus ketikan panjang petugas lalu menolaknya sama
+     * saja menyuruh mengetik ulang tanpa tahu salahnya di mana).
+     */
+    fun startManualUnit(serialNumberRaw: String, tidakLayak: Boolean): Boolean {
+        val item = _uiState.value.selectedItem ?: return false
         val serial = com.krisoft.tridjayaelektronik.data.normalizeSerial(serialNumberRaw)
         if (serial == null) {
             _uiState.update { it.copy(saveError = "Serial kosong atau lebih dari 64 karakter") }
-            return
+            return false
         }
         _uiState.update {
             it.copy(
@@ -283,6 +292,7 @@ class OpnameDetailViewModel @Inject constructor(
                 scanMessage = null
             )
         }
+        return true
     }
 
     fun cancelManualUnit() = _uiState.update { it.copy(manualDraft = null) }
@@ -337,21 +347,31 @@ class OpnameDetailViewModel @Inject constructor(
         }
         updateManual { it.copy(submitting = true, error = null) }
         viewModelScope.launch {
-            val result = repository.manualUnit(
-                sessionId = sessionId,
-                kodeBarang = draft.kodeBarang,
-                namaBarang = draft.namaBarang,
-                serialNumberRaw = draft.serialNumber,
-                kondisi = if (draft.tidakLayak) KONDISI_TIDAK_LAYAK else KONDISI_LAYAK,
-                fotoSnUrl = draft.fotoSnUrl.orEmpty(),
-                fotoBarangUrl = draft.fotoBarangUrl.orEmpty()
-            )
+            // Pola sama scan(): tanpa runCatching, kegagalan tulis Room (disk penuh)
+            // meledak SETELAH server menerima unitnya — app mati, atau dialognya
+            // membeku dengan submitting=true (tombol Simpan & Batal ikut mati).
+            val result = runCatching {
+                repository.manualUnit(
+                    sessionId = sessionId,
+                    kodeBarang = draft.kodeBarang,
+                    namaBarang = draft.namaBarang,
+                    serialNumberRaw = draft.serialNumber,
+                    kondisi = if (draft.tidakLayak) KONDISI_TIDAK_LAYAK else KONDISI_LAYAK,
+                    fotoSnUrl = draft.fotoSnUrl.orEmpty(),
+                    fotoBarangUrl = draft.fotoBarangUrl.orEmpty()
+                )
+            }.getOrElse { error ->
+                updateManual {
+                    it.copy(submitting = false, error = error.message ?: "Gagal menyimpan unit")
+                }
+                return@launch
+            }
             when (result) {
                 is OpnameRepository.ScanResult.Accepted -> {
                     _uiState.update {
                         it.copy(
                             manualDraft = null,
-                            scanMessage = "${result.serialNumber} tersimpan — menunggu validasi admin stok"
+                            scanMessage = pesanUnitManual(result.serialNumber, result.validationStatus)
                         )
                     }
                     refreshDetail()
@@ -564,6 +584,23 @@ class OpnameDetailViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Pesan yang dibaca petugas setelah unit ketik-manual tersimpan — mengikuti vonis
+ * server, bukan mengarang.
+ *
+ * Backend yang belum mengenal input manual menerima unitnya sebagai scan biasa dan
+ * tak membalas `validationStatus`; mengabarkan "menunggu validasi admin stok" di situ
+ * menjanjikan vonis yang tak akan pernah datang. Kelas kesalahan yang sama dengan badge
+ * `pending` karangan, cuma pindah kanal ke pesan.
+ */
+fun pesanUnitManual(serialNumber: String, validationStatus: String?): String =
+    when (validationStatus) {
+        null -> "$serialNumber tersimpan"
+        VALIDASI_PENDING -> "$serialNumber tersimpan — menunggu validasi admin stok"
+        // Status baru dari server tampil apa adanya, bukan disalahartikan jadi "menunggu".
+        else -> "$serialNumber tersimpan — $validationStatus"
+    }
 
 /** Temuan server: serial tak ada di registry cabang mana pun. */
 const val TEMUAN_TIDAK_TERDAFTAR = "tidak_terdaftar"

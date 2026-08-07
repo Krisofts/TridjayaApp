@@ -1178,7 +1178,8 @@ private fun ScanUnitSheet(
     scanMessage: String?,
     onDismiss: () -> Unit,
     onScan: (serial: String, tidakLayak: Boolean) -> Unit,
-    onManual: (serial: String, tidakLayak: Boolean) -> Unit,
+    /** `true` = dialog dua-foto terbuka; `false` = ditolak, ketikan dipertahankan. */
+    onManual: (serial: String, tidakLayak: Boolean) -> Boolean,
     onDelete: (OpnameUnitEntity) -> Unit,
     canPropose: Boolean,
     onUsulkan: ((OpnameUnitEntity) -> Unit)?
@@ -1234,8 +1235,9 @@ private fun ScanUnitSheet(
             Spacer(modifier = Modifier.height(8.dp))
             ExpressiveFilledButton(
                 onClick = {
-                    onManual(manual, tidakLayak)
-                    manual = ""
+                    // Dikosongkan hanya bila dialognya benar-benar terbuka — kalau serialnya
+                    // ditolak, ketikan panjang petugas tak boleh ikut lenyap.
+                    if (onManual(manual, tidakLayak)) manual = ""
                 },
                 enabled = !isSaving && manual.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()

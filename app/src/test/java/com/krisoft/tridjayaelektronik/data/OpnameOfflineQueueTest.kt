@@ -16,13 +16,16 @@ import com.krisoft.tridjayaelektronik.data.model.OpnameDeleteData
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameListData
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockData
+import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameUnitAccepted
+import com.krisoft.tridjayaelektronik.data.model.OpnameUnitDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameUnitListData
 import com.krisoft.tridjayaelektronik.data.model.OpnameUnitRejected
 import com.krisoft.tridjayaelektronik.data.model.StokCabangPageDto
 import com.krisoft.tridjayaelektronik.data.model.UpdateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.UploadProofResponseDto
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
+import com.krisoft.tridjayaelektronik.ui.opname.pesanUnitManual
 import com.krisoft.tridjayaelektronik.ui.opname.temuanLabel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +54,16 @@ class OpnameOfflineQueueTest {
 
     private class FakeUnitDao : OpnameUnitDao {
         val rows = mutableListOf<OpnameUnitEntity>()
+
+        /**
+         * Serial yang DIKIRIM ke `updateValidation`, sebelum WHERE-nya menyaring.
+         *
+         * Penjaga vonis-basi sengaja ada di DUA tempat — di repositori (bisa diuji di JVM)
+         * dan di WHERE query Room (menutup tulisan yang menyelinap di antara baca & tulis).
+         * Kalau tes cuma memeriksa isi baris, mencabut salah satunya tetap hijau karena
+         * yang lain menutupi. Daftar ini membuat penjaga repositori terlihat sendiri.
+         */
+        val validationCalls = mutableListOf<String>()
         private val stream = MutableStateFlow<List<OpnameUnitEntity>>(emptyList())
 
         private fun publish() {
@@ -69,19 +82,28 @@ class OpnameOfflineQueueTest {
                     it.validationStatus != "rejected"
             }
 
+        // Cermin query DAO asli: cuma baris MANUAL, dan cuma yang lebih tua dari saat
+        // GET dimulai — dua penjaga terhadap vonis basi yang mengecap ulang baris baru.
         override suspend fun updateValidation(
             sessionId: String,
             serialNumber: String,
             status: String?,
-            reason: String?
+            reason: String?,
+            sebelumMillis: Long
         ) {
+            validationCalls += serialNumber
             rows.forEachIndexed { index, row ->
-                if (row.sessionId == sessionId && row.serialNumber.equals(serialNumber, true)) {
+                if (row.sessionId == sessionId && row.serialNumber.equals(serialNumber, true) &&
+                    row.inputMethod == "manual" && row.updatedAtMillis <= sebelumMillis
+                ) {
                     rows[index] = row.copy(validationStatus = status, rejectReason = reason)
                 }
             }
             publish()
         }
+
+        override suspend fun all(sessionId: String): List<OpnameUnitEntity> =
+            rows.filter { it.sessionId == sessionId }
 
         override suspend fun countAll(sessionId: String): Int = rows.count { it.sessionId == sessionId }
 
@@ -116,6 +138,16 @@ class OpnameOfflineQueueTest {
         var pushCount = 0
         var lastSent: List<String> = emptyList()
 
+        /** Isi `GET /opname/{id}/units` — snapshot server, bisa sengaja dibikin basi. */
+        var units: List<OpnameUnitDto> = emptyList()
+
+        /** Isi `GET /opname/{id}/stock` — sumber nama barang saat rekonsiliasi. */
+        var stock: List<OpnameStockItemDto> = emptyList()
+        var stockCount = 0
+
+        /** Dijalankan SELAGI GET unit "terbang" — untuk mensimulasikan scan yang menyelinap. */
+        var saatListUnits: (suspend () -> Unit)? = null
+
         override suspend fun createOpnameUnits(
             id: String,
             body: CreateOpnameUnitsRequest
@@ -124,6 +156,16 @@ class OpnameOfflineQueueTest {
             lastSent = body.items.map { it.serialNumber }
             val data = response ?: throw IOException("tidak ada jaringan")
             return Response.success(ApiResponse("ok", data))
+        }
+
+        override suspend fun listOpnameUnits(id: String): Response<ApiResponse<OpnameUnitListData>> {
+            saatListUnits?.invoke()
+            return Response.success(ApiResponse("ok", OpnameUnitListData(units)))
+        }
+
+        override suspend fun opnameStock(id: String): Response<ApiResponse<OpnameStockData>> {
+            stockCount += 1
+            return Response.success(ApiResponse("ok", OpnameStockData(stock)))
         }
     }
 
@@ -319,7 +361,7 @@ class OpnameOfflineQueueTest {
 
         repository.manualUnit(sessionId, "BRG-1", "Kulkas", "man-1", KONDISI_LAYAK, "a.jpg", "b.jpg")
         // Admin-stok menolak (vonis ditarik refreshValidationStatuses di alur nyata).
-        dao.updateValidation(sessionId, "MAN-1", "rejected", "foto buram")
+        dao.updateValidation(sessionId, "MAN-1", "rejected", "foto buram", Long.MAX_VALUE)
 
         api.response = CreateOpnameUnitsData(accepted = listOf(OpnameUnitAccepted("MAN-1")))
         val ulang = repository.scanUnit(sessionId, "BRG-1", "Kulkas", "man-1")
@@ -328,6 +370,205 @@ class OpnameOfflineQueueTest {
         val row = dao.rows.single()
         assertEquals("scan", row.inputMethod)
         assertNull("jejak reject bersih setelah tertimpa", row.validationStatus)
+    }
+
+    @Test
+    fun `vonis rejected yang basi tak mengecap ulang baris yang sudah discan ulang`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(
+            response = CreateOpnameUnitsData(
+                accepted = listOf(OpnameUnitAccepted("MAN-1", validationStatus = "pending"))
+            )
+        )
+        val repository = repo(dao, api)
+
+        repository.manualUnit(sessionId, "BRG-1", "Kulkas", "man-1", KONDISI_LAYAK, "a.jpg", "b.jpg")
+        dao.updateValidation(sessionId, "MAN-1", "rejected", "foto buram", Long.MAX_VALUE)
+
+        // Petugas scan ulang serial yang ditolak — barisnya jadi `scan` tanpa vonis,
+        // dan server menerimanya.
+        api.response = CreateOpnameUnitsData(accepted = listOf(OpnameUnitAccepted("MAN-1")))
+        repository.scanUnit(sessionId, "BRG-1", "Kulkas", "man-1")
+
+        // GET yang sudah terbang duluan membawa snapshot PRA-scan: masih manual+rejected.
+        api.units = listOf(
+            OpnameUnitDto(
+                id = "u1",
+                kodeBarang = "BRG-1",
+                serialNumber = "MAN-1",
+                inputMethod = "manual",
+                validationStatus = "rejected",
+                rejectReason = "foto buram"
+            )
+        )
+        dao.validationCalls.clear()
+        repository.refreshValidationStatuses(sessionId, STATUS_DRAFT)
+
+        assertEquals("vonis basi tak boleh dikirim ke baris itu sama sekali", emptyList<String>(), dao.validationCalls)
+        val row = dao.rows.single()
+        assertEquals("scan", row.inputMethod)
+        assertNull("unit sah tak boleh terlihat ditolak selamanya", row.validationStatus)
+        // countSerial mengabaikan baris rejected — kalau tercap ulang, petugas discan
+        // lagi dan server menjawab duplikat_dalam_sesi tanpa jalan keluar.
+        assertEquals(1, dao.countSerial(sessionId, "man-1"))
+    }
+
+    @Test
+    fun `unit yang hanya ada di server disisipkan ke buffer lokal`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+        // Server sudah menerima unitnya (proses app mati sebelum Room ditulis, atau ini
+        // HP kedua yang menghitung sesi yang sama).
+        api.units = listOf(
+            OpnameUnitDto(
+                id = "u1",
+                kodeBarang = "BRG-1",
+                serialNumber = "MAN-1",
+                kondisi = KONDISI_LAYAK,
+                inputMethod = "manual",
+                validationStatus = "pending"
+            )
+        )
+
+        repo(dao, api).refreshValidationStatuses(sessionId, STATUS_DRAFT)
+
+        val row = dao.rows.single()
+        assertEquals("MAN-1", row.serialNumber)
+        assertEquals("manual", row.inputMethod)
+        assertEquals("pending", row.validationStatus)
+        assertEquals("sudah ada di server — jangan masuk antrean kirim ulang", 0, dao.pending(sessionId).size)
+        assertEquals("tak lagi terlihat 'belum ada' saat petugas scan ulang", 1, dao.countSerial(sessionId, "man-1"))
+    }
+
+    @Test
+    fun `server lama tanpa validationStatus tak dicap menunggu validasi selamanya`() = runBlocking {
+        val dao = FakeUnitDao()
+        // Backend sebelum migrasi 193: inputMethod diabaikan, unit diterima sebagai scan
+        // biasa, balasannya tanpa validationStatus.
+        val api = FakeApi(response = CreateOpnameUnitsData(accepted = listOf(OpnameUnitAccepted("MAN-1"))))
+
+        val hasil = repo(dao, api).manualUnit(
+            sessionId, "BRG-1", "Kulkas", "man-1", KONDISI_LAYAK, "sn.jpg", "barang.jpg"
+        )
+
+        assertTrue(hasil is OpnameRepository.ScanResult.Accepted)
+        assertNull((hasil as OpnameRepository.ScanResult.Accepted).validationStatus)
+        val row = dao.rows.single()
+        assertEquals("scan", row.inputMethod)
+        assertNull("badge merah yang tak pernah bisa lepas", row.validationStatus)
+    }
+
+    /**
+     * Penjaga `updatedAtMillis <= mulai` sendirian, tanpa dibantu klausa `inputMethod`:
+     * barisnya MASIH manual, cuma ditulis sesudah GET dimulai. Kalau kondisi timestamp
+     * dicabut, vonis basi ikut terkirim dan `validationCalls` tak lagi kosong.
+     */
+    @Test
+    fun `vonis basi tak menyentuh baris manual yang ditulis sesudah GET dimulai`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+        // Snapshot server: masih pending (vonis lama).
+        api.units = listOf(
+            OpnameUnitDto(
+                id = "u1",
+                kodeBarang = "BRG-1",
+                serialNumber = "MAN-1",
+                inputMethod = "manual",
+                validationStatus = "rejected",
+                rejectReason = "foto buram"
+            )
+        )
+        // Petugas mengetik ulang unit manual itu SELAGI GET terbang — barisnya lebih baru
+        // dari snapshot, jadi vonis di snapshot tak boleh menimpanya.
+        api.saatListUnits = {
+            dao.upsert(
+                OpnameUnitEntity(
+                    sessionId = sessionId,
+                    serialNumber = "MAN-1",
+                    kodeBarang = "BRG-1",
+                    namaBarang = "Kulkas",
+                    kondisi = KONDISI_LAYAK,
+                    keterangan = null,
+                    temuan = null,
+                    inputMethod = "manual",
+                    validationStatus = "pending",
+                    rejectReason = null,
+                    updatedAtMillis = System.currentTimeMillis() + 60_000,
+                    syncedAtMillis = System.currentTimeMillis()
+                )
+            )
+        }
+
+        repo(dao, api).refreshValidationStatuses(sessionId, STATUS_DRAFT)
+
+        assertEquals("vonis basi tak boleh dikirim sama sekali", emptyList<String>(), dao.validationCalls)
+        val row = dao.rows.single()
+        assertEquals("manual", row.inputMethod)
+        assertEquals("unit yang baru ditulis tak boleh terlihat ditolak", "pending", row.validationStatus)
+        assertNull(row.rejectReason)
+    }
+
+    @Test
+    fun `nama barang unit hasil rekonsiliasi diambil dari daftar barang sesi`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+        api.units = listOf(OpnameUnitDto(id = "u1", kodeBarang = "brg-1", serialNumber = "MAN-1"))
+        api.stock = listOf(OpnameStockItemDto(kodeBarang = "BRG-1", namaBarang = "Kulkas 2 Pintu"))
+
+        repo(dao, api).refreshValidationStatuses(sessionId, STATUS_DRAFT)
+
+        // Tanpa ini unit hasil rekonsiliasi tercetak "-" di PDF hitung fisik sementara
+        // unit hasil scan di HP ini bernama lengkap — dua kualitas data satu dokumen.
+        assertEquals("Kulkas 2 Pintu", dao.rows.single().namaBarang)
+    }
+
+    @Test
+    fun `daftar barang hanya diambil sekali walau banyak unit disisipkan`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+        api.units = listOf(
+            OpnameUnitDto(id = "u1", kodeBarang = "BRG-1", serialNumber = "SN-1"),
+            OpnameUnitDto(id = "u2", kodeBarang = "BRG-1", serialNumber = "SN-2"),
+            OpnameUnitDto(id = "u3", kodeBarang = "BRG-2", serialNumber = "SN-3")
+        )
+        api.stock = listOf(OpnameStockItemDto(kodeBarang = "BRG-1", namaBarang = "Kulkas"))
+
+        repo(dao, api).refreshValidationStatuses(sessionId, STATUS_DRAFT)
+
+        assertEquals(1, api.stockCount)
+        assertEquals(3, dao.rows.size)
+        // Kode yang tak ada di daftar barang tetap null, bukan bikin rekonsiliasi batal.
+        assertNull(dao.rows.single { it.serialNumber == "SN-3" }.namaBarang)
+    }
+
+    @Test
+    fun `sesi batal tak dihidupkan lagi oleh rekonsiliasi`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+        // Server TIDAK menghapus unit saat sesi dibatalkan, jadi GET-nya tetap berisi.
+        api.units = listOf(OpnameUnitDto(id = "u1", kodeBarang = "BRG-1", serialNumber = "SN-1"))
+
+        val repository = repo(dao, api)
+        repository.refreshValidationStatuses(sessionId, "cancelled")
+
+        // cancel() sengaja memanggil clearSession; menyisipkan lagi di sini membuat unitnya
+        // tinggal permanen (clearSession tak akan pernah jalan lagi untuk sesi itu).
+        assertEquals("buffer sesi batal harus tetap kosong", 0, dao.rows.size)
+        repository.refreshValidationStatuses(sessionId, "completed")
+        assertEquals(0, dao.rows.size)
+        repository.refreshValidationStatuses(sessionId, STATUS_DRAFT)
+        assertEquals("sesi draft tetap direkonsiliasi", 1, dao.rows.size)
+    }
+
+    @Test
+    fun `pesan unit manual mengikuti vonis server bukan mengarang`() {
+        // Backend lama menerima unitnya sebagai scan biasa — tak ada vonis yang akan datang.
+        assertEquals("MAN-1 tersimpan", pesanUnitManual("MAN-1", null))
+        assertEquals(
+            "MAN-1 tersimpan — menunggu validasi admin stok",
+            pesanUnitManual("MAN-1", VALIDASI_PENDING)
+        )
+        assertEquals("MAN-1 tersimpan — approved", pesanUnitManual("MAN-1", "approved"))
     }
 
     @Test

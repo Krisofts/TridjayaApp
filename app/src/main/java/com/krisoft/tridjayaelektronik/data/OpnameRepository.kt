@@ -56,6 +56,9 @@ const val INPUT_MANUAL = "manual"
 const val VALIDASI_PENDING = "pending"
 const val VALIDASI_REJECTED = "rejected"
 
+/** Satu-satunya status sesi yang buffer lokalnya boleh diisi ulang dari server. */
+const val STATUS_DRAFT = "draft"
+
 /**
  * Stock opname (hitung fisik) client. Penghitungan berbasis UNIT: satu baris per serial
  * number, bukan angka jumlah per SKU.
@@ -73,6 +76,16 @@ class OpnameRepository @Inject constructor(
 
     private val errorJson = Json { ignoreUnknownKeys = true }
     private val pushMutex = Mutex()
+
+    /**
+     * Kapan terakhir sebuah unit dihapus per sesi. Dipakai rekonsiliasi untuk
+     * MENOLAK menyisipkan dari snapshot yang lebih tua dari penghapusan itu —
+     * tanpa ini GET yang berangkat sebelum petugas menghapus akan menghidupkan
+     * lagi baris yang sudah tak ada di server (baris hantu yang ikut terhitung
+     * di layar dan PDF, tanpa satu pun indikator). Cukup satu penanda per sesi:
+     * rekonsiliasi yang kalah balapan dilewati sekali, tick berikutnya benar.
+     */
+    private val terakhirHapusMillis = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     suspend fun context(): AuthResult<OpnameContextDto> =
         call("Gagal memuat konteks opname") { api.opnameContext() }
@@ -102,8 +115,11 @@ class OpnameRepository @Inject constructor(
     suspend fun unitCount(sessionId: String): Int = unitDao.countAll(sessionId)
 
     sealed interface ScanResult {
-        /** Tersimpan di server; [temuan] terisi bila serialnya janggal;
-         *  [validationStatus] `pending` bila unitnya manual (menunggu admin-stok). */
+        /** Tersimpan di server; [temuan] terisi bila serialnya janggal.
+         *  [validationStatus] `pending` bila server MENGENAL input manual;
+         *  `null` bila server tak mengirim vonis sama sekali — backend lama
+         *  menerima unitnya sebagai scan biasa, jadi tak ada vonis yang akan
+         *  datang dan pemanggil TIDAK BOLEH mengarang `pending`. */
         data class Accepted(
             val serialNumber: String,
             val temuan: String?,
@@ -165,8 +181,10 @@ class OpnameRepository @Inject constructor(
     }
 
     /**
-     * Catat satu unit KETIK MANUAL (barcode rusak) — wajib dua foto bukti dan
-     * masuk berstatus `pending` sampai admin-stok memvalidasi.
+     * Catat satu unit KETIK MANUAL (barcode rusak) — wajib dua foto bukti.
+     * Masuk berstatus `pending` sampai admin-stok memvalidasi, TAPI hanya bila
+     * server mengenal input manual; backend lama menerimanya sebagai scan biasa
+     * dan baris lokalnya ditulis apa adanya (`scan`, tanpa vonis).
      *
      * SENGAJA tidak diantre offline seperti scan: fotonya harus terunggah dulu,
      * dan unit yang "tersimpan" menurut petugas tapi belum sampai jauh lebih
@@ -209,6 +227,11 @@ class OpnameRepository @Inject constructor(
                     ScanResult.Rejected(serial, alasanTolakLabel(rejected.reason))
                 } else {
                     val accepted = result.data.accepted.firstOrNull { it.serialNumber == serial }
+                    // Server yang belum mengenal input manual menerima unitnya sebagai scan
+                    // biasa dan tak membalas validationStatus. Mengarang `pending` di situ
+                    // menempelkan badge merah yang TAK PERNAH bisa lepas — tak ada vonis yang
+                    // akan datang. Ikuti jawaban server apa adanya.
+                    val statusServer = accepted?.validationStatus
                     // Baris lokal ditulis SETELAH server menerima — langsung synced,
                     // supaya pushPending tak pernah mengirim ulang tanpa metadata foto.
                     val now = System.currentTimeMillis()
@@ -221,8 +244,8 @@ class OpnameRepository @Inject constructor(
                             kondisi = kondisi,
                             keterangan = null,
                             temuan = accepted?.temuan,
-                            inputMethod = INPUT_MANUAL,
-                            validationStatus = accepted?.validationStatus ?: VALIDASI_PENDING,
+                            inputMethod = if (statusServer == null) INPUT_SCAN else INPUT_MANUAL,
+                            validationStatus = statusServer,
                             rejectReason = null,
                             updatedAtMillis = now,
                             syncedAtMillis = now
@@ -246,12 +269,85 @@ class OpnameRepository @Inject constructor(
      * Tarik vonis validasi admin-stok dari server ke buffer lokal — tanpa ini
      * badge "menunggu" tak pernah berubah jadi "ditolak: <alasan>" dan petugas
      * tak tahu harus scan ulang. Fail-soft: gagal baca = badge lama bertahan.
+     *
+     * Sekaligus jalur MASUK satu-satunya dari server ke Room: unit yang ada di
+     * server tapi tak ada di HP ini tak punya cara lain muncul, dan tanpa itu ia
+     * memblokir penutupan sesi tanpa jalan keluar — proses app bisa mati di antara
+     * POST yang sukses dan penulisan Room, dan HP kedua yang menghitung sesi sama
+     * tak pernah punya barisnya sama sekali. Scan ulang tak menolong: server
+     * menjawab `duplikat_dalam_sesi` sementara baris lokal tetap tak pernah ada.
+     *
+     * HANYA untuk sesi draft — lihat penjaga [sessionStatus] di bawah.
      */
-    suspend fun refreshValidationStatuses(sessionId: String) {
+    suspend fun refreshValidationStatuses(sessionId: String, sessionStatus: String) {
+        // `cancel`/`finalize` sengaja mengosongkan buffer (clearSession), tapi server TIDAK
+        // menghapus unitnya saat sesi dibatalkan. Tanpa penjaga ini, membuka lagi sesi yang
+        // sudah ditutup menyisipkan seluruh unitnya kembali ke Room dan tinggal permanen —
+        // clearSession tak akan pernah jalan lagi untuk sesi itu.
+        if (sessionStatus != STATUS_DRAFT) return
+        // Dicatat SEBELUM GET: apa pun yang ditulis setelah ini lebih baru dari
+        // snapshot yang sedang dibaca, jadi tak boleh ditimpa olehnya.
+        val mulai = System.currentTimeMillis()
         val listed = call("Gagal memuat unit") { api.listOpnameUnits(sessionId) }
         val items = (listed as? AuthResult.Success)?.data?.items ?: return
-        items.filter { it.inputMethod == INPUT_MANUAL }.forEach {
-            unitDao.updateValidation(sessionId, it.serialNumber, it.validationStatus, it.rejectReason)
+        // Nama barang tak dibawa DTO unit. Diambil dari daftar barang sesi, sekali dan hanya
+        // bila memang ada baris baru yang perlu disisipkan — tanpa itu unit hasil rekonsiliasi
+        // tercetak "-" di PDF hitung fisik sementara unit hasil scan di HP ini bernama lengkap.
+        var namaByKode: Map<String, String?>? = null
+        suspend fun namaBarang(kode: String): String? {
+            if (namaByKode == null) {
+                // Gagal memuat = peta kosong (bukan null): jangan ulangi permintaannya
+                // per baris, dan nama kosong tetap lebih baik daripada rekonsiliasi batal.
+                namaByKode = (stockList(sessionId) as? AuthResult.Success)
+                    ?.data
+                    ?.associate { it.kodeBarang.uppercase() to it.namaBarang }
+                    ?: emptyMap()
+            }
+            return namaByKode?.get(kode.uppercase())
+        }
+        // Dibaca SESUDAH GET selesai, jadi sudah memuat scan ulang yang terjadi selagi GET
+        // terbang — itulah yang membuat penjaga di bawah bisa menolak vonis basi.
+        val lokal = unitDao.all(sessionId).associateBy { it.serialNumber.uppercase() }
+        // Penghapusan yang terjadi SELAGI GET terbang membuat snapshot ini lebih
+        // tua dari kenyataan: baris yang barusan dihapus tak ada di `lokal`, jadi
+        // cabang sisip di bawah akan menghidupkannya lagi sebagai baris hantu.
+        // Cabang UPDATE tak perlu penjaga ini (ia sudah dijaga updatedAtMillis).
+        val bolehSisip = (terakhirHapusMillis[sessionId] ?: 0L) <= mulai
+        items.forEach { dto ->
+            val serial = normalizeSerial(dto.serialNumber) ?: return@forEach
+            val row = lokal[serial]
+            if (row == null) {
+                if (!bolehSisip) return@forEach
+                unitDao.upsert(
+                    OpnameUnitEntity(
+                        sessionId = sessionId,
+                        serialNumber = serial,
+                        kodeBarang = dto.kodeBarang,
+                        namaBarang = namaBarang(dto.kodeBarang),
+                        kondisi = dto.kondisi,
+                        keterangan = dto.keterangan,
+                        temuan = dto.temuan,
+                        inputMethod = dto.inputMethod,
+                        validationStatus = dto.validationStatus,
+                        rejectReason = dto.rejectReason,
+                        updatedAtMillis = mulai,
+                        // Sudah ada di server — jangan pernah masuk antrean kirim ulang.
+                        syncedAtMillis = mulai
+                    )
+                )
+            } else if (
+                dto.inputMethod == INPUT_MANUAL &&
+                row.inputMethod == INPUT_MANUAL &&
+                row.updatedAtMillis <= mulai
+            ) {
+                // Baris lokal yang sudah discan ulang (jadi `scan`) atau ditulis sesudah GET
+                // dimulai lebih baru dari snapshot ini — mengecapnya `rejected` membuat unit
+                // yang justru diterima server terlihat gagal selamanya, dan `countSerial`
+                // menganggapnya tak ada sehingga scan berikutnya dijawab duplikat.
+                // Penjaga kembar ada di WHERE `updateValidation` untuk tulisan yang menyelinap
+                // di antara pembacaan di atas dan baris ini.
+                unitDao.updateValidation(sessionId, serial, dto.validationStatus, dto.rejectReason, mulai)
+            }
         }
     }
 
@@ -307,6 +403,7 @@ class OpnameRepository @Inject constructor(
             }
         }
         unitDao.delete(sessionId, unit.serialNumber)
+        terakhirHapusMillis[sessionId] = System.currentTimeMillis()
         return AuthResult.Success(Unit)
     }
 

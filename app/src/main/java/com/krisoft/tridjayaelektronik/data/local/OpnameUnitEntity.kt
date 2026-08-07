@@ -51,17 +51,30 @@ interface OpnameUnitDao {
     )
     suspend fun countSerial(sessionId: String, serialNumber: String): Int
 
-    /** Tarik vonis admin-stok dari server ke buffer lokal (badge & gate ulang-scan). */
+    /**
+     * Tarik vonis admin-stok dari server ke buffer lokal (badge & gate ulang-scan).
+     *
+     * Dua penjaga tambahan di WHERE, dua-duanya menutup balapan dengan scan ulang yang
+     * terjadi SELAGI GET masih terbang: `inputMethod = 'manual'` supaya baris yang sudah
+     * discan ulang (jadi `scan`) tak dicap ulang `rejected`, dan [sebelumMillis] supaya
+     * baris yang ditulis SESUDAH GET dimulai tak ditimpa snapshot pra-scan. Tanpa itu
+     * unit yang sah terlihat ditolak selamanya dan `countSerial` menganggapnya tak ada.
+     */
     @Query(
         "UPDATE opname_units SET validationStatus = :status, rejectReason = :reason " +
-            "WHERE sessionId = :sessionId AND serialNumber = :serialNumber COLLATE NOCASE"
+            "WHERE sessionId = :sessionId AND serialNumber = :serialNumber COLLATE NOCASE " +
+            "AND inputMethod = 'manual' AND updatedAtMillis <= :sebelumMillis"
     )
     suspend fun updateValidation(
         sessionId: String,
         serialNumber: String,
         status: String?,
-        reason: String?
+        reason: String?,
+        sebelumMillis: Long
     )
+
+    @Query("SELECT * FROM opname_units WHERE sessionId = :sessionId")
+    suspend fun all(sessionId: String): List<OpnameUnitEntity>
 
     @Query("SELECT COUNT(*) FROM opname_units WHERE sessionId = :sessionId")
     suspend fun countAll(sessionId: String): Int
