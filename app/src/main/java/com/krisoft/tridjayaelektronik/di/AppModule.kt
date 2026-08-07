@@ -185,11 +185,23 @@ object AppModule {
         }
     }
 
+    /** v14 → v15: unit ketik-manual membawa metadata validasi admin-stok
+     *  (migrasi backend 193). Eksplisit, bukan destructive — alasan sama
+     *  MIGRATION_13_14: wipe DB ikut membuang antrean offline yang belum
+     *  terkirim. Baris lama otomatis `inputMethod='scan'`. */
+    private val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `opname_units` ADD COLUMN `inputMethod` TEXT NOT NULL DEFAULT 'scan'")
+            db.execSQL("ALTER TABLE `opname_units` ADD COLUMN `validationStatus` TEXT")
+            db.execSQL("ALTER TABLE `opname_units` ADD COLUMN `rejectReason` TEXT")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "tridjaya.db")
-            .addMigrations(MIGRATION_11_12, MIGRATION_13_14)
+            .addMigrations(MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15)
             // Local cache only (server is the source of truth) — safe to wipe on schema bumps
             // that don't have an explicit migration above.
             .fallbackToDestructiveMigration()

@@ -128,6 +128,11 @@ data class OpnameUnitDto(
     val kondisi: String = "layak",
     val temuan: String? = null,
     val keterangan: String? = null,
+    /** `scan` | `manual` — ketik manual wajib 2 foto + validasi admin-stok. */
+    val inputMethod: String = "scan",
+    /** Hanya unit manual: `pending` | `approved` | `rejected`; scan = null. */
+    val validationStatus: String? = null,
+    val rejectReason: String? = null,
     val countedByUserId: String = "",
     val countedByName: String? = null,
     val countedAt: String = ""
@@ -138,7 +143,11 @@ data class OpnameUnitInput(
     val kodeBarang: String,
     val serialNumber: String,
     val kondisi: String = "layak",
-    val keterangan: String? = null
+    val keterangan: String? = null,
+    /** Absen = server memakai default `scan` — kompatibel dgn backend lama. */
+    val inputMethod: String? = null,
+    val fotoSnUrl: String? = null,
+    val fotoBarangUrl: String? = null
 )
 
 @Serializable
@@ -149,7 +158,9 @@ data class CreateOpnameUnitsRequest(
 @Serializable
 data class OpnameUnitAccepted(
     val serialNumber: String = "",
-    val temuan: String? = null
+    val temuan: String? = null,
+    /** `pending` bila unitnya manual — bahan pesan "menunggu validasi". */
+    val validationStatus: String? = null
 )
 
 @Serializable

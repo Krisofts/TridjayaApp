@@ -62,8 +62,26 @@ class OpnameOfflineQueueTest {
         override suspend fun pending(sessionId: String): List<OpnameUnitEntity> =
             rows.filter { it.sessionId == sessionId && it.syncedAtMillis == null }
 
+        // Cermin query DAO asli: baris REJECTED tak menghalangi serial dikirim ulang.
         override suspend fun countSerial(sessionId: String, serialNumber: String): Int =
-            rows.count { it.sessionId == sessionId && it.serialNumber.equals(serialNumber, true) }
+            rows.count {
+                it.sessionId == sessionId && it.serialNumber.equals(serialNumber, true) &&
+                    it.validationStatus != "rejected"
+            }
+
+        override suspend fun updateValidation(
+            sessionId: String,
+            serialNumber: String,
+            status: String?,
+            reason: String?
+        ) {
+            rows.forEachIndexed { index, row ->
+                if (row.sessionId == sessionId && row.serialNumber.equals(serialNumber, true)) {
+                    rows[index] = row.copy(validationStatus = status, rejectReason = reason)
+                }
+            }
+            publish()
+        }
 
         override suspend fun countAll(sessionId: String): Int = rows.count { it.sessionId == sessionId }
 
@@ -249,6 +267,75 @@ class OpnameOfflineQueueTest {
 
         assertEquals(listOf("SN-001"), api.lastSent)
         assertEquals(1, dao.pending("sesi-2").size)
+    }
+
+    // ---- Unit ketik-manual (wajib foto + validasi admin-stok) -------------------------
+
+    @Test
+    fun `unit manual diterima masuk pending dan tak pernah mengantre offline`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(
+            response = CreateOpnameUnitsData(
+                accepted = listOf(OpnameUnitAccepted("MAN-1", validationStatus = "pending"))
+            )
+        )
+
+        val hasil = repo(dao, api).manualUnit(
+            sessionId, "BRG-1", "Kulkas", "man-1", KONDISI_LAYAK, "sn.jpg", "barang.jpg"
+        )
+
+        assertTrue(hasil is OpnameRepository.ScanResult.Accepted)
+        assertEquals("pending", (hasil as OpnameRepository.ScanResult.Accepted).validationStatus)
+        val row = dao.rows.single()
+        assertEquals("manual", row.inputMethod)
+        assertEquals("pending", row.validationStatus)
+        assertEquals("langsung synced — pushPending tak boleh mengirim ulang tanpa foto", 0, dao.pending(sessionId).size)
+        assertEquals(listOf("MAN-1"), api.lastSent)
+    }
+
+    @Test
+    fun `unit manual saat offline DITOLAK jelas tanpa baris hantu`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+
+        val hasil = repo(dao, api).manualUnit(
+            sessionId, "BRG-1", "Kulkas", "man-1", KONDISI_LAYAK, "sn.jpg", "barang.jpg"
+        )
+
+        assertTrue("offline harus penolakan jelas, bukan antre", hasil is OpnameRepository.ScanResult.Rejected)
+        assertTrue((hasil as OpnameRepository.ScanResult.Rejected).reason.contains("Butuh koneksi"))
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `serial yang ditolak admin-stok boleh discan ulang`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(
+            response = CreateOpnameUnitsData(
+                accepted = listOf(OpnameUnitAccepted("MAN-1", validationStatus = "pending"))
+            )
+        )
+        val repository = repo(dao, api)
+
+        repository.manualUnit(sessionId, "BRG-1", "Kulkas", "man-1", KONDISI_LAYAK, "a.jpg", "b.jpg")
+        // Admin-stok menolak (vonis ditarik refreshValidationStatuses di alur nyata).
+        dao.updateValidation(sessionId, "MAN-1", "rejected", "foto buram")
+
+        api.response = CreateOpnameUnitsData(accepted = listOf(OpnameUnitAccepted("MAN-1")))
+        val ulang = repository.scanUnit(sessionId, "BRG-1", "Kulkas", "man-1")
+
+        assertTrue("baris rejected tak boleh memblokir scan ulang", ulang is OpnameRepository.ScanResult.Accepted)
+        val row = dao.rows.single()
+        assertEquals("scan", row.inputMethod)
+        assertNull("jejak reject bersih setelah tertimpa", row.validationStatus)
+    }
+
+    @Test
+    fun `alasan foto wajib punya label terbaca`() {
+        assertEquals(
+            "input manual wajib menyertakan dua foto bukti",
+            alasanTolakLabel("foto_wajib_untuk_manual")
+        )
     }
 }
 

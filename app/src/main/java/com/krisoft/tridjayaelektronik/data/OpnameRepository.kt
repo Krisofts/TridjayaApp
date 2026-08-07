@@ -47,8 +47,14 @@ fun normalizeSerial(raw: String): String? {
 /** Alasan penolakan dari server dalam bahasa yang bisa dibaca petugas di lapangan. */
 fun alasanTolakLabel(reason: String): String = when (reason) {
     "duplikat_dalam_sesi" -> "serial ini sudah discan di sesi ini"
+    "foto_wajib_untuk_manual" -> "input manual wajib menyertakan dua foto bukti"
     else -> reason
 }
+
+const val INPUT_SCAN = "scan"
+const val INPUT_MANUAL = "manual"
+const val VALIDASI_PENDING = "pending"
+const val VALIDASI_REJECTED = "rejected"
 
 /**
  * Stock opname (hitung fisik) client. Penghitungan berbasis UNIT: satu baris per serial
@@ -96,8 +102,13 @@ class OpnameRepository @Inject constructor(
     suspend fun unitCount(sessionId: String): Int = unitDao.countAll(sessionId)
 
     sealed interface ScanResult {
-        /** Tersimpan di server; [temuan] terisi bila serialnya janggal. */
-        data class Accepted(val serialNumber: String, val temuan: String?) : ScanResult
+        /** Tersimpan di server; [temuan] terisi bila serialnya janggal;
+         *  [validationStatus] `pending` bila unitnya manual (menunggu admin-stok). */
+        data class Accepted(
+            val serialNumber: String,
+            val temuan: String?,
+            val validationStatus: String? = null
+        ) : ScanResult
         data class Rejected(val serialNumber: String, val reason: String) : ScanResult
         /** Tersimpan lokal, menunggu jaringan. */
         data class Queued(val serialNumber: String, val reason: String) : ScanResult
@@ -150,6 +161,97 @@ class OpnameRepository @Inject constructor(
                 }
             }
             is AuthResult.Failure -> ScanResult.Queued(serial, pushed.message)
+        }
+    }
+
+    /**
+     * Catat satu unit KETIK MANUAL (barcode rusak) — wajib dua foto bukti dan
+     * masuk berstatus `pending` sampai admin-stok memvalidasi.
+     *
+     * SENGAJA tidak diantre offline seperti scan: fotonya harus terunggah dulu,
+     * dan unit yang "tersimpan" menurut petugas tapi belum sampai jauh lebih
+     * menyesatkan daripada penolakan yang jelas (pola sama usulan SN).
+     */
+    suspend fun manualUnit(
+        sessionId: String,
+        kodeBarang: String,
+        namaBarang: String?,
+        serialNumberRaw: String,
+        kondisi: String,
+        fotoSnUrl: String,
+        fotoBarangUrl: String
+    ): ScanResult {
+        val serial = normalizeSerial(serialNumberRaw)
+            ?: return ScanResult.Rejected(
+                serialNumberRaw.trim(),
+                "serial kosong atau lebih dari $SERIAL_MAX_LENGTH karakter"
+            )
+        if (unitDao.countSerial(sessionId, serial) > 0) {
+            return ScanResult.Rejected(serial, alasanTolakLabel("duplikat_dalam_sesi"))
+        }
+        val request = CreateOpnameUnitsRequest(
+            items = listOf(
+                OpnameUnitInput(
+                    kodeBarang = kodeBarang,
+                    serialNumber = serial,
+                    kondisi = kondisi,
+                    inputMethod = INPUT_MANUAL,
+                    fotoSnUrl = fotoSnUrl,
+                    fotoBarangUrl = fotoBarangUrl
+                )
+            )
+        )
+        val result = call("Gagal mengirim unit manual") { api.createOpnameUnits(sessionId, request) }
+        return when (result) {
+            is AuthResult.Success -> {
+                val rejected = result.data.rejected.firstOrNull { it.serialNumber == serial }
+                if (rejected != null) {
+                    ScanResult.Rejected(serial, alasanTolakLabel(rejected.reason))
+                } else {
+                    val accepted = result.data.accepted.firstOrNull { it.serialNumber == serial }
+                    // Baris lokal ditulis SETELAH server menerima — langsung synced,
+                    // supaya pushPending tak pernah mengirim ulang tanpa metadata foto.
+                    val now = System.currentTimeMillis()
+                    unitDao.upsert(
+                        OpnameUnitEntity(
+                            sessionId = sessionId,
+                            serialNumber = serial,
+                            kodeBarang = kodeBarang,
+                            namaBarang = namaBarang,
+                            kondisi = kondisi,
+                            keterangan = null,
+                            temuan = accepted?.temuan,
+                            inputMethod = INPUT_MANUAL,
+                            validationStatus = accepted?.validationStatus ?: VALIDASI_PENDING,
+                            rejectReason = null,
+                            updatedAtMillis = now,
+                            syncedAtMillis = now
+                        )
+                    )
+                    ScanResult.Accepted(serial, accepted?.temuan, accepted?.validationStatus)
+                }
+            }
+            is AuthResult.Failure -> ScanResult.Rejected(
+                serial,
+                if (result.code == "network_error") {
+                    "Butuh koneksi untuk mengirim unit manual — coba lagi saat sinyal kembali"
+                } else {
+                    result.message
+                }
+            )
+        }
+    }
+
+    /**
+     * Tarik vonis validasi admin-stok dari server ke buffer lokal — tanpa ini
+     * badge "menunggu" tak pernah berubah jadi "ditolak: <alasan>" dan petugas
+     * tak tahu harus scan ulang. Fail-soft: gagal baca = badge lama bertahan.
+     */
+    suspend fun refreshValidationStatuses(sessionId: String) {
+        val listed = call("Gagal memuat unit") { api.listOpnameUnits(sessionId) }
+        val items = (listed as? AuthResult.Success)?.data?.items ?: return
+        items.filter { it.inputMethod == INPUT_MANUAL }.forEach {
+            unitDao.updateValidation(sessionId, it.serialNumber, it.validationStatus, it.rejectReason)
         }
     }
 
