@@ -69,4 +69,27 @@ class AlasanSesiBerakhirTest {
         assertNotEquals(jaringan, AlasanSesiBerakhir.dari("session_expired", null))
         assertTrue(jaringan.contains("koneksi", ignoreCase = true))
     }
+
+    /**
+     * REGRESI (dilaporkan user 2026-08-07): layar Login menampilkan "Sesi tidak
+     * valid" pada orang yang BELUM login sama sekali.
+     *
+     * Sebabnya bukan di pemetaan ini melainkan di pemanggilnya — app boot di
+     * layar Login, sebuah request terlindungi menembak tanpa token, kena 401
+     * `unauthorized`, dan pesan servernya dicatat sebagai "alasan keluar".
+     * Test ini mengunci fakta yang membuat kekeliruan itu mungkin: kode
+     * `unauthorized` MEMANG menghasilkan kalimat (bukan kosong), jadi pemanggil
+     * WAJIB memutuskan sendiri apakah ada sesi yang benar-benar berakhir
+     * sebelum mencatat apa pun.
+     *
+     * Penjaganya ada di `NetworkModule`: `adaSesiSebelumnya` di
+     * `TokenRefreshAuthenticator.authenticate()`, dan cek `current.isNullOrBlank()`
+     * di `TokenRefresher.refresh()`.
+     */
+    @Test
+    fun `unauthorized tetap punya kalimat - pemanggil yang wajib menyaring`() {
+        val teks = AlasanSesiBerakhir.dari("unauthorized", "Sesi tidak valid")
+        assertEquals("Sesi tidak valid", teks)
+        assertTrue(AlasanSesiBerakhir.dari("unauthorized", null).isNotBlank())
+    }
 }

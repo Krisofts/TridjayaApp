@@ -221,10 +221,19 @@ private class TokenRefresher(
         val current = tokenStore.accessToken
         if (!current.isNullOrBlank() && current != staleToken) return current
 
-        // Tak ada token refresh sama sekali = sesi memang habis. Dulu `clear()`
-        // di sini juga tanpa alasan — layar Login kosong lagi.
-        val refreshToken = tokenStore.refreshToken
-            ?: run { tokenStore.clear(AlasanSesiBerakhir.dari(null, null)); return null }
+        // Tak ada token refresh. DUA keadaan yang berbeda:
+        //  - masih ada access token  -> sesi memang habis, beri alasannya;
+        //  - tak ada apa-apa         -> BELUM PERNAH login (atau sudah logout
+        //    bersih). Mencatat alasan di sini menyambut orang yang baru membuka
+        //    app dengan "Sesi tidak valid" padahal ia belum sempat login.
+        val refreshToken = tokenStore.refreshToken ?: run {
+            if (current.isNullOrBlank()) {
+                tokenStore.clear()
+            } else {
+                tokenStore.clear(AlasanSesiBerakhir.dari(null, null))
+            }
+            return null
+        }
 
         val response = try {
             runBlocking { plainAuthApi.refresh(RefreshRequest(refreshToken)) }
@@ -339,6 +348,16 @@ private class TokenRefreshAuthenticator(
 
     override fun authenticate(route: Route?, response: Response): Request? {
         if (responseCount(response) >= 2) return null
+        // Diambil SEBELUM refresh, karena `refresher.refresh()` bisa menghapus
+        // sesi di tengah jalan. Tanpa penanda ini, "tidak sedang login" pada
+        // akhir fungsi punya DUA arti yang tak bisa dibedakan lagi: sesi baru
+        // saja mati, ATAU memang belum pernah ada sesi.
+        //
+        // Arti kedua itulah yang membuat layar Login menampilkan "Sesi tidak
+        // valid" pada orang yang BELUM login sama sekali: app boot di layar
+        // Login, sebuah request terlindungi menembak tanpa token, kena 401
+        // `unauthorized`, dan pesan servernya dicatat sebagai alasan keluar.
+        val adaSesiSebelumnya = tokenStore.isLoggedIn
         val failedToken = response.request.header("Authorization")?.removePrefix("Bearer ")
         val fresh = refresher.refresh(failedToken)
         if (fresh != null) {
@@ -354,6 +373,11 @@ private class TokenRefreshAuthenticator(
         //    Menuduhnya "sesi diakhiri" membuat orang mengira akunnya dipakai
         //    orang lain lalu buru-buru ganti password.
         //  - Sesi sudah mati   -> server benar-benar menolak.
+        // Belum pernah ada sesi -> tak ada yang "berakhir". DIAM. Mencatat apa
+        // pun di sini menyambut orang yang baru membuka app dengan tuduhan
+        // sesinya bermasalah, padahal ia belum sempat login.
+        if (!adaSesiSebelumnya) return null
+
         if (tokenStore.isLoggedIn) {
             tokenStore.catatAlasanKeluar(AlasanSesiBerakhir.gagalJaringan())
             return null
