@@ -23,10 +23,11 @@ class DiskonPotonganTest {
         createdAt: String = "2026-08-07T01:00:00Z",
         pengaju: String? = "Administrator",
         accOleh: String? = null,
+        status: String = "pending",
     ) = DiscountRequestDto(
         id = id, spkBatchKode = "DLV-M11112222", baris = baris, deliveryJobIds = unitIds,
         discountType = discountType, value = value, hargaSebelum = sebelum, hargaSesudah = sesudah,
-        createdAt = createdAt, requestedByName = pengaju, accOleh = accOleh,
+        createdAt = createdAt, requestedByName = pengaju, accOleh = accOleh, status = status,
     )
 
     @Test
@@ -162,5 +163,98 @@ class DiskonPotonganTest {
     fun `daftar kosong atau satu barang`() {
         assertEquals(null, nilaiSeragam(emptyList()) { it.requestedByName })
         assertEquals("Administrator", nilaiSeragam(listOf(req())) { it.requestedByName })
+    }
+
+    // ── Keputusan PER BARANG (2026-08-07) ────────────────────────────────────
+    // MEMBALIK perilaku 2026-08-06: dulu satu keputusan mem-FAN-OUT ke seluruh
+    // pengajuan `pending` sebatch dan tiap baris yang diputus langsung dilepas
+    // sendiri-sendiri ke PDI. Sekarang keputusan hanya mengenai barang yang
+    // ditunjuk, dan SPK baru lanjut ke PDI setelah SELURUH barangnya tuntas.
+
+    @Test
+    fun `tuntas hanya approved dan dilepas`() {
+        assertEquals(true, barisTuntas("approved"))
+        assertEquals(true, barisTuntas("dilepas"))
+        // `rejected` bolanya di SALES (revisi / lanjut tanpa diskon) — SPK tetap
+        // tertahan. Menganggapnya tuntas = kartu mengklaim SPK sudah jalan.
+        assertEquals(false, barisTuntas("rejected"))
+        assertEquals(false, barisTuntas("pending"))
+    }
+
+    @Test
+    fun `kemajuan dihitung per barang, bukan per SPK`() {
+        val p = listOf(
+            req(id = "a", baris = 1, status = "approved"),
+            req(id = "b", baris = 2, status = "dilepas"),
+            req(id = "c", baris = 3, status = "pending"),
+        )
+        assertEquals("2 dari 3 barang tuntas", kemajuanSpk(p).teks)
+        assertEquals(false, kemajuanSpk(p).semuaTuntas)
+    }
+
+    @Test
+    fun `satu barang rejected menahan SPK walau sisanya disetujui`() {
+        val p = listOf(
+            req(id = "a", baris = 1, status = "approved"),
+            req(id = "b", baris = 2, status = "approved"),
+            req(id = "c", baris = 3, status = "rejected"),
+        )
+        assertEquals(false, kemajuanSpk(p).semuaTuntas)
+        assertEquals("2 dari 3 barang tuntas", kemajuanSpk(p).teks)
+    }
+
+    @Test
+    fun `seluruh barang tuntas menandai SPK jalan`() {
+        val p = listOf(
+            req(id = "a", baris = 1, status = "approved"),
+            req(id = "b", baris = 2, status = "dilepas"),
+        )
+        assertEquals(true, kemajuanSpk(p).semuaTuntas)
+        // Kartu kosong BUKAN "semua tuntas" — tak ada yang bisa disimpulkan.
+        assertEquals(false, kemajuanSpk(emptyList()).semuaTuntas)
+    }
+
+    @Test
+    fun `status dilepas punya labelnya sendiri, tidak jatuh ke teks mentah`() {
+        assertEquals("Disetujui", labelStatusBaris("approved"))
+        assertEquals("Tanpa diskon", labelStatusBaris("dilepas"))
+        assertEquals("Ditolak", labelStatusBaris("rejected"))
+        // Status asing dikembalikan apa adanya — ketahuan, bukan menghilang.
+        assertEquals("entah_apa", labelStatusBaris("entah_apa"))
+    }
+
+    // ── Barang belum tuntas tak boleh tersembunyi ────────────────────────────
+
+    @Test
+    fun `daftar pendek tidak dipotong sama sekali`() {
+        val p = (1..4).map { req(id = "d$it", baris = it) }
+        assertEquals(p.map { it.id }, ringkasDaftar(p).map { it.id })
+    }
+
+    @Test
+    fun `yang dipotong hanya barang yang sudah tuntas`() {
+        // 6 barang: 4 tuntas + 2 pending. Batas 4 → 2 pending WAJIB tampil,
+        // sisa kuota 2 diisi barang tuntas, urutan baris dipertahankan.
+        val p = listOf(
+            req(id = "a", baris = 1, status = "approved"),
+            req(id = "b", baris = 2, status = "pending"),
+            req(id = "c", baris = 3, status = "approved"),
+            req(id = "d", baris = 4, status = "dilepas"),
+            req(id = "e", baris = 5, status = "pending"),
+            req(id = "f", baris = 6, status = "approved"),
+        )
+        assertEquals(listOf("a", "b", "c", "e"), ringkasDaftar(p, batas = 4).map { it.id })
+    }
+
+    @Test
+    fun `batas ringkas kalah dari tombol yang harus terjangkau`() {
+        // 6 barang pending: memotong di 4 berarti menyembunyikan 2 TOMBOL
+        // keputusan di balik "Lihat N lainnya". Batasnya yang mengalah.
+        val p = (1..6).map { req(id = "d$it", baris = it) }
+        assertEquals(6, ringkasDaftar(p, batas = 4).size)
+        // `rejected` juga belum tuntas — approver perlu melihat mana yang
+        // masih dipegang sales, itu yang menjelaskan kenapa SPK tak jalan.
+        val q = (1..6).map { req(id = "r$it", baris = it, status = "rejected") }
+        assertEquals(6, ringkasDaftar(q, batas = 4).size)
     }
 }

@@ -357,7 +357,8 @@ class DeliveryFlowRepository @Inject constructor(
         api.rejectDiscount(id, com.krisoft.tridjayaelektronik.data.model.DecisionBody(note.ifBlank { null }))
     }
 
-    /** Lepas seluruh baris `rejected` sebatch dari `pending_discount` → `pending_pdi`. */
+    /** Tandai pengajuan `rejected` jadi `dilepas`. Unit se-SPK baru lepas ke
+     *  `pending_pdi` setelah SELURUH barangnya tuntas — lihat `DeliveryFlowApi`. */
     suspend fun lanjutTanpaDiskon(id: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> =
         decision("Gagal melanjutkan tanpa diskon") { api.lanjutTanpaDiskon(id) }
 

@@ -119,3 +119,90 @@ fun <T : Any> nilaiSeragam(
  */
 fun urutPengajuanSpk(pengajuan: List<DiscountRequestDto>): List<DiscountRequestDto> =
     pengajuan.sortedWith(compareBy({ it.baris ?: Int.MAX_VALUE }, { it.createdAt }))
+
+// ── Ketuntasan per barang (2026-08-07) ───────────────────────────────────────
+
+/**
+ * Barang yang langsung tampil di kartu SPK sebelum daftarnya dipotong. 4
+ * dipilih supaya kartu SPK biasa (1-4 barang) tak berubah sama sekali, dan SPK
+ * 10 barang tetap muat di satu layar. Batas ini TIDAK berlaku untuk barang yang
+ * belum tuntas — lihat [ringkasDaftar].
+ */
+const val BATAS_RINGKAS = 4
+
+/**
+ * Barang ini SELESAI diurus — tak perlu tombol keputusan lagi.
+ *
+ * Membalik perilaku 2026-08-06 (satu keputusan menyapu seluruh SPK): sejak
+ * 2026-08-07 keputusan diambil PER BARANG, dan SPK baru lanjut ke PDI setelah
+ * SELURUH barangnya tuntas — saat itu seluruh unitnya dilepas bersamaan.
+ *
+ * `rejected` SENGAJA bukan tuntas: bolanya pindah ke SALES (revisi atau lanjut
+ * tanpa diskon), dan SPK tetap tertahan sampai ia memilih. Menganggapnya tuntas
+ * membuat kartu mengklaim SPK sudah jalan padahal masih mandek.
+ *
+ * `dilepas` = status BARU dari server (sales menyerah pada diskon yang
+ * ditolak). Tanpa arm ini kartu menawarkan tombol keputusan atas barang yang
+ * sudah selesai, dan kemajuannya kurang hitung.
+ */
+fun barisTuntas(status: String): Boolean = status == "approved" || status == "dilepas"
+
+/**
+ * Label pengganti tombol untuk barang yang sudah diputus.
+ *
+ * Sengaja PENDEK: label ini hidup di ujung baris barang, bersebelahan dengan
+ * nama barang dan nominal potongan — label panjang menggencet nama barang
+ * sampai ter-elipsis pada layar 360dp. Nuansa "ditolak = bolanya di sales"
+ * ditulis sebagai baris keterangan sendiri di bawahnya, bukan dijejalkan ke
+ * dalam chip.
+ *
+ * Status tak dikenal dikembalikan APA ADANYA, bukan dikosongkan: status baru
+ * dari server harus terbaca sebagai teks aneh (ketahuan) ketimbang menghilang.
+ */
+fun labelStatusBaris(status: String): String = when (status) {
+    "approved" -> "Disetujui"
+    "dilepas" -> "Tanpa diskon"
+    "rejected" -> "Ditolak"
+    "pending" -> "Menunggu"
+    else -> status
+}
+
+/**
+ * Kemajuan satu kartu SPK — "2 dari 3 barang tuntas".
+ *
+ * Penyebutnya adalah pengajuan yang DIPEGANG kartu: antrian approval hanya
+ * memuat yang `pending`, jadi setelah muat ulang penuh barang yang sudah
+ * diputus tak lagi terhitung. Keputusan sesi ini tetap terhitung karena
+ * ViewModel menambal barisnya di tempat (bukan memuat ulang antrian).
+ *
+ * ponytail: penyebut se-SPK yang sejati butuh endpoint ringkasan ketuntasan
+ * yang sengaja belum dibuat backend. Tambahkan kalau approver ternyata butuh
+ * melihat kemajuan yang bertahan lintas muat ulang.
+ */
+data class KemajuanSpk(val tuntas: Int, val total: Int) {
+    val semuaTuntas: Boolean get() = total > 0 && tuntas == total
+    val teks: String get() = "$tuntas dari $total barang tuntas"
+}
+
+fun kemajuanSpk(pengajuan: List<DiscountRequestDto>): KemajuanSpk =
+    KemajuanSpk(pengajuan.count { barisTuntas(it.status) }, pengajuan.size)
+
+/**
+ * Daftar yang tampil saat kartu diringkas: barang yang BELUM tuntas tak pernah
+ * disembunyikan, sisa kuota baru diisi barang yang sudah tuntas.
+ *
+ * Sejak tombol keputusan pindah ke tiap barang (2026-08-07), memotong daftar di
+ * [BATAS_RINGKAS] apa adanya berarti menyembunyikan TOMBOL — approver melihat
+ * "0 dari 6 tuntas" tanpa satu pun cara memutuskan sampai ia menemukan tautan
+ * "Lihat N lainnya". Kuota boleh terlampaui; batas ringkas kalah dari
+ * keterjangkauan tombol.
+ *
+ * Urutan asli (nomor baris SPK) dipertahankan — approver membaca kartu sambil
+ * memegang SPK cetak.
+ */
+fun ringkasDaftar(urut: List<DiscountRequestDto>, batas: Int = BATAS_RINGKAS): List<DiscountRequestDto> {
+    if (urut.size <= batas) return urut
+    val kuotaTuntas = (batas - urut.count { !barisTuntas(it.status) }).coerceAtLeast(0)
+    val tampil = urut.filter { barisTuntas(it.status) }.take(kuotaTuntas).map { it.id }.toSet()
+    return urut.filter { !barisTuntas(it.status) || it.id in tampil }
+}

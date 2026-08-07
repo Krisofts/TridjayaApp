@@ -75,10 +75,13 @@ data class DeliveryFlowUiState(
     /** Pengajuan diskon menunggu approval (layar approval diskon). */
     val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
     /**
-     * Kode SPK yang keputusannya sedang dikirim — BUKAN boolean global.
+     * Id PENGAJUAN yang keputusannya sedang dikirim — BUKAN boolean global,
+     * dan sejak 2026-08-07 bukan kode SPK lagi.
      * [submitting] mematikan tombol SEMUA kartu di antrian sekaligus, jadi
      * approver dengan 8 SPK menunggu harus menonton satu kartu selesai sebelum
      * bisa menyentuh yang lain, dan kartu yang tak ditekan pun terlihat rusak.
+     * Kunci per-SPK pun sudah terlalu lebar: keputusan sekarang per BARANG,
+     * jadi mengunci se-kartu membuat 9 barang lain menunggu 1 barang terkirim.
      */
     val diskonSubmitting: Set<String> = emptySet(),
     /** Detail SPK yang sedang dibuka dari kartu diskon (satu slot: panelnya
@@ -606,11 +609,11 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    fun approveDiscount(spkKode: String, id: String, note: String) =
-        discountAction(spkKode) { repository.approveDiscount(id, note) }
+    fun approveDiscount(id: String, note: String) =
+        discountAction(id) { repository.approveDiscount(id, note) }
 
-    fun rejectDiscount(spkKode: String, id: String, note: String) =
-        discountAction(spkKode) { repository.rejectDiscount(id, note) }
+    fun rejectDiscount(id: String, note: String) =
+        discountAction(id) { repository.rejectDiscount(id, note) }
 
     /** Buka panel detail SPK dari kartu diskon. Gagal = pesan DI DALAM panel,
      *  bukan `error` layar — antrian approval yang sudah termuat tak boleh
@@ -671,8 +674,10 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     /**
-     * Sales menyerah pada diskon yang ditolak: baris `rejected` sebatch dilepas
-     * `pending_discount` → `pending_pdi`.
+     * Sales menyerah pada diskon yang ditolak: baris ini DITANDAI `dilepas`
+     * (2026-08-07, membalik perilaku lama yang langsung melepas se-batch).
+     * Unitnya baru pindah `pending_discount` → `pending_pdi` kalau SELURUH
+     * barang SPK sudah tuntas — jadi jangan menjanjikan "SPK masuk PDI" di UI.
      *
      * Sengaja BUKAN [discountAction]: pemanggilnya layar DETAIL SPK, bukan
      * antrian approval, jadi memuat ulang antrian `pending` tak ada gunanya
@@ -695,19 +700,34 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    /** Kunci per-SPK, bukan global: kartu lain tetap bisa diputuskan sementara
-     *  satu keputusan masih terbang. Tekanan kedua pada kartu YANG SAMA tetap
-     *  ditolak (fan-out server sudah menyapu se-SPK, jadi tekanan kedua cuma
-     *  memanen "sudah diputuskan"). */
-    private fun discountAction(spkKode: String, block: suspend () -> AuthResult<*>) {
-        if (spkKode in _state.value.diskonSubmitting) return
-        _state.update { it.copy(diskonSubmitting = it.diskonSubmitting + spkKode, actionError = null) }
+    /**
+     * Kunci per-PENGAJUAN (2026-08-07), bukan per-SPK dan bukan global: sejak
+     * keputusan diambil per barang, mengunci se-kartu membuat 9 barang lain
+     * menunggu 1 barang selesai terkirim. Tekanan kedua pada barang YANG SAMA
+     * tetap ditolak — server menjawabnya "sudah diputuskan".
+     *
+     * Sukses TIDAK memuat ulang antrian melainkan MENAMBAL barisnya dengan DTO
+     * balasan server (sudah ter-hydrate: `jobSummary`, `deliveryJobIds`,
+     * harga). Muat ulang membuang barang yang barusan diputus dari antrian
+     * `pending`, sehingga kartu kehilangan penyebut kemajuannya dan approver
+     * tak pernah melihat "2 dari 3 barang tuntas" — persis informasi yang
+     * paling ia butuhkan sekarang, karena SPK baru lanjut setelah semuanya
+     * tuntas. Kartu yang seluruh barangnya tuntas hilang saat muat ulang
+     * berikutnya, bukan seketika.
+     */
+    private fun discountAction(
+        id: String,
+        block: suspend () -> AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>,
+    ) {
+        if (id in _state.value.diskonSubmitting) return
+        _state.update { it.copy(diskonSubmitting = it.diskonSubmitting + id, actionError = null) }
         viewModelScope.launch {
             val res = block()
-            _state.update { it.copy(diskonSubmitting = it.diskonSubmitting - spkKode) }
+            _state.update { it.copy(diskonSubmitting = it.diskonSubmitting - id) }
             when (res) {
-                is AuthResult.Success ->
-                    loadDiscounts("pending") // muat ulang: item yang diputuskan hilang dari antrian
+                is AuthResult.Success -> _state.update { s ->
+                    s.copy(discounts = s.discounts.map { if (it.id == res.data.id) res.data else it })
+                }
                 is AuthResult.Failure -> _state.update { it.copy(actionError = res.message) }
             }
         }

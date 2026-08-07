@@ -355,31 +355,46 @@ interface DeliveryFlowApi {
     @POST("api/inventory/discount-requests")
     suspend fun createDiscountRequest(@Body body: CreateDiscountBody): Response<ApiResponse<DiscountRequestDto>>
 
+    /**
+     * Menyetujui SATU pengajuan — HANYA pengajuan `{id}` (2026-08-07,
+     * membalik fan-out se-SPK 2026-08-06).
+     *
+     * Unit BELUM tentu lepas ke PDI: pelepasan sekarang tingkat BATCH, terjadi
+     * hanya kalau SELURUH barang SPK sudah tuntas (`approved` atau `dilepas`),
+     * dan saat itu seluruh unit dilepas bersamaan. App yang mengasumsikan
+     * "disetujui → barang ini jalan" akan salah melaporkan SPK yang masih
+     * menunggu barang lain.
+     */
     @POST("api/inventory/discount-requests/{id}/approve")
     suspend fun approveDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
 
     /**
-     * Menolak SATU pengajuan = menolak SELURUH pengajuan `pending` sebatch
-     * (2026-08-06, alasan yang sama dipakai semuanya).
+     * Menolak SATU pengajuan — HANYA pengajuan `{id}` (2026-08-07, membalik
+     * fan-out se-SPK 2026-08-06).
      *
-     * **BERUBAH & breaking alur**: penolakan TIDAK lagi melepas unit dari
-     * `pending_discount`. Baris-barisnya TETAP tertahan dan SPK kembali ke
-     * sales, yang memilih salah satu dari tiga: ajukan ulang diskon, sunting
-     * isi SPK (`PATCH /delivery/{id}`, kini menerima sales PEMILIK saat
-     * `pending_discount`), atau [lanjutTanpaDiskon]. App yang masih
-     * mengasumsikan "ditolak → unit masuk antrian PDI" akan meninggalkan SPK
-     * mandek tanpa satu pun pesan error.
+     * Penolakan TIDAK melepas unit dari `pending_discount`. Barisnya TETAP
+     * tertahan dan bolanya kembali ke sales, yang memilih salah satu dari tiga:
+     * ajukan ulang diskon, sunting isi SPK (`PATCH /delivery/{id}`, menerima
+     * sales PEMILIK saat `pending_discount`), atau [lanjutTanpaDiskon]. App
+     * yang masih mengasumsikan "ditolak → unit masuk antrian PDI" akan
+     * meninggalkan SPK mandek tanpa satu pun pesan error.
      */
     @POST("api/inventory/discount-requests/{id}/reject")
     suspend fun rejectDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>
 
     /**
-     * Sales menyerah pada diskon (2026-08-06, tanpa body): SELURUH baris
-     * ber-status `rejected` sebatch dilepas dari `pending_discount` →
-     * `pending_pdi`, jadi SPK bergerak utuh.
+     * Sales menyerah pada diskon (tanpa body): pengajuan `{id}` DITANDAI
+     * `dilepas` — status BARU 2026-08-07 yang menggantikan pelepasan langsung.
      *
-     * Hanya untuk pengajuan ber-status `rejected` (selain itu 400); pemanggil
-     * harus PENGAJU pengajuan itu atau admin (selain itu 403).
+     * TIDAK melepas unit dengan sendirinya: unit se-SPK baru pindah
+     * `pending_discount` → `pending_pdi` setelah SELURUH barangnya tuntas.
+     * Tanpa penanda ini, "ditolak lalu sales merelakan" tak bisa dibedakan dari
+     * "ditolak dan sales belum bertindak" — dan yang kedua tak boleh melepas
+     * SPK.
+     *
+     * Kode galat: 400 kalau baris itu sudah punya pengajuan lebih baru, 409
+     * kalau statusnya bukan `rejected` lagi (mis. ditekan dua kali), 403 kalau
+     * pemanggil bukan pengaju maupun admin.
      */
     @POST("api/inventory/discount-requests/{id}/lanjut-tanpa-diskon")
     suspend fun lanjutTanpaDiskon(@Path("id") id: String): Response<ApiResponse<DiscountRequestDto>>

@@ -1122,6 +1122,12 @@ private fun SpkTimelineCard(
             when (d.status) {
                 "approved" -> add(TimelineStep("Diskon Disetujui", d.decidedAt, "$nilai oleh ${d.decidedByName ?: "-"}"))
                 "rejected" -> add(TimelineStep("Diskon Ditolak", d.decidedAt, d.decisionNote ?: d.decidedByName))
+                // Status BARU 2026-08-07. Tanpa arm ini ia jatuh ke `else` dan
+                // timeline menulis "Menunggu Approval Diskon" untuk barang yang
+                // justru sudah selesai diurus. `decidedAt` sengaja tak dipakai:
+                // server TIDAK menimpanya saat menandai `dilepas` (itu jejak
+                // penolakan approver, bukan waktu sales melepas).
+                "dilepas" -> add(TimelineStep("Lanjut Tanpa Diskon", null, "Menunggu barang lain SPK ini tuntas"))
                 else -> add(TimelineStep("Menunggu Approval Diskon", null, "$nilai diajukan ${d.requestedByName ?: "-"}"))
             }
         }
@@ -1805,10 +1811,17 @@ private fun DiskonTertahanAction(
 
     if (ditolak == null) {
         Text(
-            if (terakhir == null) {
-                "Pengajuan diskon SPK ini sedang menunggu approver. Unit belum masuk antrian PDI sampai ada keputusan."
-            } else {
-                "Pengajuan diskon masih menunggu keputusan approver."
+            when {
+                terakhir == null ->
+                    "Pengajuan diskon SPK ini sedang menunggu approver. Unit belum masuk antrian PDI sampai ada keputusan."
+                // `dilepas`/`approved` = barang INI sudah tuntas, tapi unitnya
+                // masih tertahan karena SPK baru lanjut setelah SELURUH barangnya
+                // tuntas (2026-08-07). Tanpa arm ini layar menulis "menunggu
+                // keputusan approver" untuk barang yang tak menunggu siapa pun,
+                // dan sales mengejar approver yang sudah selesai bekerja.
+                barisTuntas(terakhir.status) ->
+                    "Barang ini sudah tuntas. Unit SPK masuk antrian PDI setelah SELURUH barang SPK ini tuntas."
+                else -> "Pengajuan diskon masih menunggu keputusan approver."
             },
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1857,8 +1870,13 @@ private fun DiskonTertahanAction(
             onDismissRequest = { if (!submitting) konfirmasi = false },
             title = { Text("Lanjut tanpa diskon?", fontWeight = FontWeight.Bold) },
             text = {
+                // 2026-08-07: TIDAK lagi menjanjikan SPK langsung masuk PDI —
+                // server cuma menandai barang ini `dilepas`, dan unitnya baru
+                // lepas setelah barang LAIN di SPK ini ikut tuntas. Janji lama
+                // membuat sales mengira SPK-nya jalan lalu melapor "PDI tak
+                // menerima" atas alur yang bekerja normal.
                 Text(
-                    "Harga kembali ke harga normal dan SELURUH barang SPK ini masuk antrian PDI. " +
+                    "Harga barang ini kembali normal. SPK masuk antrian PDI setelah SELURUH barangnya tuntas. " +
                         "Tak bisa dibatalkan dari sini — kalau masih mau menawar, batalkan dan pakai " +
                         "\"Ajukan Ulang Diskon\"."
                 )
@@ -3123,18 +3141,16 @@ private fun AkiOptionDropdown(
 }
 
 // ── Approval Diskon per-baris ────────────────────────────────────────────────
-
-// Barang yang langsung tampil di kartu SPK sebelum daftarnya dipotong. 4 dipilih
-// supaya kartu SPK biasa (1-4 barang) tak berubah sama sekali, dan SPK 10 barang
-// tetap menaruh tombol keputusannya di dalam satu layar.
-private const val BATAS_RINGKAS = 4
+// BATAS_RINGKAS pindah ke DiskonPotongan.kt bersama `ringkasDaftar` — barang
+// yang belum tuntas tak boleh ikut terpotong (tombolnya ada di barisnya).
 
 @Composable
 fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.loadDiscounts("pending") }
-    // (kode SPK, id anchor) — kode dipakai mengunci kartu yang benar saja.
-    var rejectId by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // Id PENGAJUAN yang sedang ditolak — bukan lagi "anchor" se-SPK: sejak
+    // 2026-08-07 penolakan cuma mengenai barang yang ditunjuk.
+    var rejectId by remember { mutableStateOf<String?>(null) }
 
     TridjayaCollapsibleHeader(title = "Approval Diskon", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -3163,13 +3179,12 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
-                    // Satu kartu per SPK (2026-08-06): approve/reject di server
-                    // FAN-OUT ke seluruh pengajuan `pending` sebatch, jadi daftar
-                    // per-baris membuat approver menekan N tombol untuk keputusan
-                    // yang sudah selesai pada tekanan pertama — sisanya dijawab
-                    // "sudah diputuskan" dan terbaca sebagai kegagalan. Nilai tiap
-                    // barang tetap dari pengajuannya sendiri; kartu ini yang
-                    // menotalkannya supaya keputusannya diambil atas angka SPK utuh.
+                    // Satu kartu per SPK, tapi keputusannya PER BARANG
+                    // (2026-08-07, membalik fan-out 2026-08-06): server tak lagi
+                    // menyeret sibling, dan SPK baru lanjut ke PDI setelah
+                    // SELURUH barangnya tuntas. Kartu tetap per-SPK karena
+                    // itulah satuan yang bergerak — approver perlu melihat
+                    // barang mana yang masih menghambat, bukan daftar datar.
                     val grup = state.discounts.groupBy { it.spkBatchKode }.entries.toList()
                     items(grup, key = { it.key }) { (kode, pengajuan) ->
                         // Urut baris: server mengirim `created_at DESC`, jadi
@@ -3178,11 +3193,10 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
                         DiscountSpkCard(
                             kode = kode,
                             pengajuan = urut,
-                            submitting = kode in state.diskonSubmitting,
+                            submitting = state.diskonSubmitting,
                             buktiFoto = state.diskonBuktiPhotos,
-                            // Anchor = pengajuan pertama; server menyeret sisanya.
-                            onApprove = { viewModel.approveDiscount(kode, urut.first().id, "") },
-                            onReject = { rejectId = kode to urut.first().id },
+                            onApprove = { id -> viewModel.approveDiscount(id, "") },
+                            onReject = { id -> rejectId = id },
                             onDetail = { viewModel.bukaDetailSpkDiskon(kode) },
                         )
                     }
@@ -3200,7 +3214,7 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
         )
     }
 
-    rejectId?.let { (kode, id) ->
+    rejectId?.let { id ->
         var note by remember { mutableStateOf("") }
         // `decisionNote` WAJIB saat menolak (discounts.rs `reject_request`):
         // tanpa isi, server membalas 400 "decisionNote wajib diisi saat menolak".
@@ -3208,17 +3222,18 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
         // gagal tanpa penjelasan.
         AlertDialog(
             onDismissRequest = { rejectId = null },
-            title = { Text("Tolak diskon?", fontWeight = FontWeight.Bold) },
+            title = { Text("Tolak diskon barang ini?", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    // Dua hal yang berubah 2026-08-06 dan sama-sama tak terlihat
-                    // dari tombolnya: keputusan ini menyapu SELURUH barang SPK,
-                    // dan penolakan TIDAK melepas unit — SPK berhenti sampai
-                    // sales-nya memilih. Approver yang mengira "ditolak = lanjut
-                    // tanpa diskon" akan menahan SPK orang tanpa sadar.
+                    // Yang tak terlihat dari tombolnya: penolakan TIDAK melepas
+                    // unit — SPK berhenti sampai sales-nya memilih. Approver yang
+                    // mengira "ditolak = lanjut tanpa diskon" akan menahan SPK
+                    // orang tanpa sadar. Cakupannya berubah 2026-08-07 (dulu
+                    // menyapu SELURUH barang SPK, kini hanya barang ini).
                     Text(
-                        "Penolakan berlaku untuk SEMUA barang SPK ini, dan unitnya TIDAK otomatis lanjut — " +
-                            "SPK kembali ke sales untuk direvisi atau dilanjutkan tanpa diskon.",
+                        "Hanya barang ini yang ditolak, dan unitnya TIDAK otomatis lanjut — " +
+                            "barang ini kembali ke sales untuk direvisi atau dilanjutkan tanpa diskon. " +
+                            "SPK baru masuk antrian PDI setelah seluruh barangnya tuntas.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -3234,7 +3249,7 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
             confirmButton = {
                 TextButton(
                     enabled = note.isNotBlank(),
-                    onClick = { viewModel.rejectDiscount(kode, id, note.trim()); rejectId = null }
+                    onClick = { viewModel.rejectDiscount(id, note.trim()); rejectId = null }
                 ) { Text("Tolak") }
             },
             dismissButton = { TextButton(onClick = { rejectId = null }) { Text("Batal") } }
@@ -3245,20 +3260,20 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
 /**
  * Satu SPK = satu kartu, berisi baris per barang + total potongan.
  *
- * Keputusan diambil di level SPK karena begitulah server memutuskannya
- * (fan-out ke seluruh pengajuan `pending` sebatch). Nilai per barang tetap
- * ditampilkan apa adanya — approver perlu melihat komposisinya, bukan cuma
- * jumlahnya, dan server memang menerapkan nilai masing-masing baris, bukan
- * nilai anchor.
+ * Keputusan diambil PER BARANG (2026-08-07) karena begitulah server sekarang
+ * memutuskannya — tombolnya ada di barisnya masing-masing, bukan di dasar
+ * kartu. Kartu tetap per-SPK karena SPK-lah yang bergerak: ia baru lanjut ke
+ * PDI setelah SELURUH barangnya tuntas, jadi approver harus melihat barang mana
+ * yang masih menghambat.
  */
 @Composable
 private fun DiscountSpkCard(
     kode: String,
     pengajuan: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>,
-    submitting: Boolean,
+    submitting: Set<String>,
     buktiFoto: Map<String, AkiPhotoState>,
-    onApprove: () -> Unit,
-    onReject: () -> Unit,
+    onApprove: (String) -> Unit,
+    onReject: (String) -> Unit,
     onDetail: () -> Unit,
 ) {
     // BUKAN `sumOf { it.value }` — lihat [potonganPengajuan]: `value` itu nilai
@@ -3275,15 +3290,14 @@ private fun DiscountSpkCard(
     // jadi memotong 10 karakter pertamanya salah tanggal untuk pengajuan sore
     // (kontrak repo: semua waktu WIB).
     val tanggal = nilaiSeragam(pengajuan) { formatWaktuId(it.createdAt).substringBefore(' ').takeIf { t -> t != "-" } }
-    // Tombol keputusan ada di DASAR kartu dan memang harus di situ (server
-    // fan-out se-batch — tombol per-baris membuat tekanan ke-2 dijawab "sudah
-    // diputuskan"). Agar tetap terjangkau saat 10 barang, daftarnya dipotong di
-    // BATAS_RINGKAS dan sisanya dibuka satu ketuk. Dipilih daripada bar sticky
-    // karena bar sticky butuh konsep "kartu terpilih" + overlay di atas
-    // LazyColumn; ini 4 baris. Angka keputusannya (total potongan) TIDAK pernah
-    // ikut disembunyikan.
+    val kemajuan = kemajuanSpk(pengajuan)
+    // Daftar diringkas di BATAS_RINGKAS, TAPI barang yang belum tuntas tak
+    // pernah ikut terpotong — sejak tombol keputusan pindah ke barisnya
+    // masing-masing, menyembunyikan barang = menyembunyikan tombolnya. Angka
+    // keputusan (total potongan) juga tak pernah disembunyikan.
     var semuaBarang by remember(kode) { mutableStateOf(false) }
-    val tampil = if (semuaBarang) pengajuan else pengajuan.take(BATAS_RINGKAS)
+    val tampil = if (semuaBarang) pengajuan else ringkasDaftar(pengajuan)
+    val tersembunyi = pengajuan.size - tampil.size
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3292,9 +3306,16 @@ private fun DiscountSpkCard(
                     color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f),
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
+                // Kemajuan menggantikan "N barang": sejak keputusan per barang,
+                // yang perlu diketahui approver bukan berapa barangnya melainkan
+                // berapa yang MASIH menahan SPK ini.
+                Surface(
+                    color = if (kemajuan.semuaTuntas) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(50),
+                ) {
                     Text(
-                        "${pengajuan.size} barang", style = MaterialTheme.typography.labelSmall,
+                        kemajuan.teks, style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     )
@@ -3318,12 +3339,17 @@ private fun DiscountSpkCard(
                     bukti = buktiFoto[d.id],
                     tampilkanPengaju = pengaju == null,
                     tampilkanAcc = accSeragam == null,
+                    submitting = d.id in submitting,
+                    onApprove = { onApprove(d.id) },
+                    onReject = { onReject(d.id) },
                 )
             }
-            if (pengajuan.size > BATAS_RINGKAS) {
+            // Yang tersembunyi SELALU barang yang sudah tuntas (lihat
+            // `ringkasDaftar`) — tak ada tombol yang hilang di baliknya.
+            if (tersembunyi > 0 || semuaBarang) {
                 TextButton(onClick = { semuaBarang = !semuaBarang }, modifier = Modifier.align(Alignment.Start)) {
                     Text(
-                        if (semuaBarang) "Ringkas daftar" else "Lihat ${pengajuan.size - BATAS_RINGKAS} barang lainnya",
+                        if (semuaBarang) "Ringkas daftar" else "Lihat $tersembunyi barang tuntas lainnya",
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
@@ -3333,31 +3359,22 @@ private fun DiscountSpkCard(
                 Text("Total potongan SPK", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(rupiah(total), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
             }
-            if (pengajuan.size > 1) {
-                Text(
-                    "Satu keputusan berlaku untuk ${pengajuan.size} barang SPK ini.",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
-                )
-            }
+            // Aturan pelepasan 2026-08-07: barang yang disetujui TIDAK jalan
+            // sendirian. Tanpa kalimat ini approver menyimpulkan SPK sudah
+            // bergerak setelah satu approve, lalu heran kenapa PDI tak menerima.
+            Text(
+                if (kemajuan.semuaTuntas) "Seluruh barang tuntas — SPK masuk antrian PDI."
+                else "SPK baru masuk antrian PDI setelah SELURUH barangnya tuntas.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+            )
             // Pengajuan cuma memuat baris yang MENGAJUKAN diskon; SPK-nya bisa
-            // berisi barang lain yang tak berdiskon dan tetap ikut terdampak
-            // keputusan ini. Detail SPK utuh dimuat on-demand — approver dengan
-            // 20 SPK menunggu tak perlu membayar 20 request untuk yang tak
-            // dibukanya.
+            // berisi barang lain yang tak berdiskon dan ikut tertahan sampai
+            // seluruh pengajuan tuntas. Detail SPK utuh dimuat on-demand —
+            // approver dengan 20 SPK menunggu tak perlu membayar 20 request
+            // untuk yang tak dibukanya.
             TextButton(onClick = onDetail, modifier = Modifier.align(Alignment.Start)) {
                 Text("Lihat detail SPK", style = MaterialTheme.typography.labelMedium)
                 Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
-            }
-            Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExpressiveOutlinedButton(onClick = onReject, enabled = !submitting, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Tolak")
-                }
-                ExpressiveFilledButton(onClick = onApprove, enabled = !submitting, modifier = Modifier.weight(1f)) {
-                    if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    else { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
-                    Text("Setujui")
-                }
             }
         }
     }
@@ -3383,6 +3400,9 @@ private fun DiscountBaris(
     bukti: AkiPhotoState?,
     tampilkanPengaju: Boolean,
     tampilkanAcc: Boolean,
+    submitting: Boolean,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
 ) {
     // Alasan panjang di-clamp 1 baris; approver TETAP wajib bisa membacanya
     // utuh, jadi barisnya bisa diketuk untuk membuka. `terpotong` diisi dari
@@ -3413,6 +3433,43 @@ private fun DiscountBaris(
             Text(
                 "−${rupiah(potonganPengajuan(d))}", style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold, color = Color(0xFFB5670C),
+            )
+            // Keputusan PER BARANG (2026-08-07): ikon kecil di ujung baris, bukan
+            // sepasang tombol lebar — 10 barang × tombol setinggi 40dp mendorong
+            // separuh kartu keluar layar, dan itulah alasan bentuk ringkas ini
+            // ada. Barang yang sudah diputus menampilkan status, bukan tombol:
+            // tekanan kedua cuma memanen "sudah diputuskan" dari server.
+            Spacer(Modifier.width(4.dp))
+            when {
+                d.status != "pending" -> StatusBarisChip(d.status)
+                submitting -> Box(Modifier.size(64.dp, 32.dp), Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                }
+                else -> Row {
+                    IconButton(onClick = onReject, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Rounded.Close, contentDescription = "Tolak diskon barang ini",
+                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    IconButton(onClick = onApprove, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Rounded.CheckCircle, contentDescription = "Setujui diskon barang ini",
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+        }
+        // Penolakan TIDAK melepas unit: barang ini menunggu SALES, bukan
+        // approver. Tanpa kalimat ini chip "Ditolak" terbaca seperti "beres",
+        // dan approver menyimpulkan SPK sudah bergerak.
+        if (d.status == "rejected") {
+            Text(
+                "Menunggu sales: revisi diskon atau lanjut tanpa diskon.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = 18.dp, top = 2.dp),
             )
         }
         if (d.reason.isNotBlank()) {
@@ -3481,6 +3538,23 @@ private fun DiscountBaris(
             null -> Unit // sales memang tak melampirkan bukti — bukan kegagalan
         }
         if (tampilkanPengaju) InfoLine("Diajukan", d.requestedByName)
+    }
+}
+
+/** Status barang yang sudah diputus — pengganti tombol di ujung baris. */
+@Composable
+private fun StatusBarisChip(status: String) {
+    val warna = when {
+        barisTuntas(status) -> MaterialTheme.colorScheme.primary
+        status == "rejected" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(color = warna.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
+        Text(
+            labelStatusBaris(status), style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold, color = warna, maxLines = 1,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
     }
 }
 
