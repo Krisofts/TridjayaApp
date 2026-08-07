@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nama app untuk build DEBUG. Ini penanda yang paling luas jangkauannya:
+  ia muncul di launcher, daftar app terpasang, dan dialog izin — dan berlaku
+  di SEMUA versi Android, termasuk API 24/25 yang tak mengenal adaptive-icon
+  sehingga tak ikut mendapat pita BETA di ikonnya.
+-->
+<resources>
+    <string name="app_name">Tridjaya BETA</string>
+</resources>

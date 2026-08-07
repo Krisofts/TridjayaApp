@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pasangan ikon BULAT. Sengaja terpisah dari `ic_launcher_foreground_beta`:
+  `ic_launcher.xml` menumpuk foreground versi @mipmap (PNG), sementara
+  `ic_launcher_round.xml` memakai versi @drawable (vektor). Memakai satu berkas
+  untuk keduanya akan diam-diam mengganti gambar dasar salah satunya.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+    <item android:drawable="@drawable/ic_beta_band" />
+</layer-list>

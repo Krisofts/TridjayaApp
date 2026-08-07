@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foreground ikon untuk build debug: gambar asli + pita BETA di atasnya.
+
+  adaptive-icon hanya menerima SATU foreground, jadi penumpukan dilakukan di
+  sini lewat layer-list — bukan dengan menambah layer ketiga ke <adaptive-icon>,
+  yang memang tak didukung.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@mipmap/ic_launcher_foreground" />
+    <item android:drawable="@drawable/ic_beta_band" />
+</layer-list>

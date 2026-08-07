@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pita "BETA" yang ditumpuk di atas foreground ikon launcher, HANYA untuk build
+  debug (source set `src/debug/`) — build release tak pernah melihat berkas ini.
+
+  Seluruh gambar ditahan di dalam kotak aman adaptive-icon (pusat 72dp dari
+  kanvas 108dp, kira-kira x/y 18..90). Di luar itu launcher berhak memotong
+  sesuai bentuk mask-nya (lingkaran, squircle, dst), dan pita yang menyentuh
+  tepi akan terpotong tak beraturan di sebagian HP.
+
+  Huruf digambar sebagai kotak-kotak, bukan teks: VectorDrawable tak punya
+  elemen teks, dan memakai font berarti bergantung pada apa yang terpasang di
+  perangkat.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Pita oranye: warna sengaja jauh dari biru produksi (#0D47A1) supaya
+         terbaca beda bahkan saat ikonnya kecil di layar penuh aplikasi. -->
+    <path
+        android:fillColor="#E65100"
+        android:pathData="M16,68 H92 V90 H16 Z" />
+
+    <!-- B E T A, putih di atas pita. Satu path, banyak sub-path. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+            M24,72 H27 V86 H24 Z
+            M24,72 H33 V75 H24 Z
+            M24,78 H33 V81 H24 Z
+            M24,83 H33 V86 H24 Z
+            M32,72 H35 V78 H32 Z
+            M32,81 H35 V86 H32 Z
+
+            M39,72 H42 V86 H39 Z
+            M39,72 H48 V75 H39 Z
+            M39,78 H46 V81 H39 Z
+            M39,83 H48 V86 H39 Z
+
+            M52,72 H63 V75 H52 Z
+            M56,72 H59 V86 H56 Z
+
+            M67,72 H70 V86 H67 Z
+            M75,72 H78 V86 H75 Z
+            M67,72 H78 V75 H67 Z
+            M67,78 H78 V81 H67 Z" />
+</vector>
