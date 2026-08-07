@@ -319,34 +319,6 @@ class DeliveryFlowViewModel @Inject constructor(
     }
 
     /**
-     * Muat ulang job yang SEDANG dibuka (tarik-turun) — sengaja TIDAK menyentuh
-     * state kamera. [loadDetail] membuang `pdiPhoto`/`deliverPhoto`/`cashPhoto`
-     * beserta byte & flag `*Confirmed`-nya karena ia berpindah job; memakainya
-     * sebagai aksi tarik-turun berarti satu gestur tak sengaja menghapus foto
-     * bukti yang sudah dijepret tapi belum terkirim, tanpa peringatan apa pun.
-     */
-    fun refreshDetail(id: String) {
-        _state.update { it.copy(loading = true, error = null, actionDone = false, actionError = null) }
-        viewModelScope.launch {
-            when (val res = repository.detail(id)) {
-                is AuthResult.Success -> {
-                    _state.update { it.copy(loading = false, detail = res.data) }
-                    loadAuxFor(res.data)
-                    loadBatchUnits(res.data)
-                    loadTimelineExtras(res.data)
-                    loadJobPhotos(res.data)
-                    loadKontributor(id)
-                }
-                is AuthResult.Failure -> _state.update { it.copy(loading = false, error = res.message) }
-            }
-        }
-        // Konteks juga dibutuhkan layar detail (flag driverGateEnabled — gate
-        // serah-terima klien mengikuti kill-switch server). Cached, fail-soft.
-        loadDeliveryContextForCreate()
-        refreshGps()
-    }
-
-    /**
      * Muat ulang detail + timeline + kontributor job yang SEDANG dibuka —
      * dipakai tarik-turun di layar detail.
      *
@@ -376,6 +348,13 @@ class DeliveryFlowViewModel @Inject constructor(
                 is AuthResult.Failure -> _state.update { it.copy(loading = false, actionError = res.message) }
             }
         }
+        // Dua panggilan ini datang dari implementasi kembar yang dibuang saat
+        // penggabungan 2026-08-07 (dua sesi menulis `refreshDetail` sendiri-sendiri).
+        // Konteks dibutuhkan layar detail untuk flag `driverGateEnabled` — gate
+        // serah-terima klien mengikuti kill-switch server, jadi tanpa ini tarik-turun
+        // meninggalkan gate memakai nilai basi. Keduanya cached & fail-soft.
+        loadDeliveryContextForCreate()
+        refreshGps()
     }
 
     /** Muat foto job ter-autentikasi (bukti PDI / serah terima / uang) utk preview
