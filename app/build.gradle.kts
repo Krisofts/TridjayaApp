@@ -79,8 +79,13 @@ android {
             // Debug memakai API_BASE_URL default (https://tridjaya.com/) sama seperti
             // release. Untuk uji ke gateway lokal:
             //
-            //   adb reverse tcp:4100 tcp:4100
+            //   ./scripts/adb-reverse-watch.sh      (biarkan jalan di terminal lain)
             //   ./gradlew installDebug -PlocalApi
+            //
+            // Pakai skrip penjaga itu, JANGAN `adb reverse` sekali jalan: tunnelnya
+            // tidak bertahan melewati kabel tersenggol, USB di-suspend saat HP sleep,
+            // atau daemon adb restart — dan hilangnya cuma terlihat sebagai "app tidak
+            // bisa terhubung", tanpa petunjuk bahwa penyebabnya ada di laptop.
             //
             // localhost sudah diizinkan cleartext di network_security_config.xml.
             //
