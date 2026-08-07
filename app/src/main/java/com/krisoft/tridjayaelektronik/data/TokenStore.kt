@@ -161,7 +161,42 @@ class TokenStore(private val context: Context) {
     /** After a successful password change, drop the forced-change flag. */
     fun markPasswordChanged() = mutate { it.copy(mustChangePassword = false) }
 
-    fun clear() {
+    /**
+     * Alasan sesi terakhir berakhir, untuk ditampilkan di layar Login.
+     *
+     * IN-MEMORY, bukan DataStore: pencabutan sesi dan pindah-layar terjadi di
+     * PROSES yang sama, jadi tak ada yang perlu bertahan melewati restart app.
+     * Menyimpannya permanen justru berisiko memunculkan alasan basi berhari-hari
+     * kemudian.
+     *
+     * Dibaca SEKALI lewat [ambilAlasanKeluar] lalu dikosongkan, supaya tak
+     * muncul lagi di login berikutnya.
+     */
+    @Volatile
+    private var alasanKeluar: String? = null
+
+    fun catatAlasanKeluar(alasan: String?) {
+        if (!alasan.isNullOrBlank()) alasanKeluar = alasan
+    }
+
+    fun ambilAlasanKeluar(): String? {
+        val nilai = alasanKeluar
+        alasanKeluar = null
+        return nilai
+    }
+
+    /**
+     * [alasan] dicatat SEBELUM state dibersihkan supaya layar Login punya
+     * sesuatu untuk ditampilkan. Tanpa itu pengguna cuma melihat form kosong dan
+     * menyimpulkan aplikasinya rusak.
+     *
+     * Menimpa LANGSUNG, bukan lewat [catatAlasanKeluar] yang mengabaikan null:
+     * logout SUKARELA (`alasan = null`) harus MENGHAPUS alasan yang mungkin
+     * tercatat sebelumnya — misal gangguan koneksi tadi pagi. Kalau tidak, orang
+     * yang keluar sendiri disambut tuduhan sesi diambil alih.
+     */
+    fun clear(alasan: String? = null) {
+        alasanKeluar = alasan
         cache = PersistedSession()
         loaded = true
         _sessionState.value = false

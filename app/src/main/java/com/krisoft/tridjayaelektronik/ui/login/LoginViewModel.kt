@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.ui.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
+import com.krisoft.tridjayaelektronik.data.TokenStore
 import com.krisoft.tridjayaelektronik.domain.auth.LoginUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,13 +18,27 @@ data class LoginUiState(
     val password: String = "",
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val loginSuccess: Boolean = false
+    val loginSuccess: Boolean = false,
+    /**
+     * Kenapa sesi SEBELUMNYA berakhir (dicabut / diambil alih perangkat lain).
+     * Dipisah dari [errorMessage] dengan sengaja: yang ini bukan kegagalan
+     * percobaan login yang sedang berjalan, dan tak boleh hilang begitu
+     * pengguna mengetik di kolom NIK.
+     */
+    val alasanSesiBerakhir: String? = null
 )
 
 @HiltViewModel
-class LoginViewModel @Inject constructor(private val loginUseCase: LoginUseCase) : ViewModel() {
+class LoginViewModel @Inject constructor(
+    private val loginUseCase: LoginUseCase,
+    tokenStore: TokenStore,
+) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(LoginUiState())
+    // Dibaca SEKALI saat ViewModel lahir lalu dikosongkan di TokenStore, supaya
+    // alasan lama tak muncul lagi di login berikutnya.
+    private val _uiState = MutableStateFlow(
+        LoginUiState(alasanSesiBerakhir = tokenStore.ambilAlasanKeluar())
+    )
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     fun onIdentifierChange(value: String) {
