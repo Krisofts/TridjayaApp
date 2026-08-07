@@ -78,9 +78,15 @@ data class SpkItemDraft(
             out += "Foto bukti acc wajib kalau diskon sudah di-acc di luar sistem"
         }
         if (isCredit && fincoyResolved.isBlank()) out += "Fincoy/leasing wajib utk kredit"
-        val maxQty = minOf(200, stokTersedia ?: 200)
+        // Cerminan guard server pasca-2026-08-07: per-baris tinggal `qty < 1`.
+        // Batas ATAS sengaja TIDAK diulang di sini — ia batas se-SPK
+        // ([MAX_SPK_UNIT]) dan hidup di [spkSubmitBlocker] dengan teks yang
+        // persis sama dengan server. Dua pesan untuk satu aturan membuat sales
+        // memperbaiki hal yang salah ("Qty harus 1..10" pada baris tunggal yang
+        // sebenarnya melanggar batas SPK, bukan batas baris).
         val q = qtyInt
-        if (q == null || q < 1 || q > maxQty) out += "Qty harus 1..$maxQty"
+        if (q == null || q < 1) out += "Qty minimal 1"
+        else stokTersedia?.let { if (q > it) out += "Qty melebihi stok ($it)" }
         if (isKbk && (kbkBrokerKode.isBlank() || kbkBrokerNama.isBlank())) out += "Broker KBK wajib dipilih"
         if (driverTerimaUang) {
             when (codPaymentMode) {
@@ -140,6 +146,16 @@ data class SpkItemDraft(
 }
 
 /**
+ * Batas SPK — cerminan `MAX_MANUAL_LINES`/`MAX_MANUAL_UNITS` di
+ * `inventory-service` `delivery.rs`. KEDUANYA ditegakkan: 10 baris barang DAN
+ * 10 unit total (10 baris qty 1 lolos; 5 baris qty 3 tidak). Pesan galatnya
+ * WAJIB sama persis dengan server — kalau berbeda, sales yang ditolak server
+ * membaca kalimat yang tak pernah ia lihat di app dan mengira SPK-nya rusak.
+ */
+const val MAX_SPK_BARIS = 10
+const val MAX_SPK_UNIT = 10
+
+/**
  * Alasan form SPK belum boleh dikirim, atau `null` kalau sudah boleh. Satu
  * sumber untuk tombol Simpan DAN pesan merah di bawahnya — dulu dua daftar
  * syarat terpisah yang gampang berselisih.
@@ -166,7 +182,8 @@ fun spkSubmitBlocker(
         "Isi Link Lokasi Maps — wajib untuk metode Sales Antar Sendiri."
     spkCabang.isBlank() -> "Pilih cabang dulu."
     itemsCount == 0 -> "Tambah minimal 1 barang dari pencarian stok."
-    totalUnits > 200 -> "Total unit maksimal 200."
+    itemsCount > MAX_SPK_BARIS -> "Maksimal $MAX_SPK_BARIS barang per SPK"
+    totalUnits > MAX_SPK_UNIT -> "Maksimal $MAX_SPK_UNIT unit per SPK"
     totalUnits < 1 -> "Isi jumlah unit minimal 1."
     !itemsValid -> "Ada barang belum lengkap — cek tanda merah di kartu."
     else -> null

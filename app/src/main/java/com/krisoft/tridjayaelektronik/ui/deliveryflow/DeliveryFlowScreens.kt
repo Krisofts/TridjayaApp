@@ -106,7 +106,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.MoneyTextField
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -269,84 +271,90 @@ fun DeliveryQueueScreen(
 
     TridjayaCollapsibleHeader(title = title, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        when {
-            state.loading && state.items.isEmpty() ->
-                Box(contentModifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-            state.error != null && state.items.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadQueue(status, view) })
-                }
-            state.items.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveEmptyState(
-                        icon = { Icon(Icons.Rounded.LocalShipping, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
-                        title = "Antrian kosong", subtitle = "Belum ada job pada tahap ini."
-                    )
-                }
-            else -> Column(modifier = contentModifier.fillMaxSize()) {
-                state.actionError?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp))
-                }
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // SELURUH antrian kini SATU KARTU PER SPK (permintaan user
-                    // 2026-08-06): PDI, kasir, surat jalan, penjadwalan, driver,
-                    // konfirmasi pembayaran, riwayat. Alasannya sama di semua
-                    // tahap - satu SPK adalah satu penjualan, satu konsumen,
-                    // satu alamat; memajangnya sebagai N baris membuat petugas
-                    // mengira ada N pekerjaan, dan sejak server mem-fan-out-kan
-                    // hampir semua endpoint tahap, N-1 di antaranya memang
-                    // pekerjaan hantu. Rincian per unit hidup di layar detail,
-                    // yang kini memuat seluruh unit SPK.
-                    if (reorderable) {
-                        // Manifest driver: kartu SPK digeser sebagai SATU BLOK.
-                        // Kontrak server tak berubah (tetap daftar id unit) -
-                        // lihat `moveLoadSpk`, yang meratakan grup jadi urutan
-                        // id. Justru inilah yang menjamin unit satu SPK selalu
-                        // berdampingan; penggeseran per unit yang lama tidak.
-                        itemsIndexed(groups, key = { _, g -> g.kode }) { index, grup ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.weight(1f)) {
-                                    SpkRingkasCard(grup, viewModel.currentUserId) { onOpen(grup.jobs.first().id) }
-                                }
-                                Column {
-                                    IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = true) }, enabled = index > 0) {
-                                        Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Naikkan urutan")
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && state.items.isNotEmpty(),
+            onRefresh = muatUlang,
+            modifier = contentModifier,
+        ) {
+            when {
+                state.loading && state.items.isEmpty() ->
+                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                state.error != null && state.items.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadQueue(status, view) })
+                    }
+                state.items.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveEmptyState(
+                            icon = { Icon(Icons.Rounded.LocalShipping, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
+                            title = "Antrian kosong", subtitle = "Belum ada job pada tahap ini."
+                        )
+                    }
+                else -> Column(modifier = Modifier.fillMaxSize()) {
+                    state.actionError?.let {
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp))
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // SELURUH antrian kini SATU KARTU PER SPK (permintaan user
+                        // 2026-08-06): PDI, kasir, surat jalan, penjadwalan, driver,
+                        // konfirmasi pembayaran, riwayat. Alasannya sama di semua
+                        // tahap - satu SPK adalah satu penjualan, satu konsumen,
+                        // satu alamat; memajangnya sebagai N baris membuat petugas
+                        // mengira ada N pekerjaan, dan sejak server mem-fan-out-kan
+                        // hampir semua endpoint tahap, N-1 di antaranya memang
+                        // pekerjaan hantu. Rincian per unit hidup di layar detail,
+                        // yang kini memuat seluruh unit SPK.
+                        if (reorderable) {
+                            // Manifest driver: kartu SPK digeser sebagai SATU BLOK.
+                            // Kontrak server tak berubah (tetap daftar id unit) -
+                            // lihat `moveLoadSpk`, yang meratakan grup jadi urutan
+                            // id. Justru inilah yang menjamin unit satu SPK selalu
+                            // berdampingan; penggeseran per unit yang lama tidak.
+                            itemsIndexed(groups, key = { _, g -> g.kode }) { index, grup ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        SpkRingkasCard(grup, viewModel.currentUserId) { onOpen(grup.jobs.first().id) }
                                     }
-                                    IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = false) }, enabled = index < groups.size - 1) {
-                                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Turunkan urutan")
+                                    Column {
+                                        IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = true) }, enabled = index > 0) {
+                                            Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Naikkan urutan")
+                                        }
+                                        IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = false) }, enabled = index < groups.size - 1) {
+                                            Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Turunkan urutan")
+                                        }
                                     }
                                 }
                             }
-                        }
-                    } else {
-                        items(groups, key = { it.kode }) { grup ->
-                            SpkRingkasCard(
-                                grup = grup,
-                                currentUserId = viewModel.currentUserId,
-                                // Tombol tahap jadi KAKI kartu, bukan tombol
-                                // mengambang di bawahnya. Tahap tanpa aksi
-                                // level-SPK tak mengirim slot ini sama sekali.
-                                // HANYA surat jalan yang menaruh tombol di
-                                // kartu. Antrian PDI mengikuti bentuk antrian
-                                // kasir (permintaan user 2026-08-06): kartu
-                                // polos, ketuk untuk masuk detail, dan seluruh
-                                // tombolnya - Ambil PDI, PDI massal barang
-                                // kecil, formulir per unit - hidup di sana.
-                                aksi = if (terbitkanLangsung) {
-                                    {
-                                        ExpressiveFilledButton(
-                                            onClick = { terbitkanGrup = grup },
-                                            enabled = !state.submitting,
-                                            modifier = Modifier.weight(1f),
-                                        ) { Text("Terbitkan Surat Jalan") }
-                                    }
-                                } else null,
-                            ) { onOpen(grup.jobs.first().id) }
+                        } else {
+                            items(groups, key = { it.kode }) { grup ->
+                                SpkRingkasCard(
+                                    grup = grup,
+                                    currentUserId = viewModel.currentUserId,
+                                    // Tombol tahap jadi KAKI kartu, bukan tombol
+                                    // mengambang di bawahnya. Tahap tanpa aksi
+                                    // level-SPK tak mengirim slot ini sama sekali.
+                                    // HANYA surat jalan yang menaruh tombol di
+                                    // kartu. Antrian PDI mengikuti bentuk antrian
+                                    // kasir (permintaan user 2026-08-06): kartu
+                                    // polos, ketuk untuk masuk detail, dan seluruh
+                                    // tombolnya - Ambil PDI, PDI massal barang
+                                    // kecil, formulir per unit - hidup di sana.
+                                    aksi = if (terbitkanLangsung) {
+                                        {
+                                            ExpressiveFilledButton(
+                                                onClick = { terbitkanGrup = grup },
+                                                enabled = !state.submitting,
+                                                modifier = Modifier.weight(1f),
+                                            ) { Text("Terbitkan Surat Jalan") }
+                                        }
+                                    } else null,
+                                ) { onOpen(grup.jobs.first().id) }
+                            }
                         }
                     }
                 }
@@ -745,289 +753,298 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
     val judul = if (job?.status == DeliveryStatusKey.PENDING_SPK) "Detail SPK" else "Detail Pengiriman"
     TridjayaCollapsibleHeader(title = judul, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        when {
-            state.loading && job == null -> Box(contentModifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-            job == null -> Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                ExpressiveErrorState(message = state.error ?: "Data tidak ditemukan", onRetry = { viewModel.loadDetail(id) })
-            }
-            else -> Column(
-                contentModifier.fillMaxSize().verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom)
-            ) {
-                ClayCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(job.kodePengiriman, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-                            StatusChip(job.status)
-                        }
-                        // Urutan kartu (permintaan user 2026-08-06): KONSUMEN →
-                        // BARANG → TOTAL → PEMBAYARAN → PENGIRIMAN, lalu cabang/
-                        // sumber order sebagai ekor. Urutan lamanya campur
-                        // (metode pengiriman & PDI nyempil di antara data
-                        // konsumen; merk/serial/PO di kepala kartu padahal milik
-                        // unit), sehingga SPK banyak barang memperlihatkan serial
-                        // SATU unit seolah berlaku untuk semuanya.
-                        //
-                        // `unitSpk` = seluruh unit SPK bila termuat, kalau tidak
-                        // unit yang dibuka saja. Jadi tata letaknya sama persis
-                        // untuk SPK satu barang maupun banyak barang.
-                        val unitSpk = state.batchUnits.ifEmpty { listOf(job) }
-
-                        // ── 1. KONSUMEN ──────────────────────────────────────
-                        Spacer(Modifier.height(6.dp))
-                        Text(job.customerName ?: "-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(6.dp))
-                        // Urutan: nama → HP → NIK → alamat (permintaan user
-                        // 2026-08-06). Alamat sengaja PALING BAWAH di blok ini:
-                        // ia satu-satunya nilai yang biasanya membungkus
-                        // beberapa baris, jadi menaruhnya di tengah memutus
-                        // barisan pendek yang enak dipindai di atasnya.
-                        InfoLine("No. HP", job.customerPhone)
-                        InfoLine("NIK", job.customerNik)
-                        InfoLine("Alamat", job.customerAddress)
-                        InfoLine("Sosmed", listOfNotNull(
-                            job.sosmedTiktok?.let { "TikTok $it" },
-                            job.sosmedFacebook?.let { "FB $it" },
-                            job.sosmedInstagram?.let { "IG $it" },
-                        ).joinToString(" · ").ifBlank { null })
-
-                        // ── 2. LIST BARANG ───────────────────────────────────
-                        // Baterai/charger/kaca spion yang IKUT diserahkan
-                        // bersama unitnya, diturunkan dari form aki DISETUJUI
-                        // (2026-08-06). Di server ia bukan baris
-                        // `delivery_jobs` - sengaja, karena baris job berarti
-                        // unit fisik ber-antrian PDI, penugasan driver, dan
-                        // hitungan kiriman sendiri. Yang berubah cuma cara
-                        // membacanya: di daftar barang ia berdiri sebagai
-                        // barisnya sendiri, persis barang lain.
-                        val kelengkapan = remember(state.batchAkiForms) {
-                            kelengkapanDariAkiForms(state.batchAkiForms)
-                        }
-                        val totalItem = unitSpk.size + kelengkapan.size
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "Barang ($totalItem)",
-                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        SpkUnitList(unitSpk)
-                        SpkKelengkapanList(kelengkapan, nomorMulai = unitSpk.size + 1)
-
-                        // ── 3. TOTAL UNIT ────────────────────────────────────
-                        // Dijumlah dari unit yang termuat, BUKAN dari `job`
-                        // sendirian: kolom harga di baris `delivery_jobs` itu
-                        // per unit, jadi menampilkan angka unit yang kebetulan
-                        // dibuka sebagai "total SPK" akan mengecilkan nilai
-                        // penjualan tanpa terlihat salah.
-                        val totalOtr = unitSpk.mapNotNull { it.hargaOtr }.sum()
-                        val totalDiskon = unitSpk.mapNotNull { it.diskon }.sum()
-                        val totalNilai = unitSpk.mapNotNull { it.hargaTotal }.sum()
-                        Spacer(Modifier.height(10.dp))
-                        Text("Total", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        // Angka gabungan DULU (itu yang dicari: "SPK ini
-                        // isinya berapa barang"), rinciannya menyusul. Unit
-                        // fisik dan kelengkapan sengaja tetap dibedakan: yang
-                        // pertama punya antrian PDI, driver, dan hitungan
-                        // kiriman di server; yang kedua tidak. Menyatukannya
-                        // jadi satu angka "unit" akan berselisih dengan
-                        // statistik pengiriman tanpa ada yang tahu sebabnya.
-                        InfoLine(
-                            "Jumlah Barang",
-                            if (kelengkapan.isEmpty()) "${unitSpk.size} unit"
-                            else "$totalItem barang (${unitSpk.size} unit + ${kelengkapan.size} kelengkapan)",
-                        )
-                        InfoLine("Total OTR", totalOtr.takeIf { it > 0 }?.let { rupiah(it) })
-                        InfoLine("Total Diskon", totalDiskon.takeIf { it > 0 }?.let { rupiah(it) })
-                        // Angka yang dicari orang lebih dulu dari seluruh kartu.
-                        InfoLine("Total Nilai", totalNilai.takeIf { it > 0 }?.let { rupiah(it) })
-
-                        // ── 4. PEMBAYARAN ────────────────────────────────────
-                        Spacer(Modifier.height(10.dp))
-                        Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        // Cash vs Credit mengubah seluruh cara membaca sisa
-                        // kartu (ada/tidaknya fincoy, angsuran, tenor), jadi ia
-                        // ditebalkan — bukan sekadar salah satu baris.
-                        InfoLine("Metode Bayar", job.paymentType?.replaceFirstChar { it.uppercase() })
-                        InfoLine("No. Transaksi GS", job.noTransaksi)
-                        if (job.paymentType == "credit") {
-                            InfoLine("Fincoy", job.fincoy)
-                            InfoLine("DP Net", job.dpNet?.let { rupiah(it) })
-                            InfoLine("Pembayaran 1", job.pembayaran1?.let { rupiah(it) })
-                            InfoLine("Angsuran", job.angsuran?.let { rupiah(it) })
-                            InfoLine("Tenor", job.tenor?.let { "$it bln" })
-                        }
-                        // COD (2026-07-25): uang diambil driver saat kirim — cuma ada
-                        // kalau ada driver beneran (bukan diambil sendiri/sales antar sendiri).
-                        if (job.driverTerimaUang == true) {
-                            InfoLine("Metode COD", if (job.codPaymentMode == "dp") "DP" else "Full Payment")
-                            if (job.codPaymentMode == "dp") {
-                                InfoLine("DP Rencana (Sales)", job.codDpAmount?.let { rupiah(it) })
-                                InfoLine("DP Diterima Kasir", job.kasirDpDiterima?.let { rupiah(it) })
-                            }
-                            InfoLine("Sisa Diambil Driver", job.driverTerimaNominal?.let { rupiah(it) })
-                            InfoLine("Kasir Konfirmasi Bayar", if (job.kasirKonfirmasiPembayaran) "Sudah" else "Belum")
-                            InfoLine("Setoran Driver→Kasir", job.setoranKasirNominal?.let { "${rupiah(it)} · ${job.setoranKasirByNama ?: "-"}" })
-                        }
-
-                        // ── 5. PENGIRIMAN ────────────────────────────────────
-                        Spacer(Modifier.height(10.dp))
-                        Text("Pengiriman", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        // Setara "Metode Bayar" di seksi sebelumnya: nilai yang
-                        // menentukan sisa barisnya masuk akal atau tidak (job
-                        // "diambil sendiri" tak pernah punya driver & jadwal).
-                        InfoLine("Metode Pengiriman", when (job.deliveryMethod) {
-                            "self_pickup" -> "Diambil Sendiri"
-                            "sales_delivery" -> "Sales Antar Sendiri"
-                            else -> "Driver"
-                        })
-                        InfoLine("PDI", if (job.pdiRequired == false) "PDI Mandiri (sales)" else "PDI (tim PDI)")
-                        InfoLine("Surat Jalan", job.deliveryNoteNo)
-                        InfoLine("Driver", job.assignedDriverName)
-                        InfoLine("Jadwal", job.scheduledDate?.let(::formatWaktuId))
-                        InfoLine("Chat Konsumen", job.consumerChatAt?.let(::formatWaktuId))
-                        job.reviewRating?.let { InfoLine("Rating", "★".repeat(it) + (job.reviewComment?.let { c -> " · $c" } ?: "")) }
-                        if (job.status == DeliveryStatusKey.CANCELLED) InfoLine("Alasan Batal", job.cancelReason)
-                        job.customerMapUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                            Spacer(Modifier.height(4.dp))
-                            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-                            TextButton(onClick = { runCatching { uriHandler.openUri(url) } }) { Text("Buka Lokasi Maps") }
-                        }
-
-                        // ── Ekor: cabang & asal order ────────────────────────
-                        // Di luar lima seksi yang diminta, tapi TIDAK dibuang:
-                        // cabang stok menentukan siapa yang memegang barangnya,
-                        // dan komisi KBK ikut dibayarkan dari SPK ini.
-                        Spacer(Modifier.height(10.dp))
-                        Text("Cabang & Asal Order", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        InfoLine("Cabang Stok", job.dealerName)
-                        InfoLine("Cabang Asal Sales", job.salesDealerName)
-                        InfoLine("Sales", job.salesName)
-                        InfoLine("Sumber", when {
-                            job.orderSource == "kbk" -> "KBK · ${job.kbkBrokerNama ?: job.kbkBrokerKode ?: "-"}"
-                            job.orderSource != null -> "Sales"
-                            else -> null
-                        })
-                        InfoLine("Komisi KBK", job.komisiKbk?.let { rupiah(it) })
-                        InfoLine("No. HP KBK", job.noHpKbk)
-                    }
+        // `refreshDetail`, BUKAN `loadDetail`: yang terakhir mengosongkan foto
+        // yang sudah dijepret tapi belum terkirim (lihat VM) — tarikan tak
+        // sengaja saat petugas memotret bukti serah terima = bukti hilang.
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && job != null,
+            onRefresh = { viewModel.refreshDetail(id) },
+            modifier = contentModifier,
+        ) {
+            when {
+                state.loading && job == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                job == null -> ScrollableCenter {
+                    ExpressiveErrorState(message = state.error ?: "Data tidak ditemukan", onRetry = { viewModel.loadDetail(id) })
                 }
-                Spacer(Modifier.height(14.dp))
-                SpkTimelineCard(job, state.jobDiscounts, state.akiForms)
-                // Foto bukti (PDI siap kirim / serah terima / terima uang) — dimuat
-                // ter-autentikasi via VM (kasir/DC/driver bisa verifikasi dari HP).
-                if (state.jobPhotos.isNotEmpty()) {
-                    Spacer(Modifier.height(14.dp))
-                    JobPhotosCard(state.jobPhotos)
-                }
-                if (state.kontributor.isNotEmpty()) {
-                    Spacer(Modifier.height(14.dp))
-                    KontributorCard(state.kontributor)
-                }
-                // Sunting isi SPK (2026-08-01) — administrator saja, dan hanya
-                // selagi unitnya belum di-PDI + belum tercatat di GS. Kartunya
-                // TIDAK dirender kalau syaratnya tak terpenuhi (bukan
-                // dirender-lalu-dinonaktifkan): tombol mati yang servernya
-                // jawab 400 cuma bikin orang menebak.
-                if (bolehSuntingSpk(job, viewModel.isAdminViewer, viewModel.currentUserId)) {
-                    Spacer(Modifier.height(14.dp))
-                    EditSpkAction(job, viewModel, state.submitting)
-                }
-                Spacer(Modifier.height(14.dp))
-                val shareContext = LocalContext.current
-                ExpressiveOutlinedButton(onClick = {
-                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(android.content.Intent.EXTRA_TEXT, "Lacak pengiriman Anda: " + com.krisoft.tridjayaelektronik.BuildConfig.API_BASE_URL.trimEnd('/') + "/cek-resi/" + job.id)
-                    }
-                    shareContext.startActivity(android.content.Intent.createChooser(send, "Bagikan resi"))
-                }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Bagikan Resi")
-                }
-                Spacer(Modifier.height(14.dp))
-                state.actionError?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
-                }
-                // Aksi per-tahap DIGATE role viewer (SpkAccessPolicy — mirror backend):
-                // buka job lewat Riwayat jangan menampilkan tombol yang pasti 403
-                // (mis. driver lihat "Assign Driver"). Backend tetap otoritatif.
-                val access = viewModel.access
-                val isMyDriverJob = viewModel.isAdminViewer ||
-                    (access.driverAction && job.assignedDriverId == viewModel.currentUserId)
-                // Self-PDI: sales pemilik SPK boleh PDI unitnya sendiri — "bertanggung
-                // jawab penuh". Syaratnya (mirror `submit_pdi` backend 2026-07-27):
-                // toggle PDI Mandiri (`pdiRequired=false`) ATAU metode diambil-sendiri/
-                // antar-sendiri. `pdiRequired=false` masuk sejak rute skip PDI dibuang —
-                // dulu kombinasi itu tak pernah mampir ke `pending_pdi` sama sekali.
-                // Backend otoritatif, ini murni gate UI (paritas web `PdiDetailPage`).
-                val isSelfPdiJob = (job.pdiRequired == false ||
-                    job.deliveryMethod == "self_pickup" || job.deliveryMethod == "sales_delivery") &&
-                    !job.salesUserId.isNullOrBlank() && job.salesUserId == viewModel.currentUserId
-                if (job.driverTerimaUang != null && isMyDriverJob &&
-                    (job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT)
+                else -> Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom)
                 ) {
-                    ChatConsumerCard(job, viewModel, state.submitting)
-                    Spacer(Modifier.height(14.dp))
-                }
-                when {
-                    // `pending_perbaikan` ikut: unit tertahan HANYA bisa keluar lewat
-                    // PDI ulang di sini (jalur a) — tanpa cabang ini form-nya tak pernah
-                    // muncul dan unit terkunci dari sisi app, tanpa error apa pun.
-                    (job.status == DeliveryStatusKey.PENDING_PDI || job.status == DeliveryStatusKey.PENDING_PERBAIKAN) && (access.pdi || isSelfPdiJob) ->
-                        PdiAction(job, state.batchUnits, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
-                    job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
-                        KasirConfirmSpkAction(job, state.batchUnits, viewModel, state.submitting)
-                    job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
-                        DeliveryNoteAction(job, viewModel, state.submitting)
-                    // Diambil sendiri (2026-07-24): konsumen ambil unit di cabang — TIDAK
-                    // lewat assign-driver. Sales pemilik SPK yang serah-terima langsung
-                    // (foto+rating wajib, 2026-07-26 — konsisten pola PDI mandiri), DC/admin
-                    // tetap bisa (ditambah, bukan dicabut).
-                    job.status == DeliveryStatusKey.PENDING_SCHEDULING && (access.jadwal || isSelfPdiJob) && job.deliveryMethod == "self_pickup" ->
-                        SelfPickupCompleteAction(job, viewModel, state.submitting)
-                    job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal ->
-                        AssignAction(job, viewModel, state.submitting, state.drivers)
-                    job.status == DeliveryStatusKey.ASSIGNED && isMyDriverJob ->
-                        Column {
-                            // Fan-out `dispatch` (2026-08-05): unit lain SPK ini
-                            // yang dipegang driver yang SAMA ikut berangkat.
-                            // Unit driver lain tak tersentuh — SPK yang dipecah
-                            // ke dua driver tetap berangkat masing-masing.
-                            SpkFanOutNote("Sekali tekan memberangkatkan semua unit SPK ini yang ditugaskan ke kamu.")
-                            Spacer(Modifier.height(8.dp))
-                            SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
+                    ClayCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(job.kodePengiriman, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                                StatusChip(job.status)
+                            }
+                            // Urutan kartu (permintaan user 2026-08-06): KONSUMEN →
+                            // BARANG → TOTAL → PEMBAYARAN → PENGIRIMAN, lalu cabang/
+                            // sumber order sebagai ekor. Urutan lamanya campur
+                            // (metode pengiriman & PDI nyempil di antara data
+                            // konsumen; merk/serial/PO di kepala kartu padahal milik
+                            // unit), sehingga SPK banyak barang memperlihatkan serial
+                            // SATU unit seolah berlaku untuk semuanya.
+                            //
+                            // `unitSpk` = seluruh unit SPK bila termuat, kalau tidak
+                            // unit yang dibuka saja. Jadi tata letaknya sama persis
+                            // untuk SPK satu barang maupun banyak barang.
+                            val unitSpk = state.batchUnits.ifEmpty { listOf(job) }
+
+                            // ── 1. KONSUMEN ──────────────────────────────────────
+                            Spacer(Modifier.height(6.dp))
+                            Text(job.customerName ?: "-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(6.dp))
+                            // Urutan: nama → HP → NIK → alamat (permintaan user
+                            // 2026-08-06). Alamat sengaja PALING BAWAH di blok ini:
+                            // ia satu-satunya nilai yang biasanya membungkus
+                            // beberapa baris, jadi menaruhnya di tengah memutus
+                            // barisan pendek yang enak dipindai di atasnya.
+                            InfoLine("No. HP", job.customerPhone)
+                            InfoLine("NIK", job.customerNik)
+                            InfoLine("Alamat", job.customerAddress)
+                            InfoLine("Sosmed", listOfNotNull(
+                                job.sosmedTiktok?.let { "TikTok $it" },
+                                job.sosmedFacebook?.let { "FB $it" },
+                                job.sosmedInstagram?.let { "IG $it" },
+                            ).joinToString(" · ").ifBlank { null })
+
+                            // ── 2. LIST BARANG ───────────────────────────────────
+                            // Baterai/charger/kaca spion yang IKUT diserahkan
+                            // bersama unitnya, diturunkan dari form aki DISETUJUI
+                            // (2026-08-06). Di server ia bukan baris
+                            // `delivery_jobs` - sengaja, karena baris job berarti
+                            // unit fisik ber-antrian PDI, penugasan driver, dan
+                            // hitungan kiriman sendiri. Yang berubah cuma cara
+                            // membacanya: di daftar barang ia berdiri sebagai
+                            // barisnya sendiri, persis barang lain.
+                            val kelengkapan = remember(state.batchAkiForms) {
+                                kelengkapanDariAkiForms(state.batchAkiForms)
+                            }
+                            val totalItem = unitSpk.size + kelengkapan.size
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Barang ($totalItem)",
+                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            SpkUnitList(unitSpk)
+                            SpkKelengkapanList(kelengkapan, nomorMulai = unitSpk.size + 1)
+
+                            // ── 3. TOTAL UNIT ────────────────────────────────────
+                            // Dijumlah dari unit yang termuat, BUKAN dari `job`
+                            // sendirian: kolom harga di baris `delivery_jobs` itu
+                            // per unit, jadi menampilkan angka unit yang kebetulan
+                            // dibuka sebagai "total SPK" akan mengecilkan nilai
+                            // penjualan tanpa terlihat salah.
+                            val totalOtr = unitSpk.mapNotNull { it.hargaOtr }.sum()
+                            val totalDiskon = unitSpk.mapNotNull { it.diskon }.sum()
+                            val totalNilai = unitSpk.mapNotNull { it.hargaTotal }.sum()
+                            Spacer(Modifier.height(10.dp))
+                            Text("Total", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            // Angka gabungan DULU (itu yang dicari: "SPK ini
+                            // isinya berapa barang"), rinciannya menyusul. Unit
+                            // fisik dan kelengkapan sengaja tetap dibedakan: yang
+                            // pertama punya antrian PDI, driver, dan hitungan
+                            // kiriman di server; yang kedua tidak. Menyatukannya
+                            // jadi satu angka "unit" akan berselisih dengan
+                            // statistik pengiriman tanpa ada yang tahu sebabnya.
+                            InfoLine(
+                                "Jumlah Barang",
+                                if (kelengkapan.isEmpty()) "${unitSpk.size} unit"
+                                else "$totalItem barang (${unitSpk.size} unit + ${kelengkapan.size} kelengkapan)",
+                            )
+                            InfoLine("Total OTR", totalOtr.takeIf { it > 0 }?.let { rupiah(it) })
+                            InfoLine("Total Diskon", totalDiskon.takeIf { it > 0 }?.let { rupiah(it) })
+                            // Angka yang dicari orang lebih dulu dari seluruh kartu.
+                            InfoLine("Total Nilai", totalNilai.takeIf { it > 0 }?.let { rupiah(it) })
+
+                            // ── 4. PEMBAYARAN ────────────────────────────────────
+                            Spacer(Modifier.height(10.dp))
+                            Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            // Cash vs Credit mengubah seluruh cara membaca sisa
+                            // kartu (ada/tidaknya fincoy, angsuran, tenor), jadi ia
+                            // ditebalkan — bukan sekadar salah satu baris.
+                            InfoLine("Metode Bayar", job.paymentType?.replaceFirstChar { it.uppercase() })
+                            InfoLine("No. Transaksi GS", job.noTransaksi)
+                            if (job.paymentType == "credit") {
+                                InfoLine("Fincoy", job.fincoy)
+                                InfoLine("DP Net", job.dpNet?.let { rupiah(it) })
+                                InfoLine("Pembayaran 1", job.pembayaran1?.let { rupiah(it) })
+                                InfoLine("Angsuran", job.angsuran?.let { rupiah(it) })
+                                InfoLine("Tenor", job.tenor?.let { "$it bln" })
+                            }
+                            // COD (2026-07-25): uang diambil driver saat kirim — cuma ada
+                            // kalau ada driver beneran (bukan diambil sendiri/sales antar sendiri).
+                            if (job.driverTerimaUang == true) {
+                                InfoLine("Metode COD", if (job.codPaymentMode == "dp") "DP" else "Full Payment")
+                                if (job.codPaymentMode == "dp") {
+                                    InfoLine("DP Rencana (Sales)", job.codDpAmount?.let { rupiah(it) })
+                                    InfoLine("DP Diterima Kasir", job.kasirDpDiterima?.let { rupiah(it) })
+                                }
+                                InfoLine("Sisa Diambil Driver", job.driverTerimaNominal?.let { rupiah(it) })
+                                InfoLine("Kasir Konfirmasi Bayar", if (job.kasirKonfirmasiPembayaran) "Sudah" else "Belum")
+                                InfoLine("Setoran Driver→Kasir", job.setoranKasirNominal?.let { "${rupiah(it)} · ${job.setoranKasirByNama ?: "-"}" })
+                            }
+
+                            // ── 5. PENGIRIMAN ────────────────────────────────────
+                            Spacer(Modifier.height(10.dp))
+                            Text("Pengiriman", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            // Setara "Metode Bayar" di seksi sebelumnya: nilai yang
+                            // menentukan sisa barisnya masuk akal atau tidak (job
+                            // "diambil sendiri" tak pernah punya driver & jadwal).
+                            InfoLine("Metode Pengiriman", when (job.deliveryMethod) {
+                                "self_pickup" -> "Diambil Sendiri"
+                                "sales_delivery" -> "Sales Antar Sendiri"
+                                else -> "Driver"
+                            })
+                            InfoLine("PDI", if (job.pdiRequired == false) "PDI Mandiri (sales)" else "PDI (tim PDI)")
+                            InfoLine("Surat Jalan", job.deliveryNoteNo)
+                            InfoLine("Driver", job.assignedDriverName)
+                            InfoLine("Jadwal", job.scheduledDate?.let(::formatWaktuId))
+                            InfoLine("Chat Konsumen", job.consumerChatAt?.let(::formatWaktuId))
+                            job.reviewRating?.let { InfoLine("Rating", "★".repeat(it) + (job.reviewComment?.let { c -> " · $c" } ?: "")) }
+                            if (job.status == DeliveryStatusKey.CANCELLED) InfoLine("Alasan Batal", job.cancelReason)
+                            job.customerMapUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                                Spacer(Modifier.height(4.dp))
+                                val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                                TextButton(onClick = { runCatching { uriHandler.openUri(url) } }) { Text("Buka Lokasi Maps") }
+                            }
+
+                            // ── Ekor: cabang & asal order ────────────────────────
+                            // Di luar lima seksi yang diminta, tapi TIDAK dibuang:
+                            // cabang stok menentukan siapa yang memegang barangnya,
+                            // dan komisi KBK ikut dibayarkan dari SPK ini.
+                            Spacer(Modifier.height(10.dp))
+                            Text("Cabang & Asal Order", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            InfoLine("Cabang Stok", job.dealerName)
+                            InfoLine("Cabang Asal Sales", job.salesDealerName)
+                            InfoLine("Sales", job.salesName)
+                            InfoLine("Sumber", when {
+                                job.orderSource == "kbk" -> "KBK · ${job.kbkBrokerNama ?: job.kbkBrokerKode ?: "-"}"
+                                job.orderSource != null -> "Sales"
+                                else -> null
+                            })
+                            InfoLine("Komisi KBK", job.komisiKbk?.let { rupiah(it) })
+                            InfoLine("No. HP KBK", job.noHpKbk)
                         }
-                    job.status == DeliveryStatusKey.IN_TRANSIT && isMyDriverJob ->
-                        DeliverAction(job, viewModel, state.submitting, state.driverChecklist, state.driverChecklistError)
-                    // Unit sudah sampai konsumen tapi uangnya belum tercatat masuk.
-                    // Berlaku SEMUA jenis pembayaran (2026-07-28) — sebelumnya
-                    // non-COD tak punya titik konfirmasi sama sekali.
-                    job.status == DeliveryStatusKey.DELIVERED && access.kasir && job.setoranKasirAt.isNullOrBlank() ->
-                        SetoranKasirAction(job, viewModel, state.submitting)
-                    // Diskon DITOLAK = SPK kembali ke sales (2026-08-06). Sebelum
-                    // ini penolakan otomatis melepas unit ke antrian PDI; sekarang
-                    // unitnya TETAP tertahan sampai sales memilih. Tanpa cabang ini
-                    // layar cuma bilang "Tidak ada aksi pada tahap ini" dan SPK-nya
-                    // mandek selamanya dari sisi app — tanpa satu pun error.
-                    job.status == DeliveryStatusKey.PENDING_DISCOUNT &&
-                        (viewModel.isAdminViewer || (!job.salesUserId.isNullOrBlank() && job.salesUserId == viewModel.currentUserId)) ->
-                        DiskonTertahanAction(job, state.jobDiscounts, viewModel, state.submitting)
-                    else -> Text(
-                        when (job.status) {
-                            DeliveryStatusKey.PENDING_PDI -> "Tahap ini ditangani tim PDI cabang."
-                            DeliveryStatusKey.PENDING_PERBAIKAN -> "Unit ditahan (checklist Tidak) — menunggu perbaikan & PDI ulang, atau pelepasan kepala cabang."
-                            DeliveryStatusKey.PENDING_SPK -> "Tahap ini ditangani kasir cabang."
-                            DeliveryStatusKey.PENDING_DELIVERY_NOTE, DeliveryStatusKey.PENDING_SCHEDULING -> "Tahap ini ditangani Delivery Control."
-                            DeliveryStatusKey.ASSIGNED, DeliveryStatusKey.IN_TRANSIT -> "Tahap ini ditangani driver yang ditugaskan."
-                            else -> "Tidak ada aksi pada tahap ini."
-                        },
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                // Batalkan (admin/DC, status non-terminal) — backend `cancel_job`.
-                val cancellable = job.status != DeliveryStatusKey.DELIVERED && job.status != DeliveryStatusKey.CANCELLED
-                if (cancellable && (viewModel.isAdminViewer || access.note)) {
-                    Spacer(Modifier.height(10.dp))
-                    CancelJobButton(job.id, viewModel, state.submitting)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    SpkTimelineCard(job, state.jobDiscounts, state.akiForms)
+                    // Foto bukti (PDI siap kirim / serah terima / terima uang) — dimuat
+                    // ter-autentikasi via VM (kasir/DC/driver bisa verifikasi dari HP).
+                    if (state.jobPhotos.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        JobPhotosCard(state.jobPhotos)
+                    }
+                    if (state.kontributor.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        KontributorCard(state.kontributor)
+                    }
+                    // Sunting isi SPK (2026-08-01) — administrator saja, dan hanya
+                    // selagi unitnya belum di-PDI + belum tercatat di GS. Kartunya
+                    // TIDAK dirender kalau syaratnya tak terpenuhi (bukan
+                    // dirender-lalu-dinonaktifkan): tombol mati yang servernya
+                    // jawab 400 cuma bikin orang menebak.
+                    if (bolehSuntingSpk(job, viewModel.isAdminViewer, viewModel.currentUserId)) {
+                        Spacer(Modifier.height(14.dp))
+                        EditSpkAction(job, viewModel, state.submitting)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    val shareContext = LocalContext.current
+                    ExpressiveOutlinedButton(onClick = {
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, "Lacak pengiriman Anda: " + com.krisoft.tridjayaelektronik.BuildConfig.API_BASE_URL.trimEnd('/') + "/cek-resi/" + job.id)
+                        }
+                        shareContext.startActivity(android.content.Intent.createChooser(send, "Bagikan resi"))
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Bagikan Resi")
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    state.actionError?.let {
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
+                    }
+                    // Aksi per-tahap DIGATE role viewer (SpkAccessPolicy — mirror backend):
+                    // buka job lewat Riwayat jangan menampilkan tombol yang pasti 403
+                    // (mis. driver lihat "Assign Driver"). Backend tetap otoritatif.
+                    val access = viewModel.access
+                    val isMyDriverJob = viewModel.isAdminViewer ||
+                        (access.driverAction && job.assignedDriverId == viewModel.currentUserId)
+                    // Self-PDI: sales pemilik SPK boleh PDI unitnya sendiri — "bertanggung
+                    // jawab penuh". Syaratnya (mirror `submit_pdi` backend 2026-07-27):
+                    // toggle PDI Mandiri (`pdiRequired=false`) ATAU metode diambil-sendiri/
+                    // antar-sendiri. `pdiRequired=false` masuk sejak rute skip PDI dibuang —
+                    // dulu kombinasi itu tak pernah mampir ke `pending_pdi` sama sekali.
+                    // Backend otoritatif, ini murni gate UI (paritas web `PdiDetailPage`).
+                    val isSelfPdiJob = (job.pdiRequired == false ||
+                        job.deliveryMethod == "self_pickup" || job.deliveryMethod == "sales_delivery") &&
+                        !job.salesUserId.isNullOrBlank() && job.salesUserId == viewModel.currentUserId
+                    if (job.driverTerimaUang != null && isMyDriverJob &&
+                        (job.status == DeliveryStatusKey.ASSIGNED || job.status == DeliveryStatusKey.IN_TRANSIT)
+                    ) {
+                        ChatConsumerCard(job, viewModel, state.submitting)
+                        Spacer(Modifier.height(14.dp))
+                    }
+                    when {
+                        // `pending_perbaikan` ikut: unit tertahan HANYA bisa keluar lewat
+                        // PDI ulang di sini (jalur a) — tanpa cabang ini form-nya tak pernah
+                        // muncul dan unit terkunci dari sisi app, tanpa error apa pun.
+                        (job.status == DeliveryStatusKey.PENDING_PDI || job.status == DeliveryStatusKey.PENDING_PERBAIKAN) && (access.pdi || isSelfPdiJob) ->
+                            PdiAction(job, state.batchUnits, viewModel, state.submitting, state.checklist, state.requiresAki, state.akiForms)
+                        job.status == DeliveryStatusKey.PENDING_SPK && access.kasir ->
+                            KasirConfirmSpkAction(job, state.batchUnits, viewModel, state.submitting)
+                        job.status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && access.note ->
+                            DeliveryNoteAction(job, viewModel, state.submitting)
+                        // Diambil sendiri (2026-07-24): konsumen ambil unit di cabang — TIDAK
+                        // lewat assign-driver. Sales pemilik SPK yang serah-terima langsung
+                        // (foto+rating wajib, 2026-07-26 — konsisten pola PDI mandiri), DC/admin
+                        // tetap bisa (ditambah, bukan dicabut).
+                        job.status == DeliveryStatusKey.PENDING_SCHEDULING && (access.jadwal || isSelfPdiJob) && job.deliveryMethod == "self_pickup" ->
+                            SelfPickupCompleteAction(job, viewModel, state.submitting)
+                        job.status == DeliveryStatusKey.PENDING_SCHEDULING && access.jadwal ->
+                            AssignAction(job, viewModel, state.submitting, state.drivers)
+                        job.status == DeliveryStatusKey.ASSIGNED && isMyDriverJob ->
+                            Column {
+                                // Fan-out `dispatch` (2026-08-05): unit lain SPK ini
+                                // yang dipegang driver yang SAMA ikut berangkat.
+                                // Unit driver lain tak tersentuh — SPK yang dipecah
+                                // ke dua driver tetap berangkat masing-masing.
+                                SpkFanOutNote("Sekali tekan memberangkatkan semua unit SPK ini yang ditugaskan ke kamu.")
+                                Spacer(Modifier.height(8.dp))
+                                SimpleAction("Berangkat (Dispatch)", state.submitting) { viewModel.dispatch(job.id) {} }
+                            }
+                        job.status == DeliveryStatusKey.IN_TRANSIT && isMyDriverJob ->
+                            DeliverAction(job, viewModel, state.submitting, state.driverChecklist, state.driverChecklistError)
+                        // Unit sudah sampai konsumen tapi uangnya belum tercatat masuk.
+                        // Berlaku SEMUA jenis pembayaran (2026-07-28) — sebelumnya
+                        // non-COD tak punya titik konfirmasi sama sekali.
+                        job.status == DeliveryStatusKey.DELIVERED && access.kasir && job.setoranKasirAt.isNullOrBlank() ->
+                            SetoranKasirAction(job, viewModel, state.submitting)
+                        // Diskon DITOLAK = SPK kembali ke sales (2026-08-06). Sebelum
+                        // ini penolakan otomatis melepas unit ke antrian PDI; sekarang
+                        // unitnya TETAP tertahan sampai sales memilih. Tanpa cabang ini
+                        // layar cuma bilang "Tidak ada aksi pada tahap ini" dan SPK-nya
+                        // mandek selamanya dari sisi app — tanpa satu pun error.
+                        job.status == DeliveryStatusKey.PENDING_DISCOUNT &&
+                            (viewModel.isAdminViewer || (!job.salesUserId.isNullOrBlank() && job.salesUserId == viewModel.currentUserId)) ->
+                            DiskonTertahanAction(job, state.jobDiscounts, viewModel, state.submitting)
+                        else -> Text(
+                            when (job.status) {
+                                DeliveryStatusKey.PENDING_PDI -> "Tahap ini ditangani tim PDI cabang."
+                                DeliveryStatusKey.PENDING_PERBAIKAN -> "Unit ditahan (checklist Tidak) — menunggu perbaikan & PDI ulang, atau pelepasan kepala cabang."
+                                DeliveryStatusKey.PENDING_SPK -> "Tahap ini ditangani kasir cabang."
+                                DeliveryStatusKey.PENDING_DELIVERY_NOTE, DeliveryStatusKey.PENDING_SCHEDULING -> "Tahap ini ditangani Delivery Control."
+                                DeliveryStatusKey.ASSIGNED, DeliveryStatusKey.IN_TRANSIT -> "Tahap ini ditangani driver yang ditugaskan."
+                                else -> "Tidak ada aksi pada tahap ini."
+                            },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    // Batalkan (admin/DC, status non-terminal) — backend `cancel_job`.
+                    val cancellable = job.status != DeliveryStatusKey.DELIVERED && job.status != DeliveryStatusKey.CANCELLED
+                    if (cancellable && (viewModel.isAdminViewer || access.note)) {
+                        Spacer(Modifier.height(10.dp))
+                        CancelJobButton(job.id, viewModel, state.submitting)
+                    }
                 }
             }
         }
@@ -1752,12 +1769,12 @@ private fun KasirConfirmSpkAction(
  * penolakan MENAHAN unit dan mengembalikan SPK ke sales — perubahan yang tak
  * menghasilkan error apa pun di app lama, cuma SPK yang diam.
  *
- * Tiga jalan keluar versi server: ajukan ulang diskon, sunting isi SPK, atau
- * lanjut tanpa diskon. Yang kedua ditawarkan lewat kartu "Ubah Isi SPK" yang
- * terpisah, yang ketiga tombol di sini. Yang PERTAMA belum ada di app —
- * `POST /inventory/discount-requests` tak pernah dipanggil dari HP (diskon
- * hanya lahir bersama SPK), jadi kalimatnya menunjuk ke web alih-alih memberi
- * tombol yang tak akan bekerja.
+ * Tiga jalan keluar versi server, KETIGANYA kini ada di app (2026-08-07):
+ * ajukan ulang diskon ([RevisiDiskonAction]), sunting isi SPK (kartu "Ubah Isi
+ * SPK" terpisah), atau lanjut tanpa diskon (tombol di sini). Yang pertama dulu
+ * absen — `POST /inventory/discount-requests` tak pernah dideklarasikan di
+ * `DeliveryFlowApi.kt`, jadi teksnya melempar sales ke web di tengah alur yang
+ * seluruhnya dikerjakan dari HP.
  */
 @Composable
 private fun DiskonTertahanAction(
@@ -1805,14 +1822,17 @@ private fun DiskonTertahanAction(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "SPK ini TIDAK otomatis lanjut. Pilihanmu: ubah isi SPK lewat tombol di atas, " +
-                    "ajukan ulang diskon lewat web, atau lanjutkan tanpa diskon.",
+                "SPK ini TIDAK otomatis lanjut. Pilihanmu: ajukan ulang diskon, " +
+                    "ubah isi SPK lewat tombol di atas, atau lanjutkan tanpa diskon.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 
     Spacer(Modifier.height(12.dp))
+    RevisiDiskonAction(job, ditolak, vm, submitting)
+
+    Spacer(Modifier.height(8.dp))
     ExpressiveFilledButton(
         onClick = { konfirmasi = true }, enabled = !submitting, modifier = Modifier.fillMaxWidth(),
     ) {
@@ -1827,7 +1847,8 @@ private fun DiskonTertahanAction(
             text = {
                 Text(
                     "Harga kembali ke harga normal dan SELURUH barang SPK ini masuk antrian PDI. " +
-                        "Tak bisa dibatalkan dari sini — kalau masih mau menawar, batalkan dan ajukan diskon lagi lewat web."
+                        "Tak bisa dibatalkan dari sini — kalau masih mau menawar, batalkan dan pakai " +
+                        "\"Ajukan Ulang Diskon\"."
                 )
             },
             confirmButton = {
@@ -1837,6 +1858,100 @@ private fun DiskonTertahanAction(
                 ) { Text("Ya, lanjutkan") }
             },
             dismissButton = { TextButton(onClick = { konfirmasi = false }, enabled = !submitting) { Text("Batal") } },
+        )
+    }
+}
+
+/**
+ * Ajukan ULANG diskon setelah ditolak — jalan keluar yang dulu cuma ada di web.
+ *
+ * Nilainya RUPIAH dan bersifat TAMBAHAN di atas diskon yang sudah menempel
+ * (server: `new_diskon = diskon_current + value`), sama seperti web. Persen
+ * sengaja tak ditawarkan: form SPK mobile pun mengetik rupiah.
+ *
+ * Server MENOLAK bila baris ini masih punya pengajuan `pending` (anti-tumpuk,
+ * 2026-08-07) — pesannya ditampilkan apa adanya lewat `actionError`, karena
+ * "tunggu keputusan yang sudah kamu ajukan" adalah jawaban yang benar, bukan
+ * kegagalan yang perlu disembunyikan.
+ */
+@Composable
+private fun RevisiDiskonAction(
+    job: DeliveryJobDto,
+    ditolak: com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto,
+    vm: DeliveryFlowViewModel,
+    submitting: Boolean,
+) {
+    var buka by remember(job.id) { mutableStateOf(false) }
+    var nilai by remember(job.id) { mutableStateOf("") }
+    var alasan by remember(job.id) { mutableStateOf("") }
+    var pesan by remember(job.id) { mutableStateOf<String?>(null) }
+    val state by vm.state.collectAsState()
+    // `baris` job = baris pengajuan; job lama tanpa baris tak bisa direvisi
+    // dari sini (server menuntut `baris >= 1`).
+    val baris = job.baris ?: ditolak.baris
+
+    if (baris == null) return
+
+    ExpressiveOutlinedButton(
+        onClick = { nilai = ""; alasan = ""; pesan = null; buka = true },
+        enabled = !submitting, modifier = Modifier.fillMaxWidth(),
+    ) { Text("Ajukan Ulang Diskon") }
+    pesan?.let {
+        Spacer(Modifier.height(6.dp))
+        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+    }
+
+    if (buka) {
+        val nominal = nilai.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+        AlertDialog(
+            onDismissRequest = { if (!submitting) buka = false },
+            title = { Text("Ajukan ulang diskon", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        "Barang ke-$baris · ${job.namaBarang ?: job.kodeBarang ?: "-"}",
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "Potongan per unit, di ATAS diskon yang sudah menempel. Approver memutuskan lagi " +
+                            "untuk seluruh SPK.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    ExpressiveTextField(
+                        nilai, { nilai = it.filter { c -> c.isDigit() } },
+                        label = "Potongan (Rp)",
+                        keyboardType = KeyboardType.Number,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ExpressiveTextField(
+                        alasan, { alasan = it },
+                        label = "Alasan pengajuan (wajib)",
+                        singleLine = false,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    state.actionError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !submitting && nominal > 0.0 && alasan.isNotBlank(),
+                    onClick = {
+                        vm.ajukanUlangDiskon(
+                            spkBatchKode = ditolak.spkBatchKode,
+                            baris = baris,
+                            nilai = nominal,
+                            alasan = alasan.trim(),
+                            jobId = job.id,
+                        ) { buka = false; pesan = "Pengajuan terkirim — menunggu approver." }
+                    },
+                ) { Text(if (submitting) "Mengirim..." else "Ajukan") }
+            },
+            dismissButton = { TextButton(onClick = { buka = false }, enabled = !submitting) { Text("Batal") } },
         )
     }
 }
@@ -2614,7 +2729,20 @@ fun CreateSpkScreen(
                     // memegangnya). ViewModel juga membatalkan pencarian lama; penyaring
                     // ini yang membuat invariannya tak bergantung pada urutan balapan.
                     val stokRows = stokRowsForCabang(state.stokResults, state.stokDealer, spkCabang)
+                    // Batas server (`MAX_MANUAL_LINES`): hasil pencarian tak
+                    // boleh bisa ditap lagi setelah 10 baris. Membiarkannya
+                    // ditap = SPK bertambah baris ke-11 yang baru ditolak saat
+                    // submit, setelah sales mengisi seluruh detailnya.
+                    val barisPenuh = items.size >= MAX_SPK_BARIS
                     ExpressiveTextField(barangSearch, { barangSearch = it }, label = "Cari & tambah barang (min. 2 karakter)", modifier = Modifier.fillMaxWidth())
+                    if (barisPenuh) {
+                        Text(
+                            "Maksimal $MAX_SPK_BARIS barang per SPK — hapus salah satu untuk menambah yang lain.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
                     when {
                         state.stokLoading -> Text("Mencari…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                         state.stokAttempted && stokRows.isEmpty() -> Text("Tidak ditemukan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
@@ -2629,7 +2757,7 @@ fun CreateSpkScreen(
                                 // dipilih — memilihnya membuat SPK kedua atas unit yang
                                 // sudah dipesan, dan kalau notanya sudah masuk GS, sudah
                                 // terjual ke orang lain.
-                                val terkunci = row.terkunciKarenaDipesan
+                                val terkunci = row.terkunciKarenaDipesan || barisPenuh
                                 Surface(
                                     onClick = {
                                         // Prepend + collapse kartu lain (baru = fokus)
@@ -2988,54 +3116,74 @@ private fun AkiOptionDropdown(
 fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.loadDiscounts("pending") }
-    var rejectId by remember { mutableStateOf<String?>(null) }
+    // (kode SPK, id anchor) — kode dipakai mengunci kartu yang benar saja.
+    var rejectId by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     TridjayaCollapsibleHeader(title = "Approval Diskon", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        when {
-            state.loading && state.discounts.isEmpty() ->
-                Box(contentModifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-            state.error != null && state.discounts.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadDiscounts("pending") })
-                }
-            state.discounts.isEmpty() ->
-                Box(contentModifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-                    ExpressiveEmptyState(
-                        icon = { Icon(Icons.Rounded.Discount, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
-                        title = "Tidak ada pengajuan diskon", subtitle = "Semua pengajuan sudah diputuskan."
-                    )
-                }
-            else -> LazyColumn(
-                modifier = contentModifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
-                // Satu kartu per SPK (2026-08-06): approve/reject di server
-                // FAN-OUT ke seluruh pengajuan `pending` sebatch, jadi daftar
-                // per-baris membuat approver menekan N tombol untuk keputusan
-                // yang sudah selesai pada tekanan pertama — sisanya dijawab
-                // "sudah diputuskan" dan terbaca sebagai kegagalan. Nilai tiap
-                // barang tetap dari pengajuannya sendiri; kartu ini yang
-                // menotalkannya supaya keputusannya diambil atas angka SPK utuh.
-                val grup = state.discounts.groupBy { it.spkBatchKode }.entries.toList()
-                items(grup, key = { it.key }) { (kode, pengajuan) ->
-                    DiscountSpkCard(
-                        kode = kode,
-                        pengajuan = pengajuan,
-                        submitting = state.submitting,
-                        buktiFoto = state.diskonBuktiPhotos,
-                        // Anchor = pengajuan pertama; server menyeret sisanya.
-                        onApprove = { viewModel.approveDiscount(pengajuan.first().id, "") },
-                        onReject = { rejectId = pengajuan.first().id },
-                    )
+        TridjayaPullRefresh(
+            isRefreshing = state.loading && state.discounts.isNotEmpty(),
+            onRefresh = { viewModel.loadDiscounts("pending") },
+            modifier = contentModifier,
+        ) {
+            when {
+                state.loading && state.discounts.isEmpty() ->
+                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                state.error != null && state.discounts.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadDiscounts("pending") })
+                    }
+                state.discounts.isEmpty() ->
+                    ScrollableCenter {
+                        ExpressiveEmptyState(
+                            icon = { Icon(Icons.Rounded.Discount, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
+                            title = "Tidak ada pengajuan diskon", subtitle = "Semua pengajuan sudah diputuskan."
+                        )
+                    }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    state.actionError?.let { item { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error) } }
+                    // Satu kartu per SPK (2026-08-06): approve/reject di server
+                    // FAN-OUT ke seluruh pengajuan `pending` sebatch, jadi daftar
+                    // per-baris membuat approver menekan N tombol untuk keputusan
+                    // yang sudah selesai pada tekanan pertama — sisanya dijawab
+                    // "sudah diputuskan" dan terbaca sebagai kegagalan. Nilai tiap
+                    // barang tetap dari pengajuannya sendiri; kartu ini yang
+                    // menotalkannya supaya keputusannya diambil atas angka SPK utuh.
+                    val grup = state.discounts.groupBy { it.spkBatchKode }.entries.toList()
+                    items(grup, key = { it.key }) { (kode, pengajuan) ->
+                        // Urut baris: server mengirim `created_at DESC`, jadi
+                        // barang ke-3 bisa tampil di atas barang ke-1.
+                        val urut = urutPengajuanSpk(pengajuan)
+                        DiscountSpkCard(
+                            kode = kode,
+                            pengajuan = urut,
+                            submitting = kode in state.diskonSubmitting,
+                            buktiFoto = state.diskonBuktiPhotos,
+                            // Anchor = pengajuan pertama; server menyeret sisanya.
+                            onApprove = { viewModel.approveDiscount(kode, urut.first().id, "") },
+                            onReject = { rejectId = kode to urut.first().id },
+                            onDetail = { viewModel.bukaDetailSpkDiskon(kode) },
+                        )
+                    }
                 }
             }
         }
     }
 
-    rejectId?.let { id ->
+    state.spkDiskonDetailKode?.let { kode ->
+        SpkDiskonDetailDialog(
+            kode = kode,
+            detail = state.spkDiskonDetail,
+            error = state.spkDiskonDetailError,
+            onTutup = { viewModel.tutupDetailSpkDiskon() },
+        )
+    }
+
+    rejectId?.let { (kode, id) ->
         var note by remember { mutableStateOf("") }
         // `decisionNote` WAJIB saat menolak (discounts.rs `reject_request`):
         // tanpa isi, server membalas 400 "decisionNote wajib diisi saat menolak".
@@ -3069,7 +3217,7 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
             confirmButton = {
                 TextButton(
                     enabled = note.isNotBlank(),
-                    onClick = { viewModel.rejectDiscount(id, note.trim()); rejectId = null }
+                    onClick = { viewModel.rejectDiscount(kode, id, note.trim()); rejectId = null }
                 ) { Text("Tolak") }
             },
             dismissButton = { TextButton(onClick = { rejectId = null }) { Text("Batal") } }
@@ -3094,8 +3242,12 @@ private fun DiscountSpkCard(
     buktiFoto: Map<String, AkiPhotoState>,
     onApprove: () -> Unit,
     onReject: () -> Unit,
+    onDetail: () -> Unit,
 ) {
-    val total = pengajuan.sumOf { it.value }
+    // BUKAN `sumOf { it.value }` — lihat [potonganPengajuan]: `value` itu nilai
+    // PER UNIT (dan sebuah persen kalau discountType="percent"), sementara
+    // server menempelkannya ke SETIAP unit sebaris.
+    val total = totalPotonganSpk(pengajuan)
     val konsumen = pengajuan.firstOrNull()?.jobSummary?.customerName ?: "-"
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
@@ -3129,7 +3281,16 @@ private fun DiscountSpkCard(
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
                 )
             }
-            Spacer(Modifier.height(12.dp))
+            // Pengajuan cuma memuat baris yang MENGAJUKAN diskon; SPK-nya bisa
+            // berisi barang lain yang tak berdiskon dan tetap ikut terdampak
+            // keputusan ini. Detail SPK utuh dimuat on-demand — approver dengan
+            // 20 SPK menunggu tak perlu membayar 20 request untuk yang tak
+            // dibukanya.
+            TextButton(onClick = onDetail, modifier = Modifier.align(Alignment.Start)) {
+                Text("Lihat detail SPK", style = MaterialTheme.typography.labelMedium)
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ExpressiveOutlinedButton(onClick = onReject, enabled = !submitting, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Tolak")
@@ -3155,13 +3316,23 @@ private fun DiscountBaris(d: com.krisoft.tridjayaelektronik.data.model.DiscountR
                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
-            Text("−${rupiah(d.value)}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFFB5670C))
+            Text(
+                "−${rupiah(potonganPengajuan(d))}", style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, color = Color(0xFFB5670C),
+            )
         }
+        // Jumlah unit WAJIB kelihatan: potongan baris = potongan per unit ×
+        // jumlah unit, dan tanpa angka ini approver tak bisa memeriksa sendiri
+        // kenapa "harga sesudah" 12,5 jt menghasilkan potongan 1 jt.
+        val unit = unitTerdampak(d)
         d.baris?.let {
-            Text("baris $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "baris $it · $unit unit", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        InfoLine("Harga sebelum", d.hargaSebelum?.let { rupiah(it) })
-        InfoLine("Harga sesudah", d.hargaSesudah?.let { rupiah(it) })
+        InfoLine(if (unit > 1) "Harga sebelum (per unit)" else "Harga sebelum", d.hargaSebelum?.let { rupiah(it) })
+        InfoLine(if (unit > 1) "Harga sesudah (per unit)" else "Harga sesudah", d.hargaSesudah?.let { rupiah(it) })
         InfoLine("Alasan", d.reason)
         if (!d.accOleh.isNullOrBlank()) InfoLine("Acc oleh (di luar sistem)", d.accOleh)
         when (bukti) {
@@ -3169,11 +3340,25 @@ private fun DiscountBaris(d: com.krisoft.tridjayaelektronik.data.model.DiscountR
             // WA/kwitansi tak terbaca pada thumbnail 140dp ber-Crop.
             is AkiPhotoState.Ada -> {
                 Spacer(Modifier.height(8.dp))
-                BuktiFotoThumbnail(
-                    bitmap = bukti.bitmap,
-                    deskripsi = "Bukti acc diskon",
-                    modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(10.dp)),
-                )
+                // 72dp, bukan 140dp selebar kartu: SPK 3 barang dulu ±810dp
+                // tinggi, sehingga tombol Setujui/Tolak jatuh di bawah lipatan
+                // dan kartu terbaca sebagai "tak ada tombolnya". Ketuk untuk
+                // ukuran penuh (BuktiFotoThumbnail sudah punya lightbox +
+                // cubit-perbesar) — tulisan di tangkapan layar WA tak pernah
+                // terbaca pada thumbnail berapa pun ukurannya.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BuktiFotoThumbnail(
+                        bitmap = bukti.bitmap,
+                        deskripsi = "Bukti acc diskon",
+                        modifier = Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Bukti acc — ketuk untuk perbesar",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             is AkiPhotoState.Memuat -> {
                 Spacer(Modifier.height(8.dp))
@@ -3191,6 +3376,131 @@ private fun DiscountBaris(d: com.krisoft.tridjayaelektronik.data.model.DiscountR
         }
         InfoLine("Diajukan", d.requestedByName)
     }
+}
+
+/**
+ * SPK utuh di balik kartu diskon — satu-satunya layar approval yang dulu tak
+ * punya jalan ke detail, padahal keputusannya menyapu seluruh SPK.
+ *
+ * Isinya SELURUH unit se-SPK, termasuk yang TIDAK berdiskon: approver menilai
+ * dampak satu keputusan atas SPK penuh, jadi barang yang ikut tertahan tapi
+ * tak mengajukan diskon justru wajib kelihatan.
+ *
+ * Yang TIDAK ditampilkan (dan tak dikirim server): NIK, alamat, titik lokasi,
+ * sosmed, komisi/no HP KBK, nomor rangka/mesin, foto-foto. Approver diskon
+ * bisa siapa saja pemegang page-grant, LINTAS CABANG — jangan menambahkannya.
+ */
+@Composable
+private fun SpkDiskonDetailDialog(
+    kode: String,
+    detail: com.krisoft.tridjayaelektronik.data.model.SpkDiscountContextDto?,
+    error: String?,
+    onTutup: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onTutup,
+        title = { Text(kode, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                when {
+                    error != null -> Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    detail == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Memuat detail SPK…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    else -> {
+                        InfoLine("Cabang", listOfNotNull(detail.dealerName, detail.kodeDealer.ifBlank { null }).joinToString(" · ").ifBlank { null })
+                        InfoLine("Tanggal jual", detail.tanggalJual)
+                        InfoLine("Konsumen", detail.customerName)
+                        InfoLine("No. HP", detail.customerPhone)
+                        // KBK = order lewat broker; nama brokernya yang relevan,
+                        // bukan sales yang menginput.
+                        if (detail.orderSource == "kbk") {
+                            InfoLine("Sumber order", "KBK")
+                            InfoLine("Broker", detail.kbkBrokerNama)
+                        }
+                        InfoLine("Sales", detail.salesName)
+                        InfoLine("Metode kirim", detail.deliveryMethod)
+                        InfoLine("Pembayaran", if (detail.paymentType == "credit") "Kredit" else detail.paymentType?.let { "Cash" })
+                        if (detail.paymentType == "credit") {
+                            InfoLine("Fincoy", detail.fincoy)
+                            InfoLine("DP net", detail.dpNet?.let { rupiah(it) })
+                            InfoLine("Pembayaran 1", detail.pembayaran1?.let { rupiah(it) })
+                            InfoLine("Angsuran", detail.angsuran?.let { rupiah(it) })
+                            InfoLine("Tenor", detail.tenor?.let { "$it bulan" })
+                            InfoLine("Biaya adm", detail.biayaAdm?.let { rupiah(it) })
+                            InfoLine("Angsuran pertama", detail.angsuranPertama?.let { rupiah(it) })
+                        }
+                        InfoLine("Keterangan", detail.keterangan)
+
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Barang dalam SPK ini (${detail.units.size} unit)",
+                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        detail.units.forEach { u ->
+                            Spacer(Modifier.height(8.dp))
+                            Column(Modifier.fillMaxWidth()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        u.namaBarang ?: u.kodeBarang,
+                                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                    )
+                                    // Penanda berdiskon/tidak: unit tanpa diskon
+                                    // ikut tertahan oleh keputusan ini, dan itu
+                                    // tak terlihat dari daftar pengajuan.
+                                    val berdiskon = (u.diskon ?: 0.0) > 0.0
+                                    Surface(
+                                        color = if (berdiskon) Color(0xFFB5670C).copy(alpha = 0.14f)
+                                        else MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(50),
+                                    ) {
+                                        Text(
+                                            if (berdiskon) "diskon" else "tanpa diskon",
+                                            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                            color = if (berdiskon) Color(0xFFB5670C) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "baris ${u.baris} · unit ${u.unitSeq} · ${u.status}" +
+                                        (u.warna?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                InfoLine("Harga OTR", u.hargaOtr?.let { rupiah(it) })
+                                if ((u.diskon ?: 0.0) > 0.0) InfoLine("Diskon", "−${rupiah(u.diskon)}")
+                                InfoLine("Total", u.hargaTotal?.let { rupiah(it) })
+                                if (u.driverTerimaUang) {
+                                    InfoLine(
+                                        "COD",
+                                        if (u.codPaymentMode == "dp") "DP ${rupiah(u.codDpAmount)} ditagih driver"
+                                        else "Full payment ditagih driver",
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        InfoLine("Total OTR SPK", rupiah(detail.totalHargaOtr))
+                        InfoLine("Diskon berjalan", "−${rupiah(detail.totalDiskonBerjalan)}")
+                        InfoLine("Setelah diskon", rupiah(detail.totalSetelahDiskon))
+                        Text(
+                            "\"Diskon berjalan\" = potongan yang SUDAH disetujui & menempel. " +
+                                "Pengajuan yang sedang kamu putuskan belum termasuk.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onTutup) { Text("Tutup") } },
+    )
 }
 
 

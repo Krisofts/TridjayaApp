@@ -329,6 +329,26 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** SPK utuh di balik satu pengajuan diskon (kartu approval). */
+    suspend fun spkDiscountContext(
+        spkBatchKode: String
+    ): AuthResult<com.krisoft.tridjayaelektronik.data.model.SpkDiscountContextDto> = try {
+        val response = api.spkDiscountContext(spkBatchKode)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal memuat detail SPK")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /** Ajukan (ulang) diskon satu baris SPK. Pesan 400 server ditampilkan apa
+     *  adanya — "Baris ini masih menunggu keputusan diskon" adalah petunjuk
+     *  yang berguna, bukan kegagalan teknis yang perlu disamarkan. */
+    suspend fun ajukanDiskon(
+        body: com.krisoft.tridjayaelektronik.data.model.CreateDiscountBody
+    ): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> =
+        decision("Gagal mengajukan diskon") { api.createDiscountRequest(body) }
+
     suspend fun approveDiscount(id: String, note: String): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = decision("Gagal menyetujui diskon") {
         api.approveDiscount(id, com.krisoft.tridjayaelektronik.data.model.DecisionBody(note.ifBlank { null }))
     }

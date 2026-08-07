@@ -56,9 +56,21 @@ class SpkSubmitBlockerTest {
         assertNotNull(blocker(nik = "321234"))
         assertNotNull(blocker(spkCabang = ""))
         assertNotNull(blocker(itemsCount = 0))
-        assertNotNull(blocker(totalUnits = 201))
         assertNotNull(blocker(totalUnits = 0))
         assertNotNull(blocker(itemsValid = false))
+    }
+
+    /**
+     * Teks WAJIB sama persis dengan `delivery.rs` — sales yang ditolak server
+     * harus membaca kalimat yang sama dengan yang sudah dicegah app.
+     */
+    @Test
+    fun `batas 10 baris dan 10 unit ditegakkan DUA-DUANYA`() {
+        assertNull(blocker(itemsCount = 10, totalUnits = 10))
+        assertEquals("Maksimal 10 barang per SPK", blocker(itemsCount = 11, totalUnits = 11))
+        // 5 baris qty 3 = lolos batas baris, langgar batas unit.
+        assertEquals("Maksimal 10 unit per SPK", blocker(itemsCount = 5, totalUnits = 15))
+        assertEquals("Maksimal 10 unit per SPK", blocker(itemsCount = 1, totalUnits = 11))
     }
 
     @Test

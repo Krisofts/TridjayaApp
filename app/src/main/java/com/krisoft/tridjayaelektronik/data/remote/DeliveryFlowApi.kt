@@ -16,8 +16,10 @@ import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestListData
 import com.krisoft.tridjayaelektronik.data.model.DecisionBody
 import com.krisoft.tridjayaelektronik.data.model.DeliveryCategoriesData
+import com.krisoft.tridjayaelektronik.data.model.CreateDiscountBody
 import com.krisoft.tridjayaelektronik.data.model.DiscountListData
 import com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto
+import com.krisoft.tridjayaelektronik.data.model.SpkDiscountContextDto
 import com.krisoft.tridjayaelektronik.data.model.WaPrefDto
 import com.krisoft.tridjayaelektronik.data.model.UsersListData
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
@@ -331,6 +333,27 @@ interface DeliveryFlowApi {
         @Query("spkBatchKode") spkBatchKode: String,
         @Query("baris") baris: Int
     ): Response<ApiResponse<List<DiscountRequestDto>>>
+
+    /**
+     * SPK utuh di balik satu pengajuan diskon (2026-08-07) — seluruh unit
+     * se-batch termasuk yang tak berdiskon, plus total OTR/diskon berjalan.
+     *
+     * Boleh dibaca approver (admin/superadmin atau pemegang page-grant
+     * `/dashboard/discount-approval`) DAN sales pemilik SPK-nya; selain itu
+     * 403. Kode batch wajib berbentuk `DLV-M{8hex}` (selain itu 400).
+     */
+    @GET("api/inventory/discount-requests/spk/{kode}")
+    suspend fun spkDiscountContext(@Path("kode") kode: String): Response<ApiResponse<SpkDiscountContextDto>>
+
+    /**
+     * Ajukan diskon baru untuk SATU baris SPK — jalur REVISI setelah ditolak.
+     *
+     * Server MENOLAK (400 "Baris ini masih menunggu keputusan diskon") bila
+     * baris itu masih punya pengajuan `pending`; yang `rejected` justru boleh
+     * diajukan ulang, itulah alur ini.
+     */
+    @POST("api/inventory/discount-requests")
+    suspend fun createDiscountRequest(@Body body: CreateDiscountBody): Response<ApiResponse<DiscountRequestDto>>
 
     @POST("api/inventory/discount-requests/{id}/approve")
     suspend fun approveDiscount(@Path("id") id: String, @Body body: DecisionBody): Response<ApiResponse<DiscountRequestDto>>

@@ -86,14 +86,21 @@ class SpkItemDraftTest {
         assertTrue(t.copy(codPaymentMode = "dp", codDpAmount = "150000").issues().isEmpty())
     }
 
+    /**
+     * Guard per-baris = cerminan server pasca-2026-08-07: hanya `qty < 1` plus
+     * stok. Batas ATAS 10 unit sengaja TIDAK ada di sini — ia batas se-SPK,
+     * ditegakkan `spkSubmitBlocker` dengan teks server ("Maksimal 10 unit per
+     * SPK"). Dua pesan untuk satu aturan membuat sales memperbaiki hal yang
+     * salah.
+     */
     @Test
-    fun `qty melebihi stok atau di luar 1-200 = issue`() {
+    fun `qty di bawah 1 atau melebihi stok = issue, batas atas milik SPK bukan baris`() {
         assertTrue(draft().copy(qty = "4").issues().any { it.contains("Qty") })   // stok 3
         assertTrue(draft().copy(qty = "0").issues().any { it.contains("Qty") })
         assertTrue(draft().copy(qty = "3").issues().isEmpty())
         val tanpaStok = draft().copy(stokTersedia = null)
-        assertTrue(tanpaStok.copy(qty = "200").issues().isEmpty())
-        assertTrue(tanpaStok.copy(qty = "201").issues().any { it.contains("Qty") })
+        assertTrue(tanpaStok.copy(qty = "11").issues().isEmpty())
+        assertTrue(tanpaStok.copy(qty = "0").issues().any { it.contains("Qty") })
     }
 
     @Test

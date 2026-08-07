@@ -74,6 +74,19 @@ data class DeliveryFlowUiState(
     val drivers: List<com.krisoft.tridjayaelektronik.data.model.DriverDto> = emptyList(),
     /** Pengajuan diskon menunggu approval (layar approval diskon). */
     val discounts: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
+    /**
+     * Kode SPK yang keputusannya sedang dikirim — BUKAN boolean global.
+     * [submitting] mematikan tombol SEMUA kartu di antrian sekaligus, jadi
+     * approver dengan 8 SPK menunggu harus menonton satu kartu selesai sebelum
+     * bisa menyentuh yang lain, dan kartu yang tak ditekan pun terlihat rusak.
+     */
+    val diskonSubmitting: Set<String> = emptySet(),
+    /** Detail SPK yang sedang dibuka dari kartu diskon (satu slot: panelnya
+     *  modal, hanya satu bisa terbuka). Kode-nya dipegang supaya panel bisa
+     *  memperlihatkan judul & keadaan memuat sebelum datanya sampai. */
+    val spkDiskonDetailKode: String? = null,
+    val spkDiskonDetail: com.krisoft.tridjayaelektronik.data.model.SpkDiscountContextDto? = null,
+    val spkDiskonDetailError: String? = null,
     /** Konteks cabang login sales — default selektor Cabang SPK (Input SPK). */
     val deliveryContext: com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto? = null,
     /** Hasil autocomplete stok GS (Input SPK). */
@@ -320,6 +333,38 @@ class DeliveryFlowViewModel @Inject constructor(
         // serah-terima klien mengikuti kill-switch server). Cached, fail-soft.
         loadDeliveryContextForCreate()
         refreshGps()
+    }
+
+    /**
+     * Muat ulang detail + timeline + kontributor job yang SEDANG dibuka —
+     * dipakai tarik-turun di layar detail.
+     *
+     * Sengaja BUKAN [loadDetail]: fungsi itu mengosongkan slot foto yang sudah
+     * dijepret tapi belum terkirim (`pdiPhoto`/`deliverPhoto`/`cashPhoto` +
+     * bytes-nya + flag `*Confirmed`). Benar saat berpindah job, tapi mematikan
+     * sebagai refresh: satu tarikan tak sengaja setelah petugas memotret bukti
+     * serah terima = bukti hilang tanpa satu pun peringatan.
+     *
+     * Kegagalan dilaporkan lewat `actionError`, bukan `error` — `error` membuat
+     * layar detail jatuh ke keadaan "Data tidak ditemukan" dan menyembunyikan
+     * foto yang masih tertahan di slot.
+     */
+    fun refreshDetail(id: String) {
+        if (_state.value.loading) return
+        _state.update { it.copy(loading = true) }
+        viewModelScope.launch {
+            when (val res = repository.detail(id)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(loading = false, detail = res.data, error = null) }
+                    loadAuxFor(res.data)
+                    loadBatchUnits(res.data)
+                    loadTimelineExtras(res.data)
+                    loadJobPhotos(res.data)
+                    loadKontributor(id)
+                }
+                is AuthResult.Failure -> _state.update { it.copy(loading = false, actionError = res.message) }
+            }
+        }
     }
 
     /** Muat foto job ter-autentikasi (bukti PDI / serah terima / uang) utk preview
@@ -571,8 +616,69 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    fun approveDiscount(id: String, note: String) = discountAction { repository.approveDiscount(id, note) }
-    fun rejectDiscount(id: String, note: String) = discountAction { repository.rejectDiscount(id, note) }
+    fun approveDiscount(spkKode: String, id: String, note: String) =
+        discountAction(spkKode) { repository.approveDiscount(id, note) }
+
+    fun rejectDiscount(spkKode: String, id: String, note: String) =
+        discountAction(spkKode) { repository.rejectDiscount(id, note) }
+
+    /** Buka panel detail SPK dari kartu diskon. Gagal = pesan DI DALAM panel,
+     *  bukan `error` layar — antrian approval yang sudah termuat tak boleh
+     *  tergantikan layar error karena panel pelengkap gagal dimuat. */
+    fun bukaDetailSpkDiskon(spkKode: String) {
+        _state.update { it.copy(spkDiskonDetailKode = spkKode, spkDiskonDetail = null, spkDiskonDetailError = null) }
+        viewModelScope.launch {
+            when (val res = repository.spkDiscountContext(spkKode)) {
+                is AuthResult.Success -> _state.update {
+                    // Panel keburu ditutup / pindah SPK selagi request jalan =
+                    // buang hasilnya, jangan memaksa panel terbuka lagi.
+                    if (it.spkDiskonDetailKode == spkKode) it.copy(spkDiskonDetail = res.data) else it
+                }
+                is AuthResult.Failure -> _state.update {
+                    if (it.spkDiskonDetailKode == spkKode) it.copy(spkDiskonDetailError = res.message) else it
+                }
+            }
+        }
+    }
+
+    fun tutupDetailSpkDiskon() = _state.update {
+        it.copy(spkDiskonDetailKode = null, spkDiskonDetail = null, spkDiskonDetailError = null)
+    }
+
+    /**
+     * Sales mengajukan ULANG diskon baris yang ditolak (2026-08-07) — jalan
+     * keluar ketiga yang dulu cuma ada di web.
+     *
+     * `nilai` = rupiah TAMBAHAN di atas diskon yang sudah menempel (server
+     * menjumlahkannya ke `diskon_current`), sama seperti web.
+     */
+    fun ajukanUlangDiskon(
+        spkBatchKode: String,
+        baris: Int,
+        nilai: Double,
+        alasan: String,
+        jobId: String,
+        onSukses: () -> Unit = {},
+    ) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, actionError = null) }
+        viewModelScope.launch {
+            val body = com.krisoft.tridjayaelektronik.data.model.CreateDiscountBody(
+                spkBatchKode = spkBatchKode, baris = baris, value = nilai, reason = alasan,
+            )
+            when (val res = repository.ajukanDiskon(body)) {
+                is AuthResult.Success -> {
+                    _state.update { it.copy(submitting = false) }
+                    onSukses()
+                    // Muat ulang detail: status unit & riwayat diskon berubah,
+                    // dan tanpa ini layar masih menawarkan "Lanjut Tanpa Diskon"
+                    // atas pengajuan yang barusan digantikan.
+                    loadDetail(jobId)
+                }
+                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+            }
+        }
+    }
 
     /**
      * Sales menyerah pada diskon yang ditolak: baris `rejected` sebatch dilepas
@@ -599,16 +705,20 @@ class DeliveryFlowViewModel @Inject constructor(
         }
     }
 
-    private fun discountAction(block: suspend () -> AuthResult<*>) {
-        if (_state.value.submitting) return
-        _state.update { it.copy(submitting = true, actionError = null) }
+    /** Kunci per-SPK, bukan global: kartu lain tetap bisa diputuskan sementara
+     *  satu keputusan masih terbang. Tekanan kedua pada kartu YANG SAMA tetap
+     *  ditolak (fan-out server sudah menyapu se-SPK, jadi tekanan kedua cuma
+     *  memanen "sudah diputuskan"). */
+    private fun discountAction(spkKode: String, block: suspend () -> AuthResult<*>) {
+        if (spkKode in _state.value.diskonSubmitting) return
+        _state.update { it.copy(diskonSubmitting = it.diskonSubmitting + spkKode, actionError = null) }
         viewModelScope.launch {
-            when (val res = block()) {
-                is AuthResult.Success -> {
-                    _state.update { it.copy(submitting = false) }
+            val res = block()
+            _state.update { it.copy(diskonSubmitting = it.diskonSubmitting - spkKode) }
+            when (res) {
+                is AuthResult.Success ->
                     loadDiscounts("pending") // muat ulang: item yang diputuskan hilang dari antrian
-                }
-                is AuthResult.Failure -> _state.update { it.copy(submitting = false, actionError = res.message) }
+                is AuthResult.Failure -> _state.update { it.copy(actionError = res.message) }
             }
         }
     }

@@ -517,6 +517,85 @@ data class DiscountListData(
 @Serializable
 data class DecisionBody(val decisionNote: String? = null)
 
+/**
+ * Body pengajuan diskon baru (`POST /inventory/discount-requests`) — dipakai
+ * jalur REVISI setelah ditolak. `context` sengaja tak dikirim: server
+ * memasangnya `"spk"` bila absen, dan itu satu-satunya nilai yang didukung.
+ *
+ * `baris` WAJIB sejak 2026-08-02 (diskon per BARANG, bukan se-SPK); server
+ * menolak 400 tanpa itu. `discountType` di app selalu `"amount"` — form SPK
+ * mobile pun mengetik rupiah, jadi persen tak punya tempat memasukkan angkanya.
+ */
+@Serializable
+data class CreateDiscountBody(
+    val spkBatchKode: String,
+    val baris: Int,
+    val discountType: String = "amount",
+    val value: Double,
+    val reason: String,
+)
+
+/** Satu unit fisik SPK di kartu approval diskon (`GET .../discount-requests/spk/{kode}`). */
+@Serializable
+data class SpkDiscountUnitDto(
+    val baris: Int = 0,
+    val unitSeq: Int = 0,
+    val kodePengiriman: String = "",
+    val kodeBarang: String = "",
+    val namaBarang: String? = null,
+    val kategori: String? = null,
+    val merk: String? = null,
+    val tipe: String? = null,
+    val warna: String? = null,
+    val hargaOtr: Double? = null,
+    val diskon: Double? = null,
+    val hargaTotal: Double? = null,
+    val status: String = "",
+    val codPaymentMode: String? = null,
+    val codDpAmount: Double? = null,
+    val driverTerimaUang: Boolean = false,
+)
+
+/**
+ * SPK utuh untuk kartu approval diskon — SELURUH unit se-batch, termasuk yang
+ * TIDAK berdiskon. Keputusan diskon mem-fan-out ke satu SPK penuh (2026-08-06),
+ * jadi approver harus melihat SPK-nya, bukan potongan baris yang kebetulan
+ * mengajukan.
+ *
+ * PII sengaja DIPANGKAS di server (NIK, alamat, titik lokasi, sosmed,
+ * komisi/no HP KBK, nomor rangka/mesin, seluruh `*PhotoUrl`) karena approver
+ * diskon bisa siapa saja pemegang page-grant, LINTAS CABANG. JANGAN menambah
+ * field di sini dengan harapan server mengirimnya.
+ */
+@Serializable
+data class SpkDiscountContextDto(
+    val spkBatchKode: String = "",
+    val kodeDealer: String = "",
+    val dealerName: String? = null,
+    val kodeCabang: String? = null,
+    val salesDealerCode: String? = null,
+    val tanggalJual: String? = null,
+    val salesName: String? = null,
+    val orderSource: String? = null,
+    val kbkBrokerNama: String? = null,
+    val customerName: String? = null,
+    val customerPhone: String? = null,
+    val paymentType: String? = null,
+    val fincoy: String? = null,
+    val biayaAdm: Double? = null,
+    val angsuranPertama: Double? = null,
+    val dpNet: Double? = null,
+    val pembayaran1: Double? = null,
+    val angsuran: Double? = null,
+    val tenor: Int? = null,
+    val deliveryMethod: String? = null,
+    val keterangan: String? = null,
+    val totalHargaOtr: Double = 0.0,
+    val totalDiskonBerjalan: Double = 0.0,
+    val totalSetelahDiskon: Double = 0.0,
+    val units: List<SpkDiscountUnitDto> = emptyList(),
+)
+
 // ── Request bodies ───────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalSerializationApi::class)
