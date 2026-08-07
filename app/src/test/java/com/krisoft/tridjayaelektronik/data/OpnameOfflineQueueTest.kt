@@ -9,6 +9,8 @@ import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsData
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsRequest
 import com.krisoft.tridjayaelektronik.data.model.IndentDto
 import com.krisoft.tridjayaelektronik.data.model.IndentListData
+import com.krisoft.tridjayaelektronik.data.model.ManualUnitListData
+import com.krisoft.tridjayaelektronik.data.model.RejectUnitBody
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameContextDto
@@ -584,7 +586,8 @@ class OpnameOfflineQueueTest {
  * Hanya endpoint opname unit yang dipakai tes ini; sisanya sengaja meledak supaya tes yang
  * diam-diam menyentuh jaringan lain langsung ketahuan.
  */
-private open class StubInventoryApi : InventoryApi {
+/** Bukan `private`: dipakai ulang `OpnameValidasiTest` di paket yang sama. */
+internal open class StubInventoryApi : InventoryApi {
     private fun nope(): Nothing = error("endpoint ini tidak dipakai di tes")
 
     override suspend fun stokCabang(page: Int?, limit: Int?, refresh: Boolean?, inStock: Boolean?):
@@ -623,6 +626,16 @@ private open class StubInventoryApi : InventoryApi {
     override suspend fun cancelOpname(id: String): Response<ApiResponse<OpnameDetailDto>> = nope()
 
     override suspend fun deleteOpname(id: String): Response<ApiResponse<OpnameDeleteData>> = nope()
+
+    override suspend fun manualUnits(status: String?): Response<ApiResponse<ManualUnitListData>> = nope()
+
+    override suspend fun approveManualUnit(id: String, unitId: String):
+        Response<ApiResponse<OpnameDetailDto>> = nope()
+
+    override suspend fun rejectManualUnit(id: String, unitId: String, body: RejectUnitBody):
+        Response<ApiResponse<OpnameDetailDto>> = nope()
+
+    override suspend fun serialPhoto(filename: String): Response<okhttp3.ResponseBody> = nope()
 
     override suspend fun mutasiHistori(dealer: String?, arah: String?, from: String?, limit: Int?):
         Response<ApiResponse<MutasiHistoriListDto>> = nope()

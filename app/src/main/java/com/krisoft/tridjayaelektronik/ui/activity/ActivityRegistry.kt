@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.ui.activity
 
 import com.krisoft.tridjayaelektronik.ui.home.ALL_LOGGED_IN
 import com.krisoft.tridjayaelektronik.ui.home.CRM_MENU_ROLES
+import com.krisoft.tridjayaelektronik.ui.home.SERIAL_INPUT_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.STAFF_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.SPK_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.gateAllows
@@ -50,6 +51,10 @@ enum class ActivitySource {
     AKI_FORMS_APPROVAL,
     DISCOUNT_PENDING,
     INDENT_PENDING,
+    /** `GET /inventory/opname/manual-units?status=pending` — unit ketik-manual
+     *  menunggu putusan admin-stok. Sesi opname cabang TERKUNCI selama antriannya
+     *  belum kosong, jadi angkanya bukan sekadar informasi. */
+    OPNAME_MANUAL_PENDING,
 }
 
 data class ActivityItem(
@@ -352,6 +357,21 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "inventory-service indent.rs require_indent_approver_role",
         source = ActivitySource.INDENT_PENDING,
         navKey = "indent",
+    ),
+    ActivityItem(
+        id = "opname_validasi",
+        label = "Validasi Opname",
+        subtitle = "Unit ketik manual menunggu putusan",
+        kind = ActivityKind.ANTRIAN,
+        // `serial.input` — BUKAN kunci baru: `has_admin_stok` meng-IMPORT
+        // SERIAL_INPUT_ROLES dari katalog rust-shared, jadi kunci ini sudah
+        // disajikan server. Kunci karangan = peta fail-closed menyembunyikan
+        // kartunya dari SEMUA orang, tanpa error.
+        capability = "serial.input",
+        allowedRoles = SERIAL_INPUT_MENU_ROLES,
+        backendGuard = "inventory-service opname.rs has_admin_stok (capabilities::SERIAL_INPUT_ROLES)",
+        source = ActivitySource.OPNAME_MANUAL_PENDING,
+        navKey = "opname_validasi",
     ),
 )
 

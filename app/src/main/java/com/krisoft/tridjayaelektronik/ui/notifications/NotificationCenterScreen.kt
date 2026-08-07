@@ -65,6 +65,15 @@ fun deliveryNotifRouteKey(type: String): String? = when (type) {
     // Jalur push sudah benar tanpa perubahan (FcmService baca data["route"]
     // apa adanya, backend mengirim "note").
     "delivery_note_stalled" -> "note"
+    // Unit opname ketik-manual masuk antrian validasi admin-stok. BUKAN notif
+    // delivery — kuncinya diteruskan `routeForNavKey` (bukan `deliveryStageRoute`)
+    // sejak lambda `onOpenDelivery` diperbaiki; tanpa baris ini tap-nya mendarat
+    // di hub SPK.
+    "opname_manual_submitted" -> "opname_validasi"
+    // SENGAJA tak ada baris untuk notif "sudah diputuskan": penerimanya adalah
+    // PENGINPUT (kepala cabang), sedangkan layar validasi opname dijaga
+    // admin-stok saja — mengarahkannya ke sini membuat notif yang mendarat di
+    // 403. Kalau kind itu kelak dibuat, tujuannya layar sesi opname miliknya.
     else -> null
 }
 

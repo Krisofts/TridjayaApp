@@ -7,12 +7,14 @@ import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsData
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameRequest
+import com.krisoft.tridjayaelektronik.data.model.ManualUnitDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameContextDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameDeleteData
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameSessionDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameUnitInput
+import com.krisoft.tridjayaelektronik.data.model.RejectUnitBody
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
@@ -107,6 +109,56 @@ class OpnameRepository @Inject constructor(
             is AuthResult.Success -> AuthResult.Success(result.data.items)
             is AuthResult.Failure -> AuthResult.Failure(result.code, result.message)
         }
+
+    // ---- Antrian validasi unit ketik-manual (admin-stok) ----
+
+    /** Antrian lintas sesi. Gagal muat TIDAK boleh jadi daftar kosong — pemutus
+     *  harus tahu bedanya "tak ada yang menunggu" dan "tak bisa membaca". */
+    suspend fun manualUnits(status: String = VALIDASI_PENDING): AuthResult<List<ManualUnitDto>> =
+        when (val result = call("Gagal memuat antrian validasi") { api.manualUnits(status) }) {
+            is AuthResult.Success -> AuthResult.Success(result.data.items)
+            is AuthResult.Failure -> AuthResult.Failure(result.code, result.message)
+        }
+
+    suspend fun approveManualUnit(sessionId: String, unitId: String): AuthResult<Unit> =
+        when (val r = call<OpnameDetailDto>("Gagal menyetujui unit") {
+            api.approveManualUnit(sessionId, unitId)
+        }) {
+            is AuthResult.Success -> AuthResult.Success(Unit)
+            is AuthResult.Failure -> AuthResult.Failure(r.code, r.message)
+        }
+
+    /** [alasan] WAJIB. Ditolak di sini dulu supaya pemutus dapat pesan yang jelas,
+     *  bukan 400 generik dari server. */
+    suspend fun rejectManualUnit(
+        sessionId: String,
+        unitId: String,
+        alasan: String
+    ): AuthResult<Unit> {
+        val bersih = alasan.trim()
+        if (bersih.isEmpty()) {
+            return AuthResult.Failure("validation", "Alasan penolakan wajib diisi")
+        }
+        return when (val r = call<OpnameDetailDto>("Gagal menolak unit") {
+            api.rejectManualUnit(sessionId, unitId, RejectUnitBody(bersih))
+        }) {
+            is AuthResult.Success -> AuthResult.Success(Unit)
+            is AuthResult.Failure -> AuthResult.Failure(r.code, r.message)
+        }
+    }
+
+    /**
+     * Foto bukti unit manual (ter-autentikasi). Hanya NAMA BERKAS yang dikirim —
+     * respons menyimpan path logis `/uploads/serial/...`. Fail-soft `null`:
+     * foto gagal tak boleh menyandera daftar maupun tombol putusan.
+     */
+    suspend fun fetchSerialPhoto(url: String): ByteArray? = try {
+        val filename = url.trim().substringAfterLast('/')
+        if (filename.isBlank()) null
+        else api.serialPhoto(filename).let { if (it.isSuccessful) it.body()?.bytes() else null }
+    } catch (e: Exception) {
+        null
+    }
 
     // ---- Buffer unit lokal (offline-first) ----
 

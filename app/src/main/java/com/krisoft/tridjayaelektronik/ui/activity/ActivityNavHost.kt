@@ -23,6 +23,7 @@ import com.krisoft.tridjayaelektronik.ui.deadstock.DeadstockScreen
 import com.krisoft.tridjayaelektronik.ui.event.EventLeadScreen
 import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
 import com.krisoft.tridjayaelektronik.ui.opname.OpnameListScreen
+import com.krisoft.tridjayaelektronik.ui.opname.OpnameValidasiScreen
 import com.krisoft.tridjayaelektronik.ui.sales.SalesScreen
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.AkiListScreen
@@ -60,6 +61,10 @@ private const val ROUTE_TRANSACTIONS = "home_ranking_transactions/{kind}/{code}?
 private const val ROUTE_INDENT = "home_indent"
 private const val ROUTE_SALES = "home_sales"
 private const val ROUTE_OPNAME = "home_opname"
+
+/** PUBLIK: tujuan deep-link notif `opname_manual_submitted` (channel `approval`,
+ *  route key `opname_validasi`). Namanya kontrak — jangan diubah lagi. */
+const val ROUTE_OPNAME_VALIDASI = "home_opname_validasi"
 private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_RAPORT = "home_raport"
 private const val ROUTE_BUKTI_CHAT = "home_bukti_chat"
@@ -146,6 +151,8 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "bukti_chat" -> ROUTE_BUKTI_CHAT
     "review_bukti_chat" -> ROUTE_REVIEW_BUKTI_CHAT
     "indent" -> ROUTE_INDENT
+    // Antrian validasi unit opname ketik-manual (admin-stok).
+    "opname_validasi" -> ROUTE_OPNAME_VALIDASI
     "spk_input" -> ROUTE_DLV_CREATE
     "spk_history" -> ROUTE_DLV_HISTORY
     "spk_gantung" -> ROUTE_DLV_PENDING_PAYMENT
@@ -299,7 +306,11 @@ fun ActivityNavHost(
                 onOpenDelivery = { key ->
                     val route = when (key) {
                         "history" -> ROUTE_DLV_HISTORY
-                        else -> deliveryStageRoute(key) ?: ROUTE_SPK_HUB
+                        // `routeForNavKey`, BUKAN `deliveryStageRoute`: yang kedua
+                        // cuma tahu 7 kunci tahap SPK, jadi kunci non-SPK apa pun
+                        // (mis. "opname_validasi") mendarat di hub SPK — layar
+                        // salah, tanpa satu pun error.
+                        else -> routeForNavKey(key) ?: ROUTE_SPK_HUB
                     }
                     navController.navigate(route) { launchSingleTop = true }
                 },
@@ -311,6 +322,9 @@ fun ActivityNavHost(
         }
         composable(ROUTE_OPNAME) {
             OpnameListScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_OPNAME_VALIDASI) {
+            OpnameValidasiScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_ABSEN) {
             AttendanceScreen(
