@@ -56,10 +56,33 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
-        // Debug memakai API_BASE_URL default (https://tridjaya.com/) sama seperti release.
-        // Untuk uji ke gateway lokal, sementara ganti API_BASE_URL di defaultConfig ke
-        // "http://localhost:4100/" + jalankan `adb reverse tcp:4100 tcp:4100` (localhost sudah
-        // diizinkan cleartext di network_security_config.xml). Jangan commit override lokal itu.
+        debug {
+            // Debug memakai API_BASE_URL default (https://tridjaya.com/) sama seperti
+            // release. Untuk uji ke gateway lokal:
+            //
+            //   adb reverse tcp:4100 tcp:4100
+            //   ./gradlew installDebug -PlocalApi
+            //
+            // localhost sudah diizinkan cleartext di network_security_config.xml.
+            //
+            // Flag opt-in, BUKAN edit tangan di defaultConfig: cara lama menyuruh
+            // mengubah baris yang dipakai release lalu mengandalkan orang untuk
+            // ingat mengembalikannya sebelum commit. Rilis yang menembak
+            // localhost tidak menimbulkan error apa pun saat di-build — cuma app
+            // di lapangan yang tak bisa memuat apa-apa.
+            //
+            // `applicationIdSuffix` ikut DI DALAM flag supaya varian uji terpasang
+            // BERDAMPINGAN dengan app produksi di HP yang sama. Tanpa itu, debug
+            // (keystore SDK bawaan) bentrok tanda tangan dengan rilis terpasang →
+            // INSTALL_FAILED_UPDATE_INCOMPATIBLE, dan satu-satunya jalan keluar
+            // adalah uninstall app produksi: sesi login karyawan ikut hilang.
+            // Debug build biasa (tanpa flag) TIDAK berubah sama sekali.
+            if (project.hasProperty("localApi")) {
+                buildConfigField("String", "API_BASE_URL", "\"http://localhost:4100/\"")
+                applicationIdSuffix = ".localapi"
+                versionNameSuffix = "-localapi"
+            }
+        }
     }
 
     buildFeatures {
@@ -172,6 +195,12 @@ dependencies {
 // Apply the Google Services plugin only when a real Firebase config file has been added (mirrors how
 // release signing is gated on keystore.properties) — the app still builds & runs without it, and the
 // update system simply stays inert until Firebase is configured.
-if (rootProject.file("app/google-services.json").exists()) {
+// `-PlocalApi` mengubah applicationId jadi ...localapi, dan google-services.json
+// cuma memuat klien untuk package aslinya — plugin ini MENGGAGALKAN build kalau
+// tak menemukan klien yang cocok ("No matching client found for package name").
+// Dilewati saat flag aktif; FCM lalu inert (DeviceRepository.fetchFcmToken sudah
+// menangani Firebase tak ter-inisialisasi), yang memang benar untuk varian uji:
+// ia tak boleh ikut menerima push yang ditujukan ke app produksi.
+if (rootProject.file("app/google-services.json").exists() && !project.hasProperty("localApi")) {
     apply(plugin = "com.google.gms.google-services")
 }
