@@ -40,7 +40,13 @@ JEDA="${ADB_WATCH_INTERVAL:-3}"
 
 if ! command -v adb >/dev/null 2>&1; then
   echo "adb tidak ada di PATH." >&2
-  echo "Coba: export PATH=\"\$HOME/AppData/Local/Android/Sdk/platform-tools:\$PATH\"" >&2
+  echo "Coba: export PATH=\"/c/Android/platform-tools:\$PATH\"" >&2
+  echo "" >&2
+  echo "Kalau direktorinya juga tak ada: Android SDK di mesin ini pernah LENYAP" >&2
+  echo "seluruhnya (2026-08-07) — dua lokasi SDK + Flutter hilang bersamaan," >&2
+  echo "tanpa jejak di Recycle Bin maupun event log. Untuk adb saja tak perlu" >&2
+  echo "SDK penuh; unduh paket berdiri sendiri ~8 MB lalu ekstrak ke C:/Android:" >&2
+  echo "  https://dl.google.com/android/repository/platform-tools-latest-windows.zip" >&2
   exit 1
 fi
 
