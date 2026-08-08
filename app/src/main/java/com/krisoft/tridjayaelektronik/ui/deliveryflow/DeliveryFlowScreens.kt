@@ -2087,7 +2087,9 @@ private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
     PhotoBox(photoState.deliverPhoto, "Foto bukti (wajib)") { cam.launch(uri) }
     Spacer(Modifier.height(14.dp))
     val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
-    val nominalValid = (nominal.toDoubleOrNull() ?: 0.0) > 0.0
+    // >= 0, bukan > 0: kredit tanpa uang muka sah punya nominal diterima Rp 0 di titik ini.
+    // Field wajib tetap ditegakkan lewat toDoubleOrNull() != null (kosong -> null -> invalid).
+    val nominalValid = nominal.toDoubleOrNull() != null
     ExpressiveFilledButton(
         onClick = { vm.setoranKasir(id, nominal.toDoubleOrNull() ?: 0.0) {} },
         enabled = !submitting && hasPhoto && nominalValid, modifier = Modifier.fillMaxWidth(),
