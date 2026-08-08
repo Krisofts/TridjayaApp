@@ -69,7 +69,10 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1370,6 +1373,26 @@ private fun SpkFanOutNote(teks: String) {
     )
 }
 
+/**
+ * `rememberSaveable` untuk peta jawaban checklist — tak ada Saver bawaan untuk
+ * [SnapshotStateMap]. Petanya DIRATAKAN jadi `[kunci, nilai, kunci, nilai, …]`;
+ * cukup karena kunci dan nilainya sama-sama String.
+ *
+ * Ini yang paling penting diselamatkan dari seluruh form berkamera: `hasil`
+ * default-nya "ok" untuk SEMUA item, jadi checklist yang hangus tidak kembali
+ * dalam keadaan kosong melainkan dalam keadaan LULUS SEMUA — petugas yang tadi
+ * menandai "tidak" beserta catatannya akan mengirim unit cacat sebagai unit
+ * mulus tanpa satu pun peringatan.
+ */
+internal val petaJawabanSaver = listSaver<SnapshotStateMap<String, String>, String>(
+    save = { peta -> peta.entries.flatMap { listOf(it.key, it.value) } },
+    restore = { rata ->
+        mutableStateMapOf<String, String>().apply {
+            rata.chunked(2).forEach { pasangan -> put(pasangan[0], pasangan[1]) }
+        }
+    },
+)
+
 @Composable
 private fun PdiAction(
     job: DeliveryJobDto,
@@ -1382,8 +1405,8 @@ private fun PdiAction(
     // PREFILL dari job — SN/engine yang diisi saat input SPK tampil di form
     // (dulu mulai kosong → SN dari SPK tertimpa NULL di backend, bug live
     // testing 2026-07-24; backend kini juga COALESCE sbg lapis kedua).
-    var serial by remember(job.id) { mutableStateOf(job.serialNumber.orEmpty()) }
-    var engine by remember(job.id) { mutableStateOf(job.engineNumber.orEmpty()) }
+    var serial by rememberSaveable(job.id) { mutableStateOf(job.serialNumber.orEmpty()) }
+    var engine by rememberSaveable(job.id) { mutableStateOf(job.engineNumber.orEmpty()) }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/pdi_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
@@ -1391,8 +1414,10 @@ private fun PdiAction(
     val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onPdiPhotoCaptured(file) }
 
     // Hasil checklist per item.id: hasil (ok/tidak/na) default "ok" + catatan.
-    val hasil = remember(checklist) { mutableStateMapOf<String, String>().apply { checklist.forEach { put(it.id, "ok") } } }
-    val catatan = remember(checklist) { mutableStateMapOf<String, String>() }
+    val hasil = rememberSaveable(checklist, saver = petaJawabanSaver) {
+        mutableStateMapOf<String, String>().apply { checklist.forEach { put(it.id, "ok") } }
+    }
+    val catatan = rememberSaveable(checklist, saver = petaJawabanSaver) { mutableStateMapOf<String, String>() }
 
     photoState.pdiPhoto?.takeIf { !photoState.pdiPhotoConfirmed }?.let { bmp ->
         PhotoReviewDialog(bmp, onRetake = { vm.retakePdiPhoto() }, onConfirm = { vm.confirmPdiPhoto() })
@@ -1511,21 +1536,23 @@ private fun PdiAction(
     if (requiresAki) {
         Spacer(Modifier.height(14.dp))
         if (akiPending) {
-            var tujuan by remember { mutableStateOf("") }
-            var tujuanLainnya by remember { mutableStateOf("") }
+            var tujuan by rememberSaveable { mutableStateOf("") }
+            var tujuanLainnya by rememberSaveable { mutableStateOf("") }
             // Merk: dropdown merk GS + "Lainnya…" (ketik manual). merkPilih = slug dropdown,
             // merkManual = teks bila pilih Lainnya. merkFinal = yang dikirim.
-            var merkPilih by remember { mutableStateOf("") }
-            var merkManual by remember { mutableStateOf("") }
-            var kapasitas by remember { mutableStateOf("") }
+            var merkPilih by rememberSaveable { mutableStateOf("") }
+            var merkManual by rememberSaveable { mutableStateOf("") }
+            var kapasitas by rememberSaveable { mutableStateOf("") }
             // Jumlah SET baterai (bukan pcs) — default 1 set, tiap set = 4 pcs (auto keterangan).
-            var jumlahSet by remember { mutableStateOf("1") }
-            var ambilCharger by remember { mutableStateOf(false) }
-            var ambilSpion by remember { mutableStateOf(false) }
-            var keteranganAki by remember { mutableStateOf("") }
+            var jumlahSet by rememberSaveable { mutableStateOf("1") }
+            var ambilCharger by rememberSaveable { mutableStateOf(false) }
+            var ambilSpion by rememberSaveable { mutableStateOf(false) }
+            var keteranganAki by rememberSaveable { mutableStateOf("") }
             // Foto bukti aki (2026-07-24, wajib) — capture→watermark→upload
-            // langsung, pola sama foto PO per-barang.
-            var akiPhotoUrl by remember { mutableStateOf("") }
+            // langsung, pola sama foto PO per-barang. URL-nya WAJIB ikut
+            // diselamatkan: unggahannya sudah terjadi, jadi kehilangan URL ini
+            // memaksa foto yang sama diunggah dua kali.
+            var akiPhotoUrl by rememberSaveable { mutableStateOf("") }
             var akiPhotoUploading by remember { mutableStateOf(false) }
             val akiScope = rememberCoroutineScope()
             val akiPhotoFile = remember { File(context.cacheDir, "delivery/aki_$id.jpg").apply { parentFile?.mkdirs() } }
@@ -1723,11 +1750,11 @@ private fun KasirConfirmSpkAction(
 ) {
     val units = batchUnits.ifEmpty { listOf(job) }
     val multi = units.size > 1
-    var noTransaksi by remember(job.id) { mutableStateOf(job.noTransaksi.orEmpty()) }
-    var konfirmasiBayar by remember(job.id) { mutableStateOf(false) }
+    var noTransaksi by rememberSaveable(job.id) { mutableStateOf(job.noTransaksi.orEmpty()) }
+    var konfirmasiBayar by rememberSaveable(job.id) { mutableStateOf(false) }
     // Nominal DP per unit-id. Kunci `job.id`: berpindah SPK harus mengosongkan
     // isian, kalau tidak DP SPK sebelumnya ikut terkirim.
-    val dp = remember(job.id) { mutableStateMapOf<String, String>() }
+    val dp = rememberSaveable(job.id, saver = petaJawabanSaver) { mutableStateMapOf<String, String>() }
 
     val adaCod = units.any { it.driverTerimaUang == true }
     val unitCodDp = units.filter { it.driverTerimaUang == true && it.codPaymentMode == "dp" }
@@ -2020,7 +2047,7 @@ private fun RevisiDiskonAction(
 @Composable
 private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
     val id = job.id
-    var nominal by remember { mutableStateOf("") }
+    var nominal by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/setoran_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
@@ -2210,8 +2237,8 @@ private fun DeliverAction(
     checklistError: String?
 ) {
     val id = job.id
-    var rating by remember { mutableStateOf(5) }
-    var comment by remember { mutableStateOf("") }
+    var rating by rememberSaveable { mutableStateOf(5) }
+    var comment by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/deliver_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
@@ -2223,8 +2250,10 @@ private fun DeliverAction(
     val cashUri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cashFile) }
     val cashCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onCashPhotoCaptured(cashFile) }
     // 088: checklist serah-terima stage=driver (fail-open bila kosong)
-    val hasil = remember(driverChecklist) { mutableStateMapOf<String, String>().apply { driverChecklist.forEach { put(it.id, "ok") } } }
-    val catatan = remember(driverChecklist) { mutableStateMapOf<String, String>() }
+    val hasil = rememberSaveable(driverChecklist, saver = petaJawabanSaver) {
+        mutableStateMapOf<String, String>().apply { driverChecklist.forEach { put(it.id, "ok") } }
+    }
+    val catatan = rememberSaveable(driverChecklist, saver = petaJawabanSaver) { mutableStateMapOf<String, String>() }
 
     photoState.deliverPhoto?.takeIf { !photoState.deliverPhotoConfirmed }?.let { bmp ->
         PhotoReviewDialog(bmp, onRetake = { vm.retakeDeliverPhoto() }, onConfirm = { vm.confirmDeliverPhoto() })
@@ -2379,8 +2408,8 @@ private fun DeliverAction(
 @Composable
 private fun SelfPickupCompleteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
     val id = job.id
-    var rating by remember { mutableStateOf(5) }
-    var comment by remember { mutableStateOf("") }
+    var rating by rememberSaveable { mutableStateOf(5) }
+    var comment by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/selfpickup_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
