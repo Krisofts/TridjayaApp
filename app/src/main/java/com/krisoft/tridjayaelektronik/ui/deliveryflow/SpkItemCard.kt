@@ -42,29 +42,50 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.krisoft.tridjayaelektronik.data.kondisiLabel
 import com.krisoft.tridjayaelektronik.data.model.BrokerOption
+import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.MoneyTextField
-import kotlinx.coroutines.launch
 import java.io.File
+import kotlinx.coroutines.launch
 
 /**
  * Kartu satu barang SPK multi-unit — tiap barang bawa pembayaran/komisi/order sendiri
  * (mirror kartu item web SalesDeliveryFlowPage). Collapsible utk layar sempit.
  */
+/**
+ * Saran serial yang ditampilkan di kartu barang SPK, urut unit sehat dulu.
+ *
+ * Daftarnya dipotong lima di UI, jadi pengurutan ini yang menentukan APA yang
+ * terlihat: tanpa itu satu batch unit retur bisa mengisi seluruh saran dan
+ * menyembunyikan unit layak yang kebetulan ada di posisi keenam — sales tak
+ * akan pernah tahu ia ada. Unit bermasalah tetap DITAMPILKAN (keputusan user
+ * 2026-08-09: peringatkan, jangan blokir), cuma turun ke bawah.
+ *
+ * `sortedBy` stabil, jadi urutan dari server (kode barang, lalu serial) tetap
+ * terjaga di dalam masing-masing kelompok.
+ */
+internal fun serialUntukDisarankan(
+    opsi: List<SerialRegistryRow>,
+    serialTerpilih: String
+): List<SerialRegistryRow> =
+    opsi.filter { it.serialNumber != serialTerpilih }.sortedBy { it.bermasalah }
+
 @Composable
 fun SpkItemCard(
     index: Int,
     item: SpkItemDraft,
     issues: List<String>,
-    serialOptions: List<String>,
+    serialOptions: List<SerialRegistryRow>,
     brokerResults: List<BrokerOption>,
     brokerSearch: String,
     onBrokerSearch: (String) -> Unit,
@@ -119,14 +140,35 @@ fun SpkItemCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                val availSerial = if (qtyLebihSatu) emptyList() else serialOptions.filter { it != item.serialNumber }
+                // MEMPERINGATKAN, bukan memblokir (keputusan user 2026-08-09):
+                // registry bisa telat diperbarui, dan unit repair yang sudah
+                // selesai diperbaiki masih bertanda repair. Yang ditutup cuma
+                // jalur diam-diam — lihat pengurutan di bawah.
+                val terpilih = serialOptions.firstOrNull { it.serialNumber == item.serialNumber }
+                if (!qtyLebihSatu && terpilih?.bermasalah == true) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Admin stok menandai unit ini ${kondisiLabel(terpilih.kondisi!!).uppercase()}" +
+                            (terpilih.kondisiKeterangan?.let { " - $it" } ?: "") +
+                            ". Pastikan barangnya memang siap dikirim.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                val availSerial =
+                    if (qtyLebihSatu) emptyList() else serialUntukDisarankan(serialOptions, item.serialNumber)
                 if (availSerial.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text("Serial tersedia (ketuk):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        availSerial.take(5).forEach { sn ->
-                            Surface(onClick = { onUpdate(item.copy(serialNumber = sn)) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
-                                Text(sn, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                        availSerial.take(5).forEach { row ->
+                            Surface(onClick = { onUpdate(item.copy(serialNumber = row.serialNumber)) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    row.serialNumber + (row.kondisi?.takeIf { row.bermasalah }?.let { " \u00b7 ${kondisiLabel(it)}" } ?: ""),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (row.bermasalah) MaterialTheme.colorScheme.error else Color.Unspecified,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
                             }
                         }
                     }

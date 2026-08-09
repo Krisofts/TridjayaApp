@@ -126,6 +126,14 @@ data class OpnameUnitDto(
     val kodeBarang: String = "",
     val serialNumber: String = "",
     val kondisi: String = "layak",
+    /** Vonis admin-stok di registry untuk serial ini (migrasi 194). `null` =
+     *  belum terdaftar ATAU terdaftar tapi kondisinya belum pernah ditetapkan —
+     *  dua-duanya berarti "tak ada pembanding", bukan "layak". */
+    val kondisiRegistry: String? = null,
+    /** Dihitung SERVER: `true` hanya bila registry punya vonis DAN berbeda dari
+     *  temuan lapangan. Jangan dihitung ulang di klien — perlakuan `null` yang
+     *  berbeda membuat web dan app melaporkan angka berbeda untuk sesi sama. */
+    val kondisiSelisih: Boolean = false,
     val temuan: String? = null,
     val keterangan: String? = null,
     /** `scan` | `manual` — ketik manual wajib 2 foto + validasi admin-stok. */

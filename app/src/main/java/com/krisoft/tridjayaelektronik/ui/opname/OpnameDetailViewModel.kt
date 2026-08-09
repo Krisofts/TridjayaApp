@@ -13,6 +13,7 @@ import com.krisoft.tridjayaelektronik.data.VALIDASI_PENDING
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
+import com.krisoft.tridjayaelektronik.data.model.OpnameUnitDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -54,6 +55,14 @@ data class OpnameDetailUiState(
      * unit tak terdaftar.
      */
     val canPropose: Boolean = true,
+    /**
+     * Unit yang temuan lapangannya BEDA dari kondisi yang ditetapkan admin-stok
+     * di registry. Datang langsung dari server (`kondisiSelisih`) dan sengaja
+     * TIDAK disimpan ke Room: vonis registry bisa berubah kapan saja, dan
+     * daftar basi di layar verifikasi lebih buruk daripada daftar kosong.
+     * Kosong juga saat offline — itu jujur: pembandingnya memang tak terbaca.
+     */
+    val selisihKondisi: List<OpnameUnitDto> = emptyList(),
     /** Usulan yang sedang disusun; `null` = dialog tertutup. */
     val proposal: SerialProposalDraft? = null,
     val proposalMessage: String? = null,
@@ -106,7 +115,10 @@ data class ManualUnitDraft(
     val kodeBarang: String,
     val namaBarang: String?,
     val serialNumber: String,
-    val tidakLayak: Boolean,
+    /** Nilai dari `KONDISI_PILIHAN`, bukan boolean lagi — sejak kosakata
+     *  kondisi melebar jadi empat (migrasi 194). */
+    val kondisi: String,
+    val keterangan: String?,
     val fotoSnUrl: String? = null,
     val fotoBarangUrl: String? = null,
     val uploading: Boolean = false,
@@ -160,7 +172,12 @@ class OpnameDetailViewModel @Inject constructor(
                     // fail-soft, badge lama bertahan bila gagal. Menunggu detail dulu
                     // karena rekonsiliasi hanya boleh untuk sesi draft (repositori
                     // menegakkannya) — sesi batal/selesai buffernya sengaja kosong.
-                    launch { repository.refreshValidationStatuses(id, result.data.status) }
+                    launch {
+                        val serverUnits = repository.refreshValidationStatuses(id, result.data.status)
+                        _uiState.update {
+                            it.copy(selisihKondisi = serverUnits.filter { u -> u.kondisiSelisih })
+                        }
+                    }
                     // Coverage list matters for any viewer while the session is still
                     // draft (owner counting, or kepala-cabang/manager verifying progress)
                     // — completed sessions already have their own reconciled `items`.
@@ -207,7 +224,7 @@ class OpnameDetailViewModel @Inject constructor(
      * dilaporkan apa adanya supaya petugas tahu bedanya "tersimpan", "menunggu jaringan",
      * dan "ditolak".
      */
-    fun scan(serialNumber: String, tidakLayak: Boolean = false) {
+    fun scan(serialNumber: String, kondisi: String = KONDISI_LAYAK, keterangan: String? = null) {
         val item = _uiState.value.selectedItem ?: return
         _uiState.update { it.copy(isSaving = true, saveError = null, scanMessage = null) }
         viewModelScope.launch {
@@ -217,7 +234,8 @@ class OpnameDetailViewModel @Inject constructor(
                     kodeBarang = item.kodeBarang,
                     namaBarang = item.namaBarang,
                     serialNumberRaw = serialNumber,
-                    kondisi = if (tidakLayak) KONDISI_TIDAK_LAYAK else KONDISI_LAYAK
+                    kondisi = kondisi,
+                    keterangan = keterangan
                 )
             }.getOrElse { error ->
                 _uiState.update {
@@ -273,7 +291,7 @@ class OpnameDetailViewModel @Inject constructor(
      * mengosongkan kolom ketikan (menghapus ketikan panjang petugas lalu menolaknya sama
      * saja menyuruh mengetik ulang tanpa tahu salahnya di mana).
      */
-    fun startManualUnit(serialNumberRaw: String, tidakLayak: Boolean): Boolean {
+    fun startManualUnit(serialNumberRaw: String, kondisi: String, keterangan: String?): Boolean {
         val item = _uiState.value.selectedItem ?: return false
         val serial = com.krisoft.tridjayaelektronik.data.normalizeSerial(serialNumberRaw)
         if (serial == null) {
@@ -286,7 +304,8 @@ class OpnameDetailViewModel @Inject constructor(
                     kodeBarang = item.kodeBarang,
                     namaBarang = item.namaBarang,
                     serialNumber = serial,
-                    tidakLayak = tidakLayak
+                    kondisi = kondisi,
+                    keterangan = keterangan
                 ),
                 saveError = null,
                 scanMessage = null
@@ -356,9 +375,10 @@ class OpnameDetailViewModel @Inject constructor(
                     kodeBarang = draft.kodeBarang,
                     namaBarang = draft.namaBarang,
                     serialNumberRaw = draft.serialNumber,
-                    kondisi = if (draft.tidakLayak) KONDISI_TIDAK_LAYAK else KONDISI_LAYAK,
+                    kondisi = draft.kondisi,
                     fotoSnUrl = draft.fotoSnUrl.orEmpty(),
-                    fotoBarangUrl = draft.fotoBarangUrl.orEmpty()
+                    fotoBarangUrl = draft.fotoBarangUrl.orEmpty(),
+                    keterangan = draft.keterangan
                 )
             }.getOrElse { error ->
                 updateManual {

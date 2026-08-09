@@ -13,6 +13,7 @@ import com.krisoft.tridjayaelektronik.data.model.OpnameDeleteData
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameSessionDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
+import com.krisoft.tridjayaelektronik.data.model.OpnameUnitDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameUnitInput
 import com.krisoft.tridjayaelektronik.data.model.RejectUnitBody
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
@@ -26,6 +27,27 @@ import javax.inject.Singleton
 
 const val KONDISI_LAYAK = "layak"
 const val KONDISI_TIDAK_LAYAK = "tidak_layak"
+/** Rusak tapi masih bisa diperbaiki. */
+const val KONDISI_REPAIR = "repair"
+/** Dikembalikan ke supplier/pusat. */
+const val KONDISI_RETUR = "retur"
+
+/**
+ * Cermin `opname::KONDISI_VALID` di Rust (migrasi 194). Server MENOLAK nilai di
+ * luar daftar ini per baris (`kondisi_tidak_dikenal`) sejak 2026-08-09 — dulu
+ * dipaksa jadi `layak` diam-diam, sehingga unit rusak masuk hitungan stok layak
+ * jual tanpa satu pun sinyal. Urutannya sekaligus urutan tampil di pemilih.
+ */
+val KONDISI_PILIHAN = listOf(KONDISI_LAYAK, KONDISI_TIDAK_LAYAK, KONDISI_REPAIR, KONDISI_RETUR)
+
+/** Label Indonesia untuk nilai kondisi; nilai asing ditampilkan apa adanya. */
+fun kondisiLabel(kondisi: String): String = when (kondisi) {
+    KONDISI_LAYAK -> "Layak"
+    KONDISI_TIDAK_LAYAK -> "Tidak layak"
+    KONDISI_REPAIR -> "Repair"
+    KONDISI_RETUR -> "Retur"
+    else -> kondisi
+}
 
 /** Batas kolom `stock_opname_units.serial_number` di MySQL. */
 const val SERIAL_MAX_LENGTH = 64
@@ -249,7 +271,8 @@ class OpnameRepository @Inject constructor(
         serialNumberRaw: String,
         kondisi: String,
         fotoSnUrl: String,
-        fotoBarangUrl: String
+        fotoBarangUrl: String,
+        keterangan: String? = null
     ): ScanResult {
         val serial = normalizeSerial(serialNumberRaw)
             ?: return ScanResult.Rejected(
@@ -265,6 +288,7 @@ class OpnameRepository @Inject constructor(
                     kodeBarang = kodeBarang,
                     serialNumber = serial,
                     kondisi = kondisi,
+                    keterangan = keterangan?.takeIf { it.isNotBlank() },
                     inputMethod = INPUT_MANUAL,
                     fotoSnUrl = fotoSnUrl,
                     fotoBarangUrl = fotoBarangUrl
@@ -294,7 +318,7 @@ class OpnameRepository @Inject constructor(
                             kodeBarang = kodeBarang,
                             namaBarang = namaBarang,
                             kondisi = kondisi,
-                            keterangan = null,
+                            keterangan = keterangan?.takeIf { it.isNotBlank() },
                             temuan = accepted?.temuan,
                             inputMethod = if (statusServer == null) INPUT_SCAN else INPUT_MANUAL,
                             validationStatus = statusServer,
@@ -331,17 +355,31 @@ class OpnameRepository @Inject constructor(
      *
      * HANYA untuk sesi draft — lihat penjaga [sessionStatus] di bawah.
      */
-    suspend fun refreshValidationStatuses(sessionId: String, sessionStatus: String) {
+    /**
+     * Mengembalikan daftar unit versi SERVER yang barusan dibaca — bukan sekadar
+     * efek samping ke Room. Perbandingan kondisi registry vs temuan lapangan
+     * (`kondisiRegistry`/`kondisiSelisih`) SENGAJA tidak ikut disimpan ke Room:
+     * nilainya berubah tiap kali admin-stok mengubah vonis registry, jadi
+     * menyalinnya ke buffer lokal berarti menampilkan vonis basi di layar yang
+     * sedang dipakai memverifikasi. Ia data rujukan, bukan hasil kerja petugas.
+     *
+     * Daftar kosong = sesi bukan draft, atau permintaannya gagal (fail-soft,
+     * sama seperti sebelum ini).
+     */
+    suspend fun refreshValidationStatuses(
+        sessionId: String,
+        sessionStatus: String
+    ): List<OpnameUnitDto> {
         // `cancel`/`finalize` sengaja mengosongkan buffer (clearSession), tapi server TIDAK
         // menghapus unitnya saat sesi dibatalkan. Tanpa penjaga ini, membuka lagi sesi yang
         // sudah ditutup menyisipkan seluruh unitnya kembali ke Room dan tinggal permanen —
         // clearSession tak akan pernah jalan lagi untuk sesi itu.
-        if (sessionStatus != STATUS_DRAFT) return
+        if (sessionStatus != STATUS_DRAFT) return emptyList()
         // Dicatat SEBELUM GET: apa pun yang ditulis setelah ini lebih baru dari
         // snapshot yang sedang dibaca, jadi tak boleh ditimpa olehnya.
         val mulai = System.currentTimeMillis()
         val listed = call("Gagal memuat unit") { api.listOpnameUnits(sessionId) }
-        val items = (listed as? AuthResult.Success)?.data?.items ?: return
+        val items = (listed as? AuthResult.Success)?.data?.items ?: return emptyList()
         // Nama barang tak dibawa DTO unit. Diambil dari daftar barang sesi, sekali dan hanya
         // bila memang ada baris baru yang perlu disisipkan — tanpa itu unit hasil rekonsiliasi
         // tercetak "-" di PDF hitung fisik sementara unit hasil scan di HP ini bernama lengkap.
@@ -401,6 +439,7 @@ class OpnameRepository @Inject constructor(
                 unitDao.updateValidation(sessionId, serial, dto.validationStatus, dto.rejectReason, mulai)
             }
         }
+        return items
     }
 
     /**

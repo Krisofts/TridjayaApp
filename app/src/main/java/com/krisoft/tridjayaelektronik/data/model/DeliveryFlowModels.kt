@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.data.model
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
+import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
 import kotlinx.serialization.Serializable
 
 /**
@@ -325,9 +326,23 @@ data class BrokerOption(val kode: String = "", val nama: String = "")
 @Serializable
 data class BrokerListData(val items: List<BrokerOption> = emptyList())
 
-/** Baris registry serial (`GET /inventory/serial-numbers`). Hanya serialNumber dipakai. */
+/**
+ * Baris registry serial (`GET /inventory/serial-numbers`).
+ *
+ * `kondisi` = vonis admin-stok atas unit fisik ini (migrasi 194):
+ * `layak` | `tidak_layak` | `repair` | `retur`. `null` = belum pernah
+ * ditetapkan — itu BUKAN sinonim `layak`, tapi untuk picker SPK keduanya
+ * sama-sama "tak ada alasan memperingatkan".
+ */
 @Serializable
-data class SerialRegistryRow(val serialNumber: String = "")
+data class SerialRegistryRow(
+    val serialNumber: String = "",
+    val kondisi: String? = null,
+    val kondisiKeterangan: String? = null
+) {
+    /** Perlu diperingatkan sebelum dijual. */
+    val bermasalah: Boolean get() = kondisi != null && kondisi != KONDISI_LAYAK
+}
 
 @Serializable
 data class SerialListData(val items: List<SerialRegistryRow> = emptyList())
