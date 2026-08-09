@@ -240,6 +240,20 @@ class ActivityRegistryTest {
         assertFalse("surat_jalan" in terlihat)
     }
 
+    @Test
+    fun `validasi opname hanya untuk admin-stok`() {
+        // `has_admin_stok` (opname.rs) = SERIAL_INPUT_ROLES = admin-stok SAJA.
+        // Kepala cabang yang MENGUSULKAN unitnya sengaja ditolak memvalidasi
+        // inputnya sendiri, dan `opname.view` (manager/owner read-only) TIDAK
+        // boleh dipakai di sini.
+        assertTrue("opname_validasi" in ids("admin-stok", caps = mapOf("serial.input" to true)))
+        // Admin-stok nyata di produksi umumnya role `karyawan` + divisi admin-stok.
+        assertTrue("opname_validasi" in ids("karyawan", "admin-stok", caps = null))
+        assertFalse("opname_validasi" in ids("kepala-cabang", caps = mapOf("serial.input" to false)))
+        assertFalse("opname_validasi" in ids("manager", caps = null))
+        assertFalse("opname_validasi" in ids("karyawan", caps = null))
+    }
+
     // ── Dedup fan-out ────────────────────────────────────────────────────────
 
     @Test

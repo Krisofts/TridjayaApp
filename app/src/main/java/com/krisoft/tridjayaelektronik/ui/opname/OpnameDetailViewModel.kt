@@ -8,6 +8,8 @@ import com.krisoft.tridjayaelektronik.data.OpnameRepository
 import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
 import com.krisoft.tridjayaelektronik.data.KONDISI_TIDAK_LAYAK
 import com.krisoft.tridjayaelektronik.data.SerialInputRepository
+import com.krisoft.tridjayaelektronik.data.STATUS_DRAFT
+import com.krisoft.tridjayaelektronik.data.VALIDASI_PENDING
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
@@ -55,6 +57,8 @@ data class OpnameDetailUiState(
     /** Usulan yang sedang disusun; `null` = dialog tertutup. */
     val proposal: SerialProposalDraft? = null,
     val proposalMessage: String? = null,
+    /** Unit ketik-manual yang sedang disusun (wajib 2 foto); `null` = dialog tertutup. */
+    val manualDraft: ManualUnitDraft? = null,
     /** Panel status usulan terbuka (dimuat saat dibuka, bukan saat layar dimuat). */
     val requestsOpen: Boolean = false,
     val requestsLoading: Boolean = false,
@@ -80,6 +84,31 @@ data class SerialProposalDraft(
     val fotoSnUrl: String? = null,
     val fotoBarangUrl: String? = null,
     val catatan: String = "",
+    val uploading: Boolean = false,
+    val submitting: Boolean = false,
+    val error: String? = null
+) {
+    val isValid: Boolean
+        get() = serialNumber.isNotBlank() &&
+            !fotoSnUrl.isNullOrBlank() &&
+            !fotoBarangUrl.isNullOrBlank()
+
+    val busy: Boolean get() = uploading || submitting
+}
+
+/**
+ * Unit KETIK MANUAL yang sedang disusun — serial diketik karena barcode-nya
+ * rusak/pudar, jadi klaimnya harus dibuktikan dua foto (label rusak dari dekat
+ * + barang utuh) dan divonis admin-stok. Tanpa ini ketikan tangan tak bisa
+ * dibedakan dari serial yang disalin dari daftar registry.
+ */
+data class ManualUnitDraft(
+    val kodeBarang: String,
+    val namaBarang: String?,
+    val serialNumber: String,
+    val tidakLayak: Boolean,
+    val fotoSnUrl: String? = null,
+    val fotoBarangUrl: String? = null,
     val uploading: Boolean = false,
     val submitting: Boolean = false,
     val error: String? = null
@@ -127,10 +156,15 @@ class OpnameDetailViewModel @Inject constructor(
                 is AuthResult.Success -> {
                     applyDetail(result.data)
                     _uiState.update { it.copy(isLoading = false) }
+                    // Vonis admin-stok (pending → approved/rejected) hidup di server;
+                    // fail-soft, badge lama bertahan bila gagal. Menunggu detail dulu
+                    // karena rekonsiliasi hanya boleh untuk sesi draft (repositori
+                    // menegakkannya) — sesi batal/selesai buffernya sengaja kosong.
+                    launch { repository.refreshValidationStatuses(id, result.data.status) }
                     // Coverage list matters for any viewer while the session is still
                     // draft (owner counting, or kepala-cabang/manager verifying progress)
                     // — completed sessions already have their own reconciled `items`.
-                    if (result.data.status == "draft" && (paksaStock || _uiState.value.stock.isEmpty())) {
+                    if (result.data.status == STATUS_DRAFT && (paksaStock || _uiState.value.stock.isEmpty())) {
                         (repository.stockList(id) as? AuthResult.Success)?.let { stock ->
                             _uiState.update { it.copy(stock = stock.data) }
                         }
@@ -228,6 +262,132 @@ class OpnameDetailViewModel @Inject constructor(
                     it.copy(isSaving = false, saveError = result.message)
                 }
             }
+        }
+    }
+
+    // ── Unit ketik-manual (barcode rusak → wajib 2 foto + validasi) ─────────
+
+    /**
+     * Buka dialog foto untuk serial yang diketik tangan. Mengembalikan `false` bila
+     * dialognya TIDAK jadi terbuka — pemanggil memakai itu untuk memutuskan boleh-tidaknya
+     * mengosongkan kolom ketikan (menghapus ketikan panjang petugas lalu menolaknya sama
+     * saja menyuruh mengetik ulang tanpa tahu salahnya di mana).
+     */
+    fun startManualUnit(serialNumberRaw: String, tidakLayak: Boolean): Boolean {
+        val item = _uiState.value.selectedItem ?: return false
+        val serial = com.krisoft.tridjayaelektronik.data.normalizeSerial(serialNumberRaw)
+        if (serial == null) {
+            _uiState.update { it.copy(saveError = "Serial kosong atau lebih dari 64 karakter") }
+            return false
+        }
+        _uiState.update {
+            it.copy(
+                manualDraft = ManualUnitDraft(
+                    kodeBarang = item.kodeBarang,
+                    namaBarang = item.namaBarang,
+                    serialNumber = serial,
+                    tidakLayak = tidakLayak
+                ),
+                saveError = null,
+                scanMessage = null
+            )
+        }
+        return true
+    }
+
+    fun cancelManualUnit() = _uiState.update { it.copy(manualDraft = null) }
+
+    /** Foto unit manual — kompres + watermark + unggah, pola persis foto usulan SN. */
+    fun uploadManualPhoto(file: File, kind: SerialPhotoKind) {
+        val draft = _uiState.value.manualDraft ?: return
+        updateManual { it.copy(uploading = true, error = null) }
+        viewModelScope.launch {
+            val judul = if (kind == SerialPhotoKind.SERIAL) "TRIDJAYA · LABEL RUSAK" else "TRIDJAYA · FOTO BARANG"
+            val bytes = withContext(Dispatchers.Default) {
+                PhotoWatermark.prepareWatermarkedJpeg(
+                    file = file,
+                    lat = null,
+                    lng = null,
+                    title = judul,
+                    subtitle = draft.serialNumber
+                )
+            }?.first
+            if (bytes == null) {
+                updateManual { it.copy(uploading = false, error = "Foto tidak terbaca, ambil ulang") }
+                return@launch
+            }
+            val nama = "opname_manual_${if (kind == SerialPhotoKind.SERIAL) "label" else "barang"}_${System.currentTimeMillis()}.jpg"
+            when (val up = serialRepository.uploadPhoto(bytes, nama)) {
+                is AuthResult.Success -> updateManual {
+                    if (kind == SerialPhotoKind.SERIAL) {
+                        it.copy(uploading = false, fotoSnUrl = up.data)
+                    } else {
+                        it.copy(uploading = false, fotoBarangUrl = up.data)
+                    }
+                }
+                is AuthResult.Failure -> updateManual {
+                    it.copy(
+                        uploading = false,
+                        error = if (up.code == "network_error") {
+                            "Butuh koneksi untuk mengirim foto — coba lagi saat sinyal kembali"
+                        } else {
+                            up.message
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    fun submitManualUnit() {
+        val draft = _uiState.value.manualDraft ?: return
+        if (!draft.isValid) {
+            updateManual { it.copy(error = "Dua foto wajib diambil sebelum menyimpan") }
+            return
+        }
+        updateManual { it.copy(submitting = true, error = null) }
+        viewModelScope.launch {
+            // Pola sama scan(): tanpa runCatching, kegagalan tulis Room (disk penuh)
+            // meledak SETELAH server menerima unitnya — app mati, atau dialognya
+            // membeku dengan submitting=true (tombol Simpan & Batal ikut mati).
+            val result = runCatching {
+                repository.manualUnit(
+                    sessionId = sessionId,
+                    kodeBarang = draft.kodeBarang,
+                    namaBarang = draft.namaBarang,
+                    serialNumberRaw = draft.serialNumber,
+                    kondisi = if (draft.tidakLayak) KONDISI_TIDAK_LAYAK else KONDISI_LAYAK,
+                    fotoSnUrl = draft.fotoSnUrl.orEmpty(),
+                    fotoBarangUrl = draft.fotoBarangUrl.orEmpty()
+                )
+            }.getOrElse { error ->
+                updateManual {
+                    it.copy(submitting = false, error = error.message ?: "Gagal menyimpan unit")
+                }
+                return@launch
+            }
+            when (result) {
+                is OpnameRepository.ScanResult.Accepted -> {
+                    _uiState.update {
+                        it.copy(
+                            manualDraft = null,
+                            scanMessage = pesanUnitManual(result.serialNumber, result.validationStatus)
+                        )
+                    }
+                    refreshDetail()
+                }
+                is OpnameRepository.ScanResult.Rejected ->
+                    updateManual { it.copy(submitting = false, error = "${result.serialNumber}: ${result.reason}") }
+                // manualUnit tak pernah mengantre — cabang ini cuma penenang kompilator.
+                is OpnameRepository.ScanResult.Queued ->
+                    updateManual { it.copy(submitting = false, error = result.reason) }
+            }
+        }
+    }
+
+    private fun updateManual(block: (ManualUnitDraft) -> ManualUnitDraft) {
+        _uiState.update { state ->
+            state.manualDraft?.let { state.copy(manualDraft = block(it)) } ?: state
         }
     }
 
@@ -424,6 +584,23 @@ class OpnameDetailViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Pesan yang dibaca petugas setelah unit ketik-manual tersimpan — mengikuti vonis
+ * server, bukan mengarang.
+ *
+ * Backend yang belum mengenal input manual menerima unitnya sebagai scan biasa dan
+ * tak membalas `validationStatus`; mengabarkan "menunggu validasi admin stok" di situ
+ * menjanjikan vonis yang tak akan pernah datang. Kelas kesalahan yang sama dengan badge
+ * `pending` karangan, cuma pindah kanal ke pesan.
+ */
+fun pesanUnitManual(serialNumber: String, validationStatus: String?): String =
+    when (validationStatus) {
+        null -> "$serialNumber tersimpan"
+        VALIDASI_PENDING -> "$serialNumber tersimpan — menunggu validasi admin stok"
+        // Status baru dari server tampil apa adanya, bukan disalahartikan jadi "menunggu".
+        else -> "$serialNumber tersimpan — $validationStatus"
+    }
 
 /** Temuan server: serial tak ada di registry cabang mana pun. */
 const val TEMUAN_TIDAK_TERDAFTAR = "tidak_terdaftar"

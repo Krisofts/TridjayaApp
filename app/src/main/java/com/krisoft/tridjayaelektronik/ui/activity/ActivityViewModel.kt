@@ -8,6 +8,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.CrmRepository
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
+import com.krisoft.tridjayaelektronik.data.OpnameRepository
 import com.krisoft.tridjayaelektronik.data.RaportRepository
 import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
@@ -57,6 +58,7 @@ class ActivityViewModel @Inject constructor(
     private val raportRepository: RaportRepository,
     private val aktivitasChatRepository: AktivitasChatRepository,
     private val listIndentUseCase: ListIndentUseCase,
+    private val opnameRepository: OpnameRepository,
     private val spkTodayCounter: SpkTodayCounter,
 ) : ViewModel() {
 
@@ -273,6 +275,13 @@ class ActivityViewModel @Inject constructor(
                 when (val r = listIndentUseCase(status = "menunggu")) {
                     is AuthResult.Success -> counts[ActivitySource.INDENT_PENDING] = r.data.count
                     is AuthResult.Failure -> failed += ActivitySource.INDENT_PENDING
+                }
+            }
+
+            if (ActivitySource.OPNAME_MANUAL_PENDING in sources) jobs += async {
+                when (val r = opnameRepository.manualUnits()) {
+                    is AuthResult.Success -> counts[ActivitySource.OPNAME_MANUAL_PENDING] = r.data.size
+                    is AuthResult.Failure -> failed += ActivitySource.OPNAME_MANUAL_PENDING
                 }
             }
 

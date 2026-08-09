@@ -24,6 +24,11 @@ data class OpnameUnitEntity(
     val kondisi: String,
     val keterangan: String?,
     val temuan: String?,
+    /** `scan` | `manual` — manual = diketik tangan, wajib foto + validasi. */
+    val inputMethod: String = "scan",
+    /** Hanya unit manual: `pending` | `approved` | `rejected`; scan = null. */
+    val validationStatus: String? = null,
+    val rejectReason: String? = null,
     val updatedAtMillis: Long,
     val syncedAtMillis: Long?
 )
@@ -37,8 +42,39 @@ interface OpnameUnitDao {
     @Query("SELECT * FROM opname_units WHERE sessionId = :sessionId AND syncedAtMillis IS NULL ORDER BY updatedAtMillis")
     suspend fun pending(sessionId: String): List<OpnameUnitEntity>
 
-    @Query("SELECT COUNT(*) FROM opname_units WHERE sessionId = :sessionId AND serialNumber = :serialNumber COLLATE NOCASE")
+    // Baris REJECTED tak menghalangi serial yang sama dikirim ulang — server
+    // pun menimpa baris rejected-nya, bukan menolak duplikat.
+    @Query(
+        "SELECT COUNT(*) FROM opname_units WHERE sessionId = :sessionId " +
+            "AND serialNumber = :serialNumber COLLATE NOCASE " +
+            "AND (validationStatus IS NULL OR validationStatus != 'rejected')"
+    )
     suspend fun countSerial(sessionId: String, serialNumber: String): Int
+
+    /**
+     * Tarik vonis admin-stok dari server ke buffer lokal (badge & gate ulang-scan).
+     *
+     * Dua penjaga tambahan di WHERE, dua-duanya menutup balapan dengan scan ulang yang
+     * terjadi SELAGI GET masih terbang: `inputMethod = 'manual'` supaya baris yang sudah
+     * discan ulang (jadi `scan`) tak dicap ulang `rejected`, dan [sebelumMillis] supaya
+     * baris yang ditulis SESUDAH GET dimulai tak ditimpa snapshot pra-scan. Tanpa itu
+     * unit yang sah terlihat ditolak selamanya dan `countSerial` menganggapnya tak ada.
+     */
+    @Query(
+        "UPDATE opname_units SET validationStatus = :status, rejectReason = :reason " +
+            "WHERE sessionId = :sessionId AND serialNumber = :serialNumber COLLATE NOCASE " +
+            "AND inputMethod = 'manual' AND updatedAtMillis <= :sebelumMillis"
+    )
+    suspend fun updateValidation(
+        sessionId: String,
+        serialNumber: String,
+        status: String?,
+        reason: String?,
+        sebelumMillis: Long
+    )
+
+    @Query("SELECT * FROM opname_units WHERE sessionId = :sessionId")
+    suspend fun all(sessionId: String): List<OpnameUnitEntity>
 
     @Query("SELECT COUNT(*) FROM opname_units WHERE sessionId = :sessionId")
     suspend fun countAll(sessionId: String): Int

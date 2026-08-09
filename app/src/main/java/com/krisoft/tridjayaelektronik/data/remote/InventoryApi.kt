@@ -7,8 +7,10 @@ import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameRequest
 import com.krisoft.tridjayaelektronik.data.model.IndentDto
 import com.krisoft.tridjayaelektronik.data.model.IndentListData
+import com.krisoft.tridjayaelektronik.data.model.ManualUnitListData
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriDetailListDto
 import com.krisoft.tridjayaelektronik.data.model.MutasiHistoriListDto
+import com.krisoft.tridjayaelektronik.data.model.RejectUnitBody
 import com.krisoft.tridjayaelektronik.data.model.OpnameContextDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameDeleteData
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
@@ -95,6 +97,39 @@ interface InventoryApi {
         @Path("id") id: String,
         @Path("unitId") unitId: String
     ): Response<ApiResponse<OpnameDetailDto>>
+
+    // ---- Antrian validasi unit ketik-manual (admin-stok SAJA) ----
+    // Guard: inventory-service opname.rs `has_admin_stok` (SERIAL_INPUT_ROLES).
+
+    @GET("api/inventory/opname/manual-units")
+    suspend fun manualUnits(
+        @Query("status") status: String? = null
+    ): Response<ApiResponse<ManualUnitListData>>
+
+    /** Butuh DUA id: sesi (pemilik unit) + unit. Salah urutan = 404, bukan error jelas. */
+    @POST("api/inventory/opname/{id}/units/{unitId}/approve")
+    suspend fun approveManualUnit(
+        @Path("id") id: String,
+        @Path("unitId") unitId: String
+    ): Response<ApiResponse<OpnameDetailDto>>
+
+    @POST("api/inventory/opname/{id}/units/{unitId}/reject")
+    suspend fun rejectManualUnit(
+        @Path("id") id: String,
+        @Path("unitId") unitId: String,
+        @Body body: RejectUnitBody
+    ): Response<ApiResponse<OpnameDetailDto>>
+
+    /**
+     * Foto bukti unit manual — ter-AUTENTIKASI, jadi tak bisa dilempar mentah ke
+     * Coil (ImageLoader app tak memakai OkHttp ber-interceptor auth). Foto opname
+     * manual diunggah lewat `serial-numbers/photo` (SERIAL_UPLOAD_DIR), BUKAN
+     * direktori delivery — memakai `delivery/photo` di sini = 404 senyap.
+     * Kirim NAMA BERKAS saja: Retrofit meng-encode `/` jadi `%2F` dan backend
+     * menolaknya eksplisit.
+     */
+    @GET("api/inventory/serial-numbers/photo/{filename}")
+    suspend fun serialPhoto(@Path("filename") filename: String): Response<okhttp3.ResponseBody>
 
     @POST("api/inventory/opname/{id}/complete")
     suspend fun completeOpname(@Path("id") id: String): Response<ApiResponse<OpnameDetailDto>>

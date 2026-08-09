@@ -27,8 +27,8 @@ android {
         applicationId = "com.krisoft.tridjayaelektronik"
         minSdk = 24
         targetSdk = 35
-        versionCode = 71
-        versionName = "2.60"
+        versionCode = 72
+        versionName = "2.61"
 
         // Gateway Rust tridjaya, deployed at tridjaya.com (HTTPS, no emulator/LAN
         // workaround needed since it's a public domain). Migrated 2026-07-13 from
@@ -102,7 +102,10 @@ android {
             // adalah uninstall app produksi: sesi login karyawan ikut hilang.
             // Debug build biasa (tanpa flag) TIDAK berubah sama sekali.
             if (project.hasProperty("localApi")) {
-                buildConfigField("String", "API_BASE_URL", "\"http://localhost:4100/\"")
+                // -PapiBaseUrl override: HP nyata di luar jangkauan USB/adb reverse
+                // (mis. lewat tunnel Cloudflare) butuh URL publik, bukan localhost.
+                val url = project.findProperty("apiBaseUrl")?.toString() ?: "http://localhost:4100/"
+                buildConfigField("String", "API_BASE_URL", "\"$url\"")
                 applicationIdSuffix = ".localapi"
                 versionNameSuffix = "-localapi"
             }

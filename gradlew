@@ -44,7 +44,15 @@ APP_HOME=$( cd "${APP_HOME:-./}" > /dev/null && pwd -P ) || exit
 APP_BASE_NAME=${0##*/}
 
 # Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+#
+# TANPA tanda kutip di dalam nilainya. Baris `exec` di bawah mengekspansi
+# $DEFAULT_JVM_OPTS TANPA kutip supaya ia terpecah jadi beberapa argumen; kalau
+# nilainya sendiri memuat kutip ('"-Xmx64m"'), yang sampai ke Java adalah token
+# berisi karakter kutip dan ia menganggapnya NAMA KELAS:
+#   Error: Could not find or load main class "-Xmx64m"
+# Wrapper resmi Gradle lolos dari ini lewat tahap `eval set -- $(... xargs ...)`
+# yang skrip ringkas ini tak punya. Nilai tanpa spasi jadi aman apa adanya.
+DEFAULT_JVM_OPTS='-Xmx64m -Xms64m'
 
 warn () {
     echo "$*"

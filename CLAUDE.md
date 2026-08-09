@@ -398,12 +398,12 @@ nyata. Kontrak lengkap: `docs/absen-api-contract.md`.
   `-dontwarn com.google.errorprone.annotations.**` or R8 fails on missing classes).
 - **R8 is legitimately slow in this dev environment** (observed 5-15+ min for `minifyReleaseWithR8`
   alone) — this is environment-specific, not a sign the build is stuck. Don't kill it prematurely;
-  check CPU usage via `Get-Process java` if in doubt (climbing CPU = still working).
+  check CPU usage via `ps aux | grep java` or `top` if in doubt (climbing CPU = still working).
 - A signed release APK and a debug APK have **different signatures** — installing one over the
   other on the same device requires `adb uninstall` first (wipes local app data/login). Always
   ask before doing this; it's destructive to the user's test session.
 - Observed R8 wall-clock on a full release build here: **~44 min** once (cold-ish). Build via
-  `run_in_background`, watch the Gradle daemon's `java.exe` CPU/RAM climbing to confirm progress,
+  `run_in_background`, watch the Gradle daemon's `java` CPU/RAM climbing to confirm progress,
   and only trust `BUILD SUCCESSFUL` in the output — `--console=plain` buffers, so an empty output
   file mid-build is normal, not a hang.
 - **`versionCode` must be bumped** in `app/build.gradle.kts` for every release (per 2026-07-29:
@@ -438,23 +438,25 @@ Done in a dedicated "is this ready to ship?" pass; don't regress these:
 
 ## Build & deploy workflow (this dev environment specifically)
 
+**Dipindah dari Windows/laragon ke Kali Linux pada 2026-08-08 — semua path di bawah sudah
+diverifikasi ulang di mesin baru; jangan pakai catatan `C:\...` versi lama.**
+
 - No Android Studio GUI available in this environment — everything via Gradle CLI.
-- `gradlew` invoked directly via
-  `"C:\Program Files\Android\Android Studio\jbr\bin\java.exe" -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain <task>`
-  (bypasses `gradlew.bat`/shell script quoting issues). Catatan lama menyebut
-  `C:\laragon\jdk17\bin\java.exe` — **tidak ada di mesin ini** (2026-08-03), dan `java` juga tidak
-  ada di PATH; JBR Android Studio di atas yang dipakai.
-- **Kutip flag `-P` di PowerShell.** `-Pkotlin.compiler.execution.strategy=in-process` tanpa tanda
-  kutip dipecah jadi dua argumen sehingga Gradle gagal dengan `Task '.compiler.execution.strategy=
-  in-process' not found`. Tulis `"-Pkotlin.compiler.execution.strategy=in-process"`.
+- Sistem cuma punya `openjdk-25-jre` (JRE, **tanpa `javac`**) — `javac`/`java` di PATH tidak cukup
+  untuk build. JDK 17 yang benar ada di `~/.jdks/jdk-17.0.20+8` (Temurin), diekspor sebagai
+  `$JAVA_HOME_17` lewat `~/.zshrc`. **Selalu override eksplisit:**
+  `JAVA_HOME=$JAVA_HOME_17 ./gradlew <task>` (gradlew fallback ke `java` biasa di PATH kalau
+  `JAVA_HOME` kosong, yang salah versi).
+- Tidak ada lagi isu quoting PowerShell untuk flag `-P` — di bash/zsh
+  `-Pkotlin.compiler.execution.strategy=in-process` jalan normal tanpa perlu tanda kutip khusus.
 - Builds are slow (1-3+ min for debug, much longer for release/R8) — always run via
   `run_in_background: true` and poll with `ScheduleWakeup`, don't block synchronously.
   Patokan nyata: `:app:installDebug` dingin (daemon baru) memakan **~18 menit** di mesin ini.
-- Android SDK: `C:\Users\adm_c\AppData\Local\Android\Sdk`, dipasok lewat `local.properties`
-  (`sdk.dir`) — `ANDROID_HOME`/`ANDROID_SDK_ROOT` kosong di shell ini. Catatan lama menyebut
-  `C:\laragon\android-sdk` dan `C:/Users/acer/...`; keduanya **tidak ada**.
-- `adb.exe` ada di `C:\Users\adm_c\AppData\Local\Android\Sdk\platform-tools\adb.exe` (tidak ada di
-  PATH — pakai path lengkap).
+  (Angka ini dari mesin Windows lama — belum ada patokan baru di Kali, catat ulang kalau sudah ada.)
+- Android SDK: `~/Android/Sdk`, dipasok lewat `local.properties` (`sdk.dir`) **dan** `$ANDROID_HOME`
+  (diekspor di `~/.zshrc`).
+- `adb` ada di `$ANDROID_HOME/platform-tools/adb` dan **sudah masuk `$PATH`** (lewat `~/.zshrc`) —
+  panggil `adb` langsung, tidak perlu path lengkap.
 - Test device: physical phone, serial `30531702210004R`. `adb devices -l` sometimes shows it
   disconnected if the USB cable/authorization dropped — ask the user to reconnect rather than
   assuming the device is gone.

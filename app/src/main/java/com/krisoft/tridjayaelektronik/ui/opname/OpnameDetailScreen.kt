@@ -548,9 +548,19 @@ fun OpnameDetailScreen(
                 search = ""
             },
             onScan = { serial, tidakLayak -> viewModel.scan(serial, tidakLayak) },
+            onManual = { serial, tidakLayak -> viewModel.startManualUnit(serial, tidakLayak) },
             onDelete = { unit -> viewModel.deleteUnit(unit) },
             canPropose = state.canPropose,
             onUsulkan = { unit -> viewModel.startProposal(unit) }
+        )
+    }
+
+    state.manualDraft?.let { draft ->
+        ManualUnitDialog(
+            draft = draft,
+            onCapture = { file, kind -> viewModel.uploadManualPhoto(file, kind) },
+            onSubmit = viewModel::submitManualUnit,
+            onDismiss = viewModel::cancelManualUnit
         )
     }
 
@@ -768,14 +778,26 @@ private fun ScannedUnitRow(
                             append(temuanLabel(it))
                         }
                         if (unit.syncedAtMillis == null) append(" \u00b7 menunggu kirim")
+                        when (unit.validationStatus) {
+                            "pending" -> append(" \u00b7 MANUAL, menunggu validasi admin stok")
+                            "rejected" -> {
+                                append(" \u00b7 MANUAL DITOLAK")
+                                unit.rejectReason?.let { append(": $it") }
+                                append(" \u2014 scan/kirim ulang")
+                            }
+                            "approved" -> append(" \u00b7 manual disetujui")
+                        }
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (unit.temuan != null || unit.syncedAtMillis == null) {
+                    color = if (
+                        unit.temuan != null || unit.syncedAtMillis == null ||
+                        unit.validationStatus == "pending" || unit.validationStatus == "rejected"
+                    ) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    maxLines = 2,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (onUsulkan != null) {
@@ -887,6 +909,70 @@ private fun statusUsulanLabel(status: String): String = when (status) {
     "approved" -> "DISETUJUI"
     "rejected" -> "DITOLAK"
     else -> status.uppercase()
+}
+
+/**
+ * Unit ketik-manual — dua foto wajib (label rusak dari dekat + barang utuh),
+ * lalu menunggu validasi admin-stok. Reuse `SerialPhotoField` milik usulan SN:
+ * mekanik fotonya identik, yang beda cuma tujuan kirimnya.
+ */
+@Composable
+private fun ManualUnitDialog(
+    draft: ManualUnitDraft,
+    onCapture: (java.io.File, SerialPhotoKind) -> Unit,
+    onSubmit: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!draft.busy) onDismiss() },
+        title = { Text("Input manual + foto bukti") },
+        text = {
+            Column {
+                Text(
+                    text = "${draft.serialNumber}\n${draft.kodeBarang}${draft.namaBarang?.let { " · $it" } ?: ""}" +
+                        if (draft.tidakLayak) "\nKondisi: TIDAK LAYAK" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Serial diketik tangan, jadi unit ini baru dihitung setelah admin stok memeriksa fotonya. Sesi tidak bisa ditutup selama masih menunggu.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SerialPhotoField(
+                    label = "Foto label/serial rusak",
+                    hint = "Dekat — tunjukkan label yang tak bisa discan",
+                    url = draft.fotoSnUrl,
+                    enabled = !draft.busy,
+                    kind = SerialPhotoKind.SERIAL,
+                    onCapture = onCapture
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                SerialPhotoField(
+                    label = "Foto barang",
+                    hint = "Seluruh unit terlihat",
+                    url = draft.fotoBarangUrl,
+                    enabled = !draft.busy,
+                    kind = SerialPhotoKind.BARANG,
+                    onCapture = onCapture
+                )
+                draft.error?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ExpressiveInlineError(message = it)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSubmit, enabled = draft.isValid && !draft.busy) {
+                Text(if (draft.submitting) "Mengirim…" else "Simpan unit")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !draft.busy) { Text("Batal") }
+        }
+    )
 }
 
 /**
@@ -1078,8 +1164,9 @@ private fun CompletedItemRow(item: OpnameItemDto) {
 
 /**
  * Panel scan: satu barang, banyak unit. Tombol scan memakai Google code scanner yang
- * sudah dipakai PDI/SPK (tanpa izin kamera); ketik manual tetap tersedia untuk barcode
- * yang rusak.
+ * sudah dipakai PDI/SPK (tanpa izin kamera). Ketik manual tetap tersedia untuk barcode
+ * yang rusak — tapi TIDAK langsung tersimpan: [onManual] membuka dialog dua foto bukti
+ * dan unitnya menunggu validasi admin-stok (ketikan tangan tak membuktikan barangnya ada).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1091,6 +1178,8 @@ private fun ScanUnitSheet(
     scanMessage: String?,
     onDismiss: () -> Unit,
     onScan: (serial: String, tidakLayak: Boolean) -> Unit,
+    /** `true` = dialog dua-foto terbuka; `false` = ditolak, ketikan dipertahankan. */
+    onManual: (serial: String, tidakLayak: Boolean) -> Boolean,
     onDelete: (OpnameUnitEntity) -> Unit,
     canPropose: Boolean,
     onUsulkan: ((OpnameUnitEntity) -> Unit)?
@@ -1146,8 +1235,9 @@ private fun ScanUnitSheet(
             Spacer(modifier = Modifier.height(8.dp))
             ExpressiveFilledButton(
                 onClick = {
-                    onScan(manual, tidakLayak)
-                    manual = ""
+                    // Dikosongkan hanya bila dialognya benar-benar terbuka — kalau serialnya
+                    // ditolak, ketikan panjang petugas tak boleh ikut lenyap.
+                    if (onManual(manual, tidakLayak)) manual = ""
                 },
                 enabled = !isSaving && manual.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
@@ -1161,9 +1251,15 @@ private fun ScanUnitSheet(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Menyimpan...")
                 } else {
-                    Text("Tambah Unit")
+                    Text("Simpan Manual + Foto")
                 }
             }
+            Text(
+                text = "Serial yang diketik wajib 2 foto bukti dan menunggu validasi admin stok — pakai tombol scan bila barcode masih terbaca.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
             if (saveError != null) {
                 Spacer(modifier = Modifier.height(8.dp))

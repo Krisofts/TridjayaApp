@@ -128,6 +128,11 @@ data class OpnameUnitDto(
     val kondisi: String = "layak",
     val temuan: String? = null,
     val keterangan: String? = null,
+    /** `scan` | `manual` — ketik manual wajib 2 foto + validasi admin-stok. */
+    val inputMethod: String = "scan",
+    /** Hanya unit manual: `pending` | `approved` | `rejected`; scan = null. */
+    val validationStatus: String? = null,
+    val rejectReason: String? = null,
     val countedByUserId: String = "",
     val countedByName: String? = null,
     val countedAt: String = ""
@@ -138,7 +143,11 @@ data class OpnameUnitInput(
     val kodeBarang: String,
     val serialNumber: String,
     val kondisi: String = "layak",
-    val keterangan: String? = null
+    val keterangan: String? = null,
+    /** Absen = server memakai default `scan` — kompatibel dgn backend lama. */
+    val inputMethod: String? = null,
+    val fotoSnUrl: String? = null,
+    val fotoBarangUrl: String? = null
 )
 
 @Serializable
@@ -149,7 +158,9 @@ data class CreateOpnameUnitsRequest(
 @Serializable
 data class OpnameUnitAccepted(
     val serialNumber: String = "",
-    val temuan: String? = null
+    val temuan: String? = null,
+    /** `pending` bila unitnya manual — bahan pesan "menunggu validasi". */
+    val validationStatus: String? = null
 )
 
 @Serializable
@@ -172,6 +183,53 @@ data class CreateOpnameUnitsData(
 @Serializable
 data class OpnameUnitListData(
     val items: List<OpnameUnitDto> = emptyList()
+)
+
+/**
+ * Satu baris antrian validasi admin-stok — unit ketik-manual PLUS konteks
+ * sesinya (antriannya lintas sesi, jadi pemutus harus tahu cabang & kode
+ * opname-nya). Backend serde-flatten `OpnameUnit` ke objek yang sama, makanya
+ * field unit diulang di sini alih-alih dibungkus [OpnameUnitDto].
+ *
+ * `fotoSnUrl`/`fotoBarangUrl` nullable walau kontraknya menjanjikan terisi:
+ * baris lama (sebelum foto diwajibkan) bisa kosong, dan "memang tak ada foto"
+ * WAJIB terlihat beda dari "foto gagal dimuat".
+ */
+@Serializable
+data class ManualUnitDto(
+    val id: String = "",
+    val kodeBarang: String = "",
+    val serialNumber: String = "",
+    val kondisi: String = "layak",
+    val temuan: String? = null,
+    val keterangan: String? = null,
+    val inputMethod: String = "manual",
+    val validationStatus: String? = null,
+    val fotoSnUrl: String? = null,
+    val fotoBarangUrl: String? = null,
+    val validatedByName: String? = null,
+    val rejectReason: String? = null,
+    val countedByUserId: String = "",
+    val countedByName: String? = null,
+    val countedAt: String = "",
+    val sessionId: String = "",
+    val kodeOpname: String = "",
+    val dealerCode: String = "",
+    val dealerName: String = "",
+    val sessionStatus: String = ""
+)
+
+/** Body tolak — server 400 kalau `alasan` kosong; klien menolak lebih dulu. */
+@Serializable
+data class RejectUnitBody(
+    val alasan: String
+)
+
+@Serializable
+data class ManualUnitListData(
+    val count: Int = 0,
+    val status: String = "",
+    val items: List<ManualUnitDto> = emptyList()
 )
 
 /** `DELETE /api/inventory/opname/{id}` — sesi sudah lenyap, cuma id yg dikonfirmasi. */

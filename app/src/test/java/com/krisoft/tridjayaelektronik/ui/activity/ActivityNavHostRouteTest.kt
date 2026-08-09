@@ -83,6 +83,20 @@ class ActivityNavHostRouteTest {
         assertNotNull(routeForNavKey("review_bukti_chat"))
     }
 
+    /**
+     * `route_for_kind` mengirim "opname_validasi" untuk kind
+     * `opname_manual_submitted` (channel `approval`). Salah ketik antara Rust
+     * dan peta ini = notif tampil, tap-nya cuma membuka app, nol error di kedua
+     * sisi.
+     */
+    @Test
+    fun `route notif validasi opname dikenali peta route`() {
+        assertNotNull(
+            "route 'opname_validasi' tak dikenali — tap notif unit manual jadi buntu",
+            routeForNavKey("opname_validasi")
+        )
+    }
+
     @Test
     fun `navKey yang tak dikenal tetap null`() {
         assertNull(routeForNavKey("panduan"))
