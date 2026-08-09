@@ -65,6 +65,7 @@ import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.BarcodeScanButton
 import com.krisoft.tridjayaelektronik.data.model.OpnameItemDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
+import com.krisoft.tridjayaelektronik.data.model.OpnameUnitDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
@@ -432,6 +433,12 @@ fun OpnameDetailScreen(
                                     }
                                 )
                             }
+                        }
+                    }
+
+                    if (state.selisihKondisi.isNotEmpty()) {
+                        item(key = "selisih_kondisi") {
+                            SelisihKondisiCard(state.selisihKondisi)
                         }
                     }
 
@@ -1176,6 +1183,53 @@ private fun CompletedItemRow(item: OpnameItemDto) {
  * yang rusak — tapi TIDAK langsung tersimpan: [onManual] membuka dialog dua foto bukti
  * dan unitnya menunggu validasi admin-stok (ketikan tangan tak membuktikan barangnya ada).
  */
+/**
+ * Unit yang temuan lapangannya BEDA dari kondisi yang ditetapkan admin-stok.
+ *
+ * Inti dari keputusan menyimpan kondisi di dua tempat (registry + sesi): tanpa
+ * daftar ini kedua angka cuma duduk berdampingan tanpa ada yang membacanya.
+ * Benderanya datang dari server (`kondisiSelisih`) dan TIDAK dihitung ulang di
+ * sini — unit yang kondisinya belum pernah ditetapkan bukan selisih, dan salah
+ * memperlakukannya akan menandai ribuan baris impor Excel sebagai temuan palsu.
+ */
+@Composable
+private fun SelisihKondisiCard(items: List<OpnameUnitDto>) {
+    ClayCard(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = "${items.size} unit beda dari kondisi yang ditetapkan admin stok",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+            Text(
+                text = "Bukan penolakan — cocokkan lagi barangnya, lalu minta admin stok memperbarui kondisinya kalau memang sudah berubah.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            items.forEach { unit ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) {
+                    Text(
+                        text = unit.serialNumber,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${kondisiLabel(unit.kondisiRegistry.orEmpty())} \u2192 ${kondisiLabel(unit.kondisi)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ScanUnitSheet(

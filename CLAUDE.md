@@ -179,6 +179,15 @@ Konsekuensi yang mengikat app:
   rangka); barang kecil tuntas sekali klik lewat `POST /delivery/{id}/pdi-kecil`.
   `isBarangBesar` FAIL-CLOSED — harga/ambang tak diketahui = besar, jadi server
   lama otomatis kembali ke perilaku per unit. **Jangan hardcode 1.500.000.**
+- **Picker serial SPK MEMPERINGATKAN unit repair/retur, tidak memblokirnya**
+  (keputusan user 2026-08-09). `SerialRegistryRow` kini membawa `kondisi` +
+  `kondisiKeterangan`; `SpkItemCard` menampilkan peringatan merah saat unit
+  terpilih bermasalah, dan `serialUntukDisarankan()` menaikkan unit sehat ke
+  atas SEBELUM daftarnya dipotong lima — tanpa itu satu batch unit retur bisa
+  mengisi seluruh saran dan menyembunyikan unit layak di posisi keenam. Memblokir
+  sengaja TIDAK dipilih: registry bisa telat diperbarui, dan unit repair yang
+  sudah selesai diperbaiki masih bertanda repair. Server tidak menegakkan apa pun
+  soal ini — murni lapisan klien.
 - **Diskon ditolak TIDAK lagi melepas unit.** SPK kembali ke sales dan unitnya
   tetap `pending_discount` sampai dia memilih: revisi diskon (lewat web —
   `POST /discount-requests` tak pernah dipanggil dari app), sunting isi SPK
@@ -551,6 +560,12 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   bukan lagi "tersimpan salah" melainkan unitnya tak terhitung sama sekali. Kondisi & keterangan
   sengaja BERTAHAN antar scan dalam satu sheet (satu rak rusak ditandai berturut-turut);
   meresetnya tiap unit membuat petugas diam-diam mencatat sisanya sebagai layak.
+  **Selisih registry vs lapangan** (`kondisiRegistry`/`kondisiSelisih` dari server) tampil
+  sebagai kartu di layar detail sesi. Nilainya SENGAJA tidak disimpan ke Room: vonis registry
+  berubah kapan saja admin-stok mengubahnya, jadi menyalinnya ke buffer lokal = menampilkan
+  vonis basi di layar yang justru dipakai memverifikasi. Konsekuensinya kartu itu kosong saat
+  offline — itu jujur, pembandingnya memang tak terbaca. `refreshValidationStatuses` karena
+  itu MENGEMBALIKAN daftar unit versi server, bukan cuma menulis ke Room.
 - **Pusat Notifikasi** (`ui/notifications/`) + deep-link FCM; notifikasi terbaca bisa dihapus.
 - Indent, mutasi histori, deadstock, perubahan harga ERP, payroll, input serial — masing-masing
   satu layar + ViewModel, semuanya ber-gate (lihat `ActivityRegistry`/`QuickAccessMenus`).

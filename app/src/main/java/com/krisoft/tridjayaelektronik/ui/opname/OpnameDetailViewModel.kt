@@ -13,6 +13,7 @@ import com.krisoft.tridjayaelektronik.data.VALIDASI_PENDING
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
+import com.krisoft.tridjayaelektronik.data.model.OpnameUnitDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -54,6 +55,14 @@ data class OpnameDetailUiState(
      * unit tak terdaftar.
      */
     val canPropose: Boolean = true,
+    /**
+     * Unit yang temuan lapangannya BEDA dari kondisi yang ditetapkan admin-stok
+     * di registry. Datang langsung dari server (`kondisiSelisih`) dan sengaja
+     * TIDAK disimpan ke Room: vonis registry bisa berubah kapan saja, dan
+     * daftar basi di layar verifikasi lebih buruk daripada daftar kosong.
+     * Kosong juga saat offline — itu jujur: pembandingnya memang tak terbaca.
+     */
+    val selisihKondisi: List<OpnameUnitDto> = emptyList(),
     /** Usulan yang sedang disusun; `null` = dialog tertutup. */
     val proposal: SerialProposalDraft? = null,
     val proposalMessage: String? = null,
@@ -163,7 +172,12 @@ class OpnameDetailViewModel @Inject constructor(
                     // fail-soft, badge lama bertahan bila gagal. Menunggu detail dulu
                     // karena rekonsiliasi hanya boleh untuk sesi draft (repositori
                     // menegakkannya) — sesi batal/selesai buffernya sengaja kosong.
-                    launch { repository.refreshValidationStatuses(id, result.data.status) }
+                    launch {
+                        val serverUnits = repository.refreshValidationStatuses(id, result.data.status)
+                        _uiState.update {
+                            it.copy(selisihKondisi = serverUnits.filter { u -> u.kondisiSelisih })
+                        }
+                    }
                     // Coverage list matters for any viewer while the session is still
                     // draft (owner counting, or kepala-cabang/manager verifying progress)
                     // — completed sessions already have their own reconciled `items`.

@@ -10,6 +10,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
 import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
+import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
 import com.krisoft.tridjayaelektronik.data.model.ConfirmSpkBody
 import com.krisoft.tridjayaelektronik.data.model.CreateDeliveryBody
@@ -116,7 +117,7 @@ data class DeliveryFlowUiState(
     /** Hasil autocomplete broker KBK (Input SPK section 3). */
     val brokerResults: List<com.krisoft.tridjayaelektronik.data.model.BrokerOption> = emptyList(),
     /** Serial per `"$kodeDealer|$kodeBarang"` — picker per-item SPK multi-unit. */
-    val serialOptions: Map<String, List<String>> = emptyMap(),
+    val serialOptions: Map<String, List<SerialRegistryRow>> = emptyMap(),
     /** Checklist serah-terima stage=driver (088) — kosong bila kategori tak ber-item / pre-088. */
     val driverChecklist: List<com.krisoft.tridjayaelektronik.data.model.ChecklistItemDto> = emptyList(),
     /** Gagal memuat checklist driver — FAIL-HARD: submit serah terima diblok sampai

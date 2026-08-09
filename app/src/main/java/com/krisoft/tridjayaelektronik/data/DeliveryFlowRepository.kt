@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.data
 
+import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.AssignBody
 import com.krisoft.tridjayaelektronik.data.model.ConfirmSpkBody
@@ -247,12 +248,20 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
-    /** Serial tersedia utk cabang+barang → list string serialNumber. */
-    suspend fun serialNumbers(kodeDealer: String, kodeBarang: String): AuthResult<List<String>> = try {
+    /**
+     * Serial tersedia utk cabang+barang. Mengembalikan BARIS registry utuh,
+     * bukan cuma string serialnya: tiap baris membawa `kondisi` yang dipakai
+     * memperingatkan sales sebelum unit repair/retur ikut terjual.
+     */
+    suspend fun serialNumbers(
+        kodeDealer: String,
+        kodeBarang: String
+    ): AuthResult<List<SerialRegistryRow>> = try {
         val response = api.serialNumbers(kodeDealer = kodeDealer, kodeBarang = kodeBarang)
         val data = response.body()?.data
-        if (response.isSuccessful && data != null) AuthResult.Success(data.items.map { it.serialNumber }.filter { it.isNotBlank() })
-        else parseError(response, "Gagal memuat serial")
+        if (response.isSuccessful && data != null) {
+            AuthResult.Success(data.items.filter { it.serialNumber.isNotBlank() })
+        } else parseError(response, "Gagal memuat serial")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }

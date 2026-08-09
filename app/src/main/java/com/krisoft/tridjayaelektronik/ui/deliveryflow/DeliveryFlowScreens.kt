@@ -1154,7 +1154,17 @@ private fun SpkTimelineCard(
         discounts.firstOrNull()?.let { d ->
             val nilai = if (d.discountType == "percent") "${d.value.toInt()}%" else formatRupiahShort(d.value)
             when (d.status) {
-                "approved" -> add(TimelineStep("Diskon Disetujui", d.decidedAt, "$nilai oleh ${d.decidedByName ?: "-"}"))
+                // Catatan persetujuan ikut DI SINI, setara alasan penolakan di
+                // baris bawah: approver bisa menuliskannya (web sejak lama, app
+                // sejak 2026-08-09) dan server mengirimkannya ke WA pengaju —
+                // tanpa baris ini catatan itu ada di mana-mana KECUALI di app.
+                "approved" -> add(TimelineStep(
+                    "Diskon Disetujui", d.decidedAt,
+                    listOfNotNull(
+                        "$nilai oleh ${d.decidedByName ?: "-"}",
+                        d.decisionNote?.trim()?.takeIf { it.isNotEmpty() },
+                    ).joinToString(" · "),
+                ))
                 "rejected" -> add(TimelineStep("Diskon Ditolak", d.decidedAt, d.decisionNote ?: d.decidedByName))
                 // Status BARU 2026-08-07. Tanpa arm ini ia jatuh ke `else` dan
                 // timeline menulis "Menunggu Approval Diskon" untuk barang yang
@@ -2944,7 +2954,7 @@ fun CreateSpkScreen(
                                 index = idx,
                                 item = item,
                                 issues = if (attemptedSubmit) item.issues() else emptyList(),
-                                serialOptions = (state.serialOptions[key] ?: emptyList()).filter { it !in usedElsewhere },
+                                serialOptions = (state.serialOptions[key] ?: emptyList()).filter { it.serialNumber !in usedElsewhere },
                                 brokerResults = state.brokerResults,
                                 brokerSearch = brokerSearch,
                                 onBrokerSearch = { brokerSearch = it },
@@ -3228,6 +3238,15 @@ fun DiscountApprovalScreen(
     // Id PENGAJUAN yang sedang ditolak — bukan lagi "anchor" se-SPK: sejak
     // 2026-08-07 penolakan cuma mengenai barang yang ditunjuk.
     var rejectId by remember { mutableStateOf<String?>(null) }
+    // Approve JUGA lewat dialog (2026-08-09). Dulu tombol "Setujui" langsung
+    // mengirim `note = ""`, dan itu dua masalah sekaligus: (1) `decisionNote`
+    // ikut ke WA + push pengaju (discounts.rs `approve_request`), jadi approve
+    // dari HP selalu sampai ke sales TANPA konteks sementara approve dari web
+    // membawanya; (2) approve tak bisa dianulir (`UPDATE … WHERE status =
+    // 'pending'`) dan justru MELEPAS SPK ke PDI kalau barang ini yang terakhir,
+    // sedangkan tombolnya cuma 12dp dari "Tolak" yang punya dialog. Yang
+    // irreversible-lah yang paling butuh jeda.
+    var approveId by remember { mutableStateOf<String?>(null) }
 
     TridjayaCollapsibleHeader(title = "Approval Diskon", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -3296,7 +3315,7 @@ fun DiscountApprovalScreen(
                             pengajuan = urut,
                             submitting = state.diskonSubmitting,
                             buktiFoto = state.diskonBuktiPhotos,
-                            onApprove = { id -> viewModel.approveDiscount(id, "") },
+                            onApprove = { id -> approveId = id },
                             onReject = { id -> rejectId = id },
                             onDetail = { onDetailSpk(kode) },
                         )
@@ -3305,6 +3324,75 @@ fun DiscountApprovalScreen(
                 }
               }
             }
+        }
+    }
+
+    approveId?.let { id ->
+        val target = state.discounts.firstOrNull { it.id == id }
+        if (target == null) {
+            // Pengajuan bisa lenyap dari daftar selagi dialog terbuka (ganti
+            // periode, pull-refresh, atau approver lain menutupnya duluan).
+            // Menutup dialog lebih jujur daripada mengirim keputusan atas
+            // barang yang tak lagi ada di layar.
+            LaunchedEffect(id) { approveId = null }
+        } else {
+            var note by remember(id) { mutableStateOf("") }
+            val seSpk = state.discounts.filter { it.spkBatchKode == target.spkBatchKode }
+            val kemajuan = kemajuanSpk(seSpk)
+            // −1 karena barang INI belum ikut terhitung tuntas saat dialog dibuka.
+            val sisa = (kemajuan.total - kemajuan.tuntas - 1).coerceAtLeast(0)
+            AlertDialog(
+                onDismissRequest = { approveId = null },
+                title = { Text("Setujui diskon barang ini?", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text(
+                            listOfNotNull(
+                                target.jobSummary?.namaBarang?.takeIf { it.isNotBlank() }
+                                    ?: "Seluruh SPK",
+                                ringkasHarga(target).takeIf { it.isNotBlank() },
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        // Yang tak terlihat dari tombolnya: approve TIDAK bisa
+                        // dianulir (server hanya menerima transisi dari
+                        // `pending`), dan kalau barang ini yang terakhir,
+                        // `release_batch_kalau_tuntas` melepas SELURUH unit SPK
+                        // ke antrian PDI sekaligus. Sebutkan sisanya supaya
+                        // approver tahu ketukan ini menutup pintu atau tidak.
+                        Text(
+                            if (sisa > 0)
+                                "Hanya barang ini yang disetujui. $sisa barang lain SPK ini belum " +
+                                    "tuntas — SPK baru masuk antrian PDI setelah semuanya selesai. " +
+                                    "Persetujuan tidak bisa dibatalkan."
+                            else
+                                "Barang terakhir SPK ini. Menyetujuinya melepas SELURUH unit SPK " +
+                                    "ke antrian PDI. Persetujuan tidak bisa dibatalkan.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        // Opsional — beda dari alasan penolakan. Tapi bukan
+                        // hiasan: server menyelipkannya ke WA + push pengaju,
+                        // jadi inilah satu-satunya cara approver menjelaskan
+                        // "disetujui, tapi…" kepada sales.
+                        ExpressiveTextField(
+                            note, { note = it },
+                            label = "Catatan persetujuan (opsional)",
+                            singleLine = false,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { viewModel.approveDiscount(id, note.trim()); approveId = null }
+                    ) { Text("Setujui") }
+                },
+                dismissButton = { TextButton(onClick = { approveId = null }) { Text("Batal") } }
+            )
         }
     }
 
