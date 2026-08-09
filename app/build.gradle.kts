@@ -102,7 +102,10 @@ android {
             // adalah uninstall app produksi: sesi login karyawan ikut hilang.
             // Debug build biasa (tanpa flag) TIDAK berubah sama sekali.
             if (project.hasProperty("localApi")) {
-                buildConfigField("String", "API_BASE_URL", "\"http://localhost:4100/\"")
+                // -PapiBaseUrl override: HP nyata di luar jangkauan USB/adb reverse
+                // (mis. lewat tunnel Cloudflare) butuh URL publik, bukan localhost.
+                val url = project.findProperty("apiBaseUrl")?.toString() ?: "http://localhost:4100/"
+                buildConfigField("String", "API_BASE_URL", "\"$url\"")
                 applicationIdSuffix = ".localapi"
                 versionNameSuffix = "-localapi"
             }
