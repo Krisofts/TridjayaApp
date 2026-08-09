@@ -125,6 +125,15 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Alasan sesi SEBELUMNYA berakhir. Dipisah dari `errorMessage`
+                // (kegagalan percobaan login yang sedang berjalan) supaya tak
+                // hilang begitu pengguna mengetik. Tanpa blok ini, sesi yang
+                // dicabut membuat layar Login muncul kosong dan terbaca sebagai
+                // "aplikasi error" — bukan "sesi saya diambil alih".
+                state.alasanSesiBerakhir?.let { alasan ->
+                    ExpressiveFormError(message = alasan)
+                }
+
                 if (state.errorMessage != null) {
                     ExpressiveFormError(message = state.errorMessage ?: "")
                 }

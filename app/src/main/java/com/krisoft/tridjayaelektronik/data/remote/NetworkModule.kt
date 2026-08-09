@@ -3,6 +3,8 @@ package com.krisoft.tridjayaelektronik.data.remote
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.krisoft.tridjayaelektronik.BuildConfig
 import com.krisoft.tridjayaelektronik.data.TokenStore
+import com.krisoft.tridjayaelektronik.data.AlasanSesiBerakhir
+import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.RefreshRequest
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
@@ -71,7 +73,7 @@ object NetworkModule {
 
         val client = baseClientBuilder()
             .addInterceptor(AuthHeaderInterceptor(tokenStore, refresher))
-            .authenticator(TokenRefreshAuthenticator(refresher))
+            .authenticator(TokenRefreshAuthenticator(refresher, tokenStore))
             .build()
 
         return buildRetrofit(client)
@@ -219,7 +221,19 @@ private class TokenRefresher(
         val current = tokenStore.accessToken
         if (!current.isNullOrBlank() && current != staleToken) return current
 
-        val refreshToken = tokenStore.refreshToken ?: run { tokenStore.clear(); return null }
+        // Tak ada token refresh. DUA keadaan yang berbeda:
+        //  - masih ada access token  -> sesi memang habis, beri alasannya;
+        //  - tak ada apa-apa         -> BELUM PERNAH login (atau sudah logout
+        //    bersih). Mencatat alasan di sini menyambut orang yang baru membuka
+        //    app dengan "Sesi tidak valid" padahal ia belum sempat login.
+        val refreshToken = tokenStore.refreshToken ?: run {
+            if (current.isNullOrBlank()) {
+                tokenStore.clear()
+            } else {
+                tokenStore.clear(AlasanSesiBerakhir.dari(null, null))
+            }
+            return null
+        }
 
         val response = try {
             runBlocking { plainAuthApi.refresh(RefreshRequest(refreshToken)) }
@@ -230,7 +244,15 @@ private class TokenRefresher(
         val body = response?.body()
         if (response?.isSuccessful != true || body == null) {
             // A genuine rejection (not a transient network error) means the refresh token is dead.
-            if (response != null && !response.isSuccessful) tokenStore.clear()
+            //
+            // ALASANNYA dicatat sebelum `clear()`. Jalur INI yang paling sering
+            // jalan (refresh proaktif sebelum token kedaluwarsa), dan dulu ia
+            // membuang body galat mentah — pengguna dilempar ke layar Login
+            // tanpa satu pun keterangan. `session_revoked` vs `session_expired`
+            // ada di body itu sejak server 2026-08-07.
+            if (response != null && !response.isSuccessful) {
+                tokenStore.clear(alasanDariGalat(response.errorBody()?.string()))
+            }
             return null
         }
 
@@ -302,17 +324,74 @@ private class AuthHeaderInterceptor(
  * Reactive fallback: when a protected request still gets a 401 (token expired unexpectedly, or the
  * proactive refresh raced), rotate once and retry. If refresh fails the session is cleared.
  */
+/** Batas baca body galat: cukup untuk `{code,message}`, tak menahan memori. */
+private const val BATAS_BACA_GALAT = 4096L
+
+/**
+ * Ubah body galat JSON jadi kalimat siap tampil.
+ *
+ * Body tak terbaca / bukan JSON (mis. 502 HTML dari proxy) -> kalimat bawaan
+ * lewat [AlasanSesiBerakhir.dari]; JANGAN mengembalikan null, karena null
+ * berarti layar Login kosong lagi — persis bug yang sedang ditutup.
+ */
+private fun alasanDariGalat(raw: String?): String {
+    val galat = raw?.let {
+        runCatching { KJson { ignoreUnknownKeys = true }.decodeFromString<ApiErrorResponse>(it) }.getOrNull()
+    }
+    return AlasanSesiBerakhir.dari(galat?.code, galat?.message)
+}
+
 private class TokenRefreshAuthenticator(
-    private val refresher: TokenRefresher
+    private val refresher: TokenRefresher,
+    private val tokenStore: TokenStore
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
         if (responseCount(response) >= 2) return null
+        // Diambil SEBELUM refresh, karena `refresher.refresh()` bisa menghapus
+        // sesi di tengah jalan. Tanpa penanda ini, "tidak sedang login" pada
+        // akhir fungsi punya DUA arti yang tak bisa dibedakan lagi: sesi baru
+        // saja mati, ATAU memang belum pernah ada sesi.
+        //
+        // Arti kedua itulah yang membuat layar Login menampilkan "Sesi tidak
+        // valid" pada orang yang BELUM login sama sekali: app boot di layar
+        // Login, sebuah request terlindungi menembak tanpa token, kena 401
+        // `unauthorized`, dan pesan servernya dicatat sebagai alasan keluar.
+        val adaSesiSebelumnya = tokenStore.isLoggedIn
         val failedToken = response.request.header("Authorization")?.removePrefix("Bearer ")
-        val fresh = refresher.refresh(failedToken) ?: return null
-        return response.request.newBuilder()
-            .header("Authorization", "Bearer $fresh")
-            .build()
+        val fresh = refresher.refresh(failedToken)
+        if (fresh != null) {
+            return response.request.newBuilder()
+                .header("Authorization", "Bearer $fresh")
+                .build()
+        }
+        // Refresh gagal. DUA sebab yang WAJIB dibedakan, karena keduanya sampai
+        // di baris ini dengan `fresh == null` yang sama persis:
+        //
+        //  - Sesi masih hidup  -> refresh tak pernah sampai ke server (sinyal
+        //    mati / timeout); `TokenRefresher` sengaja tidak menghapus sesi.
+        //    Menuduhnya "sesi diakhiri" membuat orang mengira akunnya dipakai
+        //    orang lain lalu buru-buru ganti password.
+        //  - Sesi sudah mati   -> server benar-benar menolak.
+        // Belum pernah ada sesi -> tak ada yang "berakhir". DIAM. Mencatat apa
+        // pun di sini menyambut orang yang baru membuka app dengan tuduhan
+        // sesinya bermasalah, padahal ia belum sempat login.
+        if (!adaSesiSebelumnya) return null
+
+        if (tokenStore.isLoggedIn) {
+            tokenStore.catatAlasanKeluar(AlasanSesiBerakhir.gagalJaringan())
+            return null
+        }
+        // Respons 401 RUTE TERLINDUNGI yang sedang dipegang di sini bisa membawa
+        // `session_superseded` dari gateway — sebab yang PASTI, lebih baik
+        // daripada kalimat serba-mungkin milik /auth/refresh, jadi ia menimpa
+        // alasan yang tadi dicatat `TokenRefresher`.
+        //
+        // `peekBody` (bukan `body()`): stream respons ini masih milik pemanggil
+        // OkHttp; mengonsumsinya membuat lapisan di atas membaca body kosong.
+        val alasan = alasanDariGalat(runCatching { response.peekBody(BATAS_BACA_GALAT).string() }.getOrNull())
+        tokenStore.catatAlasanKeluar(alasan)
+        return null
     }
 
     private fun responseCount(response: Response): Int {

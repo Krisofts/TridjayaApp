@@ -69,7 +69,10 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -244,13 +247,30 @@ fun DeliveryQueueScreen(
     /** Sales antar sendiri (2026-07-24): treat aktor sales sbg driver (job self-delivery
      *  miliknya sendiri) — dikirim layar "Tugas Antar", driver asli tak terpengaruh. */
     asDriver: Boolean = false,
+    /**
+     * Baris chip periode di atas daftar — HANYA Riwayat SPK. Default `false`
+     * supaya enam layar pemakai lain tak berubah sama sekali.
+     *
+     * SENGAJA tak dipasang di antrian kerja per-tahap: isinya pekerjaan yang
+     * HARUS dikerjakan, dan menyaringnya ke "hari ini" menyembunyikan tunggakan
+     * kemarin tanpa satu pun error — petugas cuma melihat antrian yang lebih
+     * pendek lalu menyimpulkan sudah beres.
+     */
+    periodeFilter: Boolean = false,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     viewModel: DeliveryFlowViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(status, view) { viewModel.loadQueue(status, view, asDriver) }
-    val muatUlang = { viewModel.loadQueue(status, view, asDriver) }
+    var periode by remember { mutableStateOf(PeriodeSpk.HARI_INI) }
+    // Dihitung ulang tiap recomposition (bukan di-`remember`): `muatUlang` di
+    // bawah ikut dibuat ulang bersamanya, jadi pull-to-refresh dan tombol
+    // coba-lagi selalu membawa periode TERPILIH — bukan rentang yang
+    // ter-capture saat komposisi pertama.
+    val rentang = if (periodeFilter) rentangPeriode(periode) else RentangTanggal(null, null)
+    // `rentang` WAJIB ikut jadi kunci; tanpa itu memilih chip lain tak memuat apa pun.
+    LaunchedEffect(status, view, rentang) { viewModel.loadQueue(status, view, asDriver, rentang.dari, rentang.sampai) }
+    val muatUlang = { viewModel.loadQueue(status, view, asDriver, rentang.dari, rentang.sampai) }
 
     // ── Aksi level-SPK (2026-08-06) ──────────────────────────────────────────
     // Backend mem-FAN-OUT surat jalan, penugasan driver, konfirmasi kasir,
@@ -288,18 +308,30 @@ fun DeliveryQueueScreen(
             onRefresh = muatUlang,
             modifier = contentModifier,
         ) {
-            when {
+            Column(modifier = Modifier.fillMaxSize()) {
+              // Baris chip DI LUAR `when` di bawah — kalau ia ikut hilang saat
+              // daftar kosong/gagal/loading, orang yang menyaring ke "Hari ini"
+              // lalu mendapat nol hasil tak punya jalan kembali ke "Semua" dan
+              // membacanya sebagai data yang hilang.
+              if (periodeFilter) PeriodeFilterRow(dipilih = periode, onPilih = { periode = it })
+              Box(modifier = Modifier.weight(1f)) {
+                when {
                 state.loading && state.items.isEmpty() ->
                     Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 state.error != null && state.items.isEmpty() ->
                     ScrollableCenter {
-                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadQueue(status, view) })
+                        // `muatUlang`, bukan `loadQueue(status, view)`: pemanggilan
+                        // pendek itu menjatuhkan `asDriver` DAN rentang periodenya.
+                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = muatUlang)
                     }
                 state.items.isEmpty() ->
                     ScrollableCenter {
                         ExpressiveEmptyState(
                             icon = { Icon(Icons.Rounded.LocalShipping, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
-                            title = "Antrian kosong", subtitle = "Belum ada job pada tahap ini."
+                            title = "Antrian kosong",
+                            // Kosong karena disaring ≠ kosong karena tak ada datanya.
+                            subtitle = if (periodeFilter) "Tidak ada SPK pada periode ini (${periode.keterangan}). Ganti periode di atas."
+                            else "Belum ada job pada tahap ini."
                         )
                     }
                 else -> Column(modifier = Modifier.fillMaxSize()) {
@@ -370,6 +402,8 @@ fun DeliveryQueueScreen(
                         }
                     }
                 }
+                }
+              }
             }
         }
     }
@@ -1339,6 +1373,26 @@ private fun SpkFanOutNote(teks: String) {
     )
 }
 
+/**
+ * `rememberSaveable` untuk peta jawaban checklist — tak ada Saver bawaan untuk
+ * [SnapshotStateMap]. Petanya DIRATAKAN jadi `[kunci, nilai, kunci, nilai, …]`;
+ * cukup karena kunci dan nilainya sama-sama String.
+ *
+ * Ini yang paling penting diselamatkan dari seluruh form berkamera: `hasil`
+ * default-nya "ok" untuk SEMUA item, jadi checklist yang hangus tidak kembali
+ * dalam keadaan kosong melainkan dalam keadaan LULUS SEMUA — petugas yang tadi
+ * menandai "tidak" beserta catatannya akan mengirim unit cacat sebagai unit
+ * mulus tanpa satu pun peringatan.
+ */
+internal val petaJawabanSaver = listSaver<SnapshotStateMap<String, String>, String>(
+    save = { peta -> peta.entries.flatMap { listOf(it.key, it.value) } },
+    restore = { rata ->
+        mutableStateMapOf<String, String>().apply {
+            rata.chunked(2).forEach { pasangan -> put(pasangan[0], pasangan[1]) }
+        }
+    },
+)
+
 @Composable
 private fun PdiAction(
     job: DeliveryJobDto,
@@ -1351,8 +1405,8 @@ private fun PdiAction(
     // PREFILL dari job — SN/engine yang diisi saat input SPK tampil di form
     // (dulu mulai kosong → SN dari SPK tertimpa NULL di backend, bug live
     // testing 2026-07-24; backend kini juga COALESCE sbg lapis kedua).
-    var serial by remember(job.id) { mutableStateOf(job.serialNumber.orEmpty()) }
-    var engine by remember(job.id) { mutableStateOf(job.engineNumber.orEmpty()) }
+    var serial by rememberSaveable(job.id) { mutableStateOf(job.serialNumber.orEmpty()) }
+    var engine by rememberSaveable(job.id) { mutableStateOf(job.engineNumber.orEmpty()) }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/pdi_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
@@ -1360,8 +1414,10 @@ private fun PdiAction(
     val cam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onPdiPhotoCaptured(file) }
 
     // Hasil checklist per item.id: hasil (ok/tidak/na) default "ok" + catatan.
-    val hasil = remember(checklist) { mutableStateMapOf<String, String>().apply { checklist.forEach { put(it.id, "ok") } } }
-    val catatan = remember(checklist) { mutableStateMapOf<String, String>() }
+    val hasil = rememberSaveable(checklist, saver = petaJawabanSaver) {
+        mutableStateMapOf<String, String>().apply { checklist.forEach { put(it.id, "ok") } }
+    }
+    val catatan = rememberSaveable(checklist, saver = petaJawabanSaver) { mutableStateMapOf<String, String>() }
 
     photoState.pdiPhoto?.takeIf { !photoState.pdiPhotoConfirmed }?.let { bmp ->
         PhotoReviewDialog(bmp, onRetake = { vm.retakePdiPhoto() }, onConfirm = { vm.confirmPdiPhoto() })
@@ -1480,21 +1536,23 @@ private fun PdiAction(
     if (requiresAki) {
         Spacer(Modifier.height(14.dp))
         if (akiPending) {
-            var tujuan by remember { mutableStateOf("") }
-            var tujuanLainnya by remember { mutableStateOf("") }
+            var tujuan by rememberSaveable { mutableStateOf("") }
+            var tujuanLainnya by rememberSaveable { mutableStateOf("") }
             // Merk: dropdown merk GS + "Lainnya…" (ketik manual). merkPilih = slug dropdown,
             // merkManual = teks bila pilih Lainnya. merkFinal = yang dikirim.
-            var merkPilih by remember { mutableStateOf("") }
-            var merkManual by remember { mutableStateOf("") }
-            var kapasitas by remember { mutableStateOf("") }
+            var merkPilih by rememberSaveable { mutableStateOf("") }
+            var merkManual by rememberSaveable { mutableStateOf("") }
+            var kapasitas by rememberSaveable { mutableStateOf("") }
             // Jumlah SET baterai (bukan pcs) — default 1 set, tiap set = 4 pcs (auto keterangan).
-            var jumlahSet by remember { mutableStateOf("1") }
-            var ambilCharger by remember { mutableStateOf(false) }
-            var ambilSpion by remember { mutableStateOf(false) }
-            var keteranganAki by remember { mutableStateOf("") }
+            var jumlahSet by rememberSaveable { mutableStateOf("1") }
+            var ambilCharger by rememberSaveable { mutableStateOf(false) }
+            var ambilSpion by rememberSaveable { mutableStateOf(false) }
+            var keteranganAki by rememberSaveable { mutableStateOf("") }
             // Foto bukti aki (2026-07-24, wajib) — capture→watermark→upload
-            // langsung, pola sama foto PO per-barang.
-            var akiPhotoUrl by remember { mutableStateOf("") }
+            // langsung, pola sama foto PO per-barang. URL-nya WAJIB ikut
+            // diselamatkan: unggahannya sudah terjadi, jadi kehilangan URL ini
+            // memaksa foto yang sama diunggah dua kali.
+            var akiPhotoUrl by rememberSaveable { mutableStateOf("") }
             var akiPhotoUploading by remember { mutableStateOf(false) }
             val akiScope = rememberCoroutineScope()
             val akiPhotoFile = remember { File(context.cacheDir, "delivery/aki_$id.jpg").apply { parentFile?.mkdirs() } }
@@ -1692,11 +1750,11 @@ private fun KasirConfirmSpkAction(
 ) {
     val units = batchUnits.ifEmpty { listOf(job) }
     val multi = units.size > 1
-    var noTransaksi by remember(job.id) { mutableStateOf(job.noTransaksi.orEmpty()) }
-    var konfirmasiBayar by remember(job.id) { mutableStateOf(false) }
+    var noTransaksi by rememberSaveable(job.id) { mutableStateOf(job.noTransaksi.orEmpty()) }
+    var konfirmasiBayar by rememberSaveable(job.id) { mutableStateOf(false) }
     // Nominal DP per unit-id. Kunci `job.id`: berpindah SPK harus mengosongkan
     // isian, kalau tidak DP SPK sebelumnya ikut terkirim.
-    val dp = remember(job.id) { mutableStateMapOf<String, String>() }
+    val dp = rememberSaveable(job.id, saver = petaJawabanSaver) { mutableStateMapOf<String, String>() }
 
     val adaCod = units.any { it.driverTerimaUang == true }
     val unitCodDp = units.filter { it.driverTerimaUang == true && it.codPaymentMode == "dp" }
@@ -1989,7 +2047,7 @@ private fun RevisiDiskonAction(
 @Composable
 private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
     val id = job.id
-    var nominal by remember { mutableStateOf("") }
+    var nominal by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/setoran_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
@@ -2029,7 +2087,9 @@ private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
     PhotoBox(photoState.deliverPhoto, "Foto bukti (wajib)") { cam.launch(uri) }
     Spacer(Modifier.height(14.dp))
     val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
-    val nominalValid = (nominal.toDoubleOrNull() ?: 0.0) > 0.0
+    // >= 0, bukan > 0: kredit tanpa uang muka sah punya nominal diterima Rp 0 di titik ini.
+    // Field wajib tetap ditegakkan lewat toDoubleOrNull() != null (kosong -> null -> invalid).
+    val nominalValid = nominal.toDoubleOrNull() != null
     ExpressiveFilledButton(
         onClick = { vm.setoranKasir(id, nominal.toDoubleOrNull() ?: 0.0) {} },
         enabled = !submitting && hasPhoto && nominalValid, modifier = Modifier.fillMaxWidth(),
@@ -2179,8 +2239,8 @@ private fun DeliverAction(
     checklistError: String?
 ) {
     val id = job.id
-    var rating by remember { mutableStateOf(5) }
-    var comment by remember { mutableStateOf("") }
+    var rating by rememberSaveable { mutableStateOf(5) }
+    var comment by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/deliver_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
@@ -2192,8 +2252,10 @@ private fun DeliverAction(
     val cashUri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cashFile) }
     val cashCam = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) vm.onCashPhotoCaptured(cashFile) }
     // 088: checklist serah-terima stage=driver (fail-open bila kosong)
-    val hasil = remember(driverChecklist) { mutableStateMapOf<String, String>().apply { driverChecklist.forEach { put(it.id, "ok") } } }
-    val catatan = remember(driverChecklist) { mutableStateMapOf<String, String>() }
+    val hasil = rememberSaveable(driverChecklist, saver = petaJawabanSaver) {
+        mutableStateMapOf<String, String>().apply { driverChecklist.forEach { put(it.id, "ok") } }
+    }
+    val catatan = rememberSaveable(driverChecklist, saver = petaJawabanSaver) { mutableStateMapOf<String, String>() }
 
     photoState.deliverPhoto?.takeIf { !photoState.deliverPhotoConfirmed }?.let { bmp ->
         PhotoReviewDialog(bmp, onRetake = { vm.retakeDeliverPhoto() }, onConfirm = { vm.confirmDeliverPhoto() })
@@ -2348,8 +2410,8 @@ private fun DeliverAction(
 @Composable
 private fun SelfPickupCompleteAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, submitting: Boolean) {
     val id = job.id
-    var rating by remember { mutableStateOf(5) }
-    var comment by remember { mutableStateOf("") }
+    var rating by rememberSaveable { mutableStateOf(5) }
+    var comment by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val file = remember { File(context.cacheDir, "delivery/selfpickup_$id.jpg").apply { parentFile?.mkdirs() } }
     val uri = remember { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }
@@ -3145,9 +3207,24 @@ private fun AkiOptionDropdown(
 // yang belum tuntas tak boleh ikut terpotong (tombolnya ada di barisnya).
 
 @Composable
-fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel = hiltViewModel()) {
+fun DiscountApprovalScreen(
+    onBack: () -> Unit,
+    onDetailSpk: (String) -> Unit,
+    viewModel: DeliveryFlowViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(Unit) { viewModel.loadDiscounts("pending") }
+    // Default HARI_INI atas permintaan user ("pada approval discount tambahkan
+    // filter serupa"), DENGAN MATA TERBUKA: antrian ini pekerjaan TERTUNGGAK,
+    // jadi default hari-ini menyembunyikan pengajuan kemarin yang belum diputus
+    // — persis kelas kekeliruan yang membuat filter ini tak dipasang di antrian
+    // kerja per-tahap. Penawarnya baris "menampilkan N pengajuan · <periode>" di
+    // bawah chip: approver yang melihat 0 tahu daftarnya sedang TERSARING, bukan
+    // habis. Kalau ada laporan "pengajuan diskon hilang", cek chip ini dulu.
+    var periode by remember { mutableStateOf(PeriodeSpk.HARI_INI) }
+    val rentang = rentangPeriode(periode)
+    // Status "pending" TETAP — periode menyaring tanggal, bukan tahap keputusan.
+    LaunchedEffect(rentang) { viewModel.loadDiscounts("pending", rentang.dari, rentang.sampai) }
+    val muatUlang = { viewModel.loadDiscounts("pending", rentang.dari, rentang.sampai) }
     // Id PENGAJUAN yang sedang ditolak — bukan lagi "anchor" se-SPK: sejak
     // 2026-08-07 penolakan cuma mengenai barang yang ditunjuk.
     var rejectId by remember { mutableStateOf<String?>(null) }
@@ -3156,21 +3233,45 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         TridjayaPullRefresh(
             isRefreshing = state.loading && state.discounts.isNotEmpty(),
-            onRefresh = { viewModel.loadDiscounts("pending") },
+            onRefresh = muatUlang,
             modifier = contentModifier,
         ) {
-            when {
+            Column(modifier = Modifier.fillMaxSize()) {
+              // Chip + baris jumlah DI LUAR `when` di bawah: keduanya harus tetap
+              // terlihat saat daftar kosong/gagal/loading, kalau tidak approver
+              // yang tersaring ke "Hari ini" kehilangan jalan kembali ke "Semua".
+              PeriodeFilterRow(dipilih = periode, onPilih = { periode = it })
+              if (!(state.loading && state.discounts.isEmpty())) {
+                  // `total` server, bukan `discounts.size`: responsnya BERHALAMAN
+                  // (limit 100), jadi ukuran daftar adalah isi halaman. Menyebutnya
+                  // sebagai jumlah membuat approver yakin sudah melihat semuanya.
+                  val ditampilkan = state.discounts.size
+                  Text(
+                      if (state.diskonTotal > ditampilkan)
+                          "Menampilkan $ditampilkan dari ${state.diskonTotal} pengajuan · ${periode.keterangan}"
+                      else "Menampilkan $ditampilkan pengajuan · ${periode.keterangan}",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                  )
+              }
+              Box(modifier = Modifier.weight(1f)) {
+                when {
                 state.loading && state.discounts.isEmpty() ->
                     Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 state.error != null && state.discounts.isEmpty() ->
                     ScrollableCenter {
-                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = { viewModel.loadDiscounts("pending") })
+                        ExpressiveErrorState(message = state.error ?: "Gagal memuat", onRetry = muatUlang)
                     }
                 state.discounts.isEmpty() ->
                     ScrollableCenter {
                         ExpressiveEmptyState(
                             icon = { Icon(Icons.Rounded.Discount, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp)) },
-                            title = "Tidak ada pengajuan diskon", subtitle = "Semua pengajuan sudah diputuskan."
+                            title = "Tidak ada pengajuan diskon",
+                            // Sudah diputus ≠ tersaring keluar. Menyamakan keduanya
+                            // membuat approver menutup layar padahal tunggakan
+                            // kemarin masih menunggu di periode lain.
+                            subtitle = "Tidak ada pengajuan pending pada ${periode.keterangan}. Ganti periode di atas untuk melihat yang lebih lama."
                         )
                     }
                 else -> LazyColumn(
@@ -3197,21 +3298,14 @@ fun DiscountApprovalScreen(onBack: () -> Unit, viewModel: DeliveryFlowViewModel 
                             buktiFoto = state.diskonBuktiPhotos,
                             onApprove = { id -> viewModel.approveDiscount(id, "") },
                             onReject = { id -> rejectId = id },
-                            onDetail = { viewModel.bukaDetailSpkDiskon(kode) },
+                            onDetail = { onDetailSpk(kode) },
                         )
                     }
                 }
+                }
+              }
             }
         }
-    }
-
-    state.spkDiskonDetailKode?.let { kode ->
-        SpkDiskonDetailDialog(
-            kode = kode,
-            detail = state.spkDiskonDetail,
-            error = state.spkDiskonDetailError,
-            onTutup = { viewModel.tutupDetailSpkDiskon() },
-        )
     }
 
     rejectId?.let { id ->
@@ -3434,31 +3528,11 @@ private fun DiscountBaris(
                 "−${rupiah(potonganPengajuan(d))}", style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold, color = Color(0xFFB5670C),
             )
-            // Keputusan PER BARANG (2026-08-07): ikon kecil di ujung baris, bukan
-            // sepasang tombol lebar — 10 barang × tombol setinggi 40dp mendorong
-            // separuh kartu keluar layar, dan itulah alasan bentuk ringkas ini
-            // ada. Barang yang sudah diputus menampilkan status, bukan tombol:
-            // tekanan kedua cuma memanen "sudah diputuskan" dari server.
-            Spacer(Modifier.width(4.dp))
-            when {
-                d.status != "pending" -> StatusBarisChip(d.status)
-                submitting -> Box(Modifier.size(64.dp, 32.dp), Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                }
-                else -> Row {
-                    IconButton(onClick = onReject, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            Icons.Rounded.Close, contentDescription = "Tolak diskon barang ini",
-                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    IconButton(onClick = onApprove, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            Icons.Rounded.CheckCircle, contentDescription = "Setujui diskon barang ini",
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
+            // Barang yang SUDAH diputus cukup menampilkan statusnya di sini —
+            // tekanan kedua hanya memanen "sudah diputuskan" dari server.
+            if (d.status != "pending") {
+                Spacer(Modifier.width(4.dp))
+                StatusBarisChip(d.status)
             }
         }
         // Penolakan TIDAK melepas unit: barang ini menunggu SALES, bukan
@@ -3492,6 +3566,58 @@ private fun DiscountBaris(
                         " selengkapnya", style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
                     )
+                }
+            }
+        }
+        // Tombol keputusan: BARIS SENDIRI, berlabel teks, rata kanan.
+        //
+        // Sebelumnya dua ikon 32dp tanpa label menempel di ujung baris harga.
+        // Itu menghemat ruang tapi salah untuk tombol yang MENYETUJUI UANG:
+        // pengguna harus menebak arti ✕ dan ✓, target sentuhnya di bawah
+        // anjuran 48dp, dan keduanya bersebelahan tanpa jarak — satu meleset
+        // menyetujui diskon yang mestinya ditolak. Satu baris tambahan per
+        // barang jauh lebih murah daripada satu keputusan uang yang salah.
+        if (d.status == "pending") {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (submitting) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    ExpressiveOutlinedButton(
+                        onClick = onReject,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Close, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Tolak", style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    // Jarak 12dp antara Tolak dan Setujui: dua tombol berdempetan
+                    // membuat salah-pencet jadi soal milimeter.
+                    Spacer(Modifier.width(12.dp))
+                    ExpressiveFilledButton(
+                        onClick = onApprove,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.CheckCircle, contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Setujui", style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
             }
         }
@@ -3571,17 +3697,25 @@ private fun StatusBarisChip(status: String) {
  * bisa siapa saja pemegang page-grant, LINTAS CABANG — jangan menambahkannya.
  */
 @Composable
-private fun SpkDiskonDetailDialog(
+fun SpkDiskonDetailScreen(
     kode: String,
-    detail: com.krisoft.tridjayaelektronik.data.model.SpkDiscountContextDto?,
-    error: String?,
-    onTutup: () -> Unit,
+    onBack: () -> Unit,
+    viewModel: DeliveryFlowViewModel = hiltViewModel(),
 ) {
-    AlertDialog(
-        onDismissRequest = onTutup,
-        title = { Text(kode, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+    val state by viewModel.state.collectAsState()
+    // Halaman ini memakai ViewModel yang SAMA dengan layar approval, jadi tak
+    // ada state ganda: membukanya memicu pemuatan yang sama.
+    LaunchedEffect(kode) { viewModel.bukaDetailSpkDiskon(kode) }
+    val detail = state.spkDiskonDetail
+    val error = state.spkDiskonDetailError
+
+    TridjayaCollapsibleHeader(title = kode, onBack = onBack) { contentModifier ->
+        Column(
+            contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
                 when {
                     error != null -> Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     detail == null -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3677,10 +3811,9 @@ private fun SpkDiskonDetailDialog(
                         )
                     }
                 }
-            }
-        },
-        confirmButton = { TextButton(onClick = onTutup) { Text("Tutup") } },
-    )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
 }
 
 

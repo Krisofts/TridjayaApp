@@ -792,8 +792,23 @@ data class DeliveryCategoriesData(val items: List<DeliveryCategoryDto> = emptyLi
 data class AkiFormDto(
     val id: String = "",
     val deliveryJobId: String = "",
+    /**
+     * Isi unit di balik form — approver butuh ini untuk tahu aki ini diambilkan
+     * untuk barang & konsumen yang mana. Dibaca server LIVE dari `delivery_jobs`
+     * (join saat query daftar, TIDAK didenormalisasi), jadi `null` pada respons
+     * langsung create/approve/reject yang tak di-join; hanya terisi di daftar.
+     */
+    val jobKodePengiriman: String? = null,
+    val jobNamaBarang: String? = null,
+    val jobKategori: String? = null,
+    val jobCustomerNama: String? = null,
+    val kodeDealer: String = "",
+    val cabangNama: String? = null,
     val tanggal: String = "",
+    /** HH:MM — form kertas kadang tak mengisi jam. */
+    val jam: String? = null,
     val pengambilNama: String = "",
+    val pengambilJabatan: String? = null,
     val tujuan: String = "",
     val tujuanLainnya: String? = null,
     val merkTipe: String = "",
@@ -810,11 +825,15 @@ data class AkiFormDto(
      */
     val kapasitas: String? = null,
     val jumlahKeterangan: String? = null,
+    val keterangan: String? = null,
     val ambilCharger: Boolean = false,
     val ambilKacaSpion: Boolean = false,
     /** Foto bukti aki (2026-07-24) — wajib diisi PDI saat submit. `null` = form lama sebelum fitur ini. */
     val photoUrl: String? = null,
     val akiBekasStatus: String = "belum",
+    val akiBekasJumlah: Int? = null,
+    val akiBekasKeterangan: String? = null,
+    val akiBekasReturnedAt: String? = null,
     /** `rejected` bila ditolak, `approved` bila approver PUSAT (`aki_approver`)
      *  sudah menyetujui (redesain 2026-07-24, dulu 3 slot kepala-cabang+admin-
      *  penjualan+kasir/aki-approver); selain itu `pending`. PDI di-gate backend
@@ -829,6 +848,7 @@ data class AkiFormDto(
     /** Dipakai timeline detail SPK (2026-07-27): kapan & siapa yang mengisi form,
      *  plus penentu form MANA yang berlaku kalau ada pengajuan ulang. */
     val createdAt: String = "",
+    val createdById: String = "",
     val createdByNama: String = ""
 )
 

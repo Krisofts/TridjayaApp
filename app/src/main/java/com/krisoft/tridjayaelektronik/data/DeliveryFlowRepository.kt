@@ -50,8 +50,21 @@ class DeliveryFlowRepository @Inject constructor(
     // memakai `.data.size` (`ActivityViewModel.antrianStatus`) bisa mentok di 200
     // kalau antrian sungguhan lebih banyak. Naikkan limit atau minta backend
     // menambah field total kalau ada laporan angka macet di 200.
-    suspend fun list(status: String? = null, view: String? = null, asDriver: Boolean = false): AuthResult<List<DeliveryJobDto>> = try {
-        val response = api.list(status = status, view = view, limit = 200, asDriver = asDriver.takeIf { it })
+    suspend fun list(
+        status: String? = null,
+        view: String? = null,
+        asDriver: Boolean = false,
+        dari: String? = null,
+        sampai: String? = null,
+    ): AuthResult<List<DeliveryJobDto>> = try {
+        val response = api.list(
+            status = status,
+            view = view,
+            limit = 200,
+            asDriver = asDriver.takeIf { it },
+            dari = dari,
+            sampai = sampai,
+        )
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.items)
         else parseError(response, "Gagal memuat daftar pengiriman")
@@ -254,8 +267,11 @@ class DeliveryFlowRepository @Inject constructor(
     }
 
     /** Daftar riwayat form aki (menu Pengambilan Aki). */
-    suspend fun akiForms(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>> = try {
-        val response = api.akiForms()
+    suspend fun akiForms(
+        dari: String? = null,
+        sampai: String? = null,
+    ): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.AkiFormDto>> = try {
+        val response = api.akiForms(dari = dari, sampai = sampai)
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.items)
         else parseError(response, "Gagal memuat daftar form pengambilan aki")
@@ -320,8 +336,12 @@ class DeliveryFlowRepository @Inject constructor(
      * banyak (I2 audit 2026-07-28). Pemanggil yang cuma butuh daftar (bukan
      * total) baca `.items`.
      */
-    suspend fun discounts(status: String? = "pending"): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountListData> = try {
-        val response = api.discountRequests(status = status)
+    suspend fun discounts(
+        status: String? = "pending",
+        dari: String? = null,
+        sampai: String? = null,
+    ): AuthResult<com.krisoft.tridjayaelektronik.data.model.DiscountListData> = try {
+        val response = api.discountRequests(status = status, dari = dari, sampai = sampai)
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data)
         else parseError(response, "Gagal memuat pengajuan diskon")
