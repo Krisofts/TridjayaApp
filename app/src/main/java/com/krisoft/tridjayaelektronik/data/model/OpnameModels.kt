@@ -47,6 +47,12 @@ data class OpnameItemDto(
     val stokFisikLayak: Long = 0,
     val stokFisikTidakLayak: Long = 0,
     val selisih: Long = 0,
+    /** `true` = dinyatakan NIHIL (sudah dicari, tak ada satu pun) — BUKAN
+     *  "belum dihitung". Yang kedua menahan penutupan sesi, yang pertama
+     *  adalah temuan (migrasi 197). */
+    val nihil: Boolean = false,
+    val nihilByName: String? = null,
+    val nihilAt: String? = null,
     val stokSistemAkhir: Long? = null,
     val terjual: Long? = null,
     val masuk: Long? = null,
@@ -148,6 +154,16 @@ data class CreateOpnameRequest(
     val mulaiAt: String? = null,
     val selesaiAt: String? = null
 )
+
+/**
+ * Body `POST /inventory/opname/{id}/nihil` — barang yang dinyatakan NIHIL.
+ *
+ * Daftar, bukan satuan: menutup sesi biasanya berarti menandai sisa barang
+ * sekaligus, dan satu permintaan per barang jadi ratusan permintaan di cabang
+ * dengan ~900 SKU.
+ */
+@Serializable
+data class TandaiNihilRequest(val kodeBarang: List<String>)
 
 /** Satu unit fisik terhitung — satu baris per serial number. */
 @Serializable

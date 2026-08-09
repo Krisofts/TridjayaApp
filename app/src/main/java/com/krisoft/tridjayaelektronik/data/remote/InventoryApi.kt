@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.data.remote
 
+import com.krisoft.tridjayaelektronik.data.model.TandaiNihilRequest
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsData
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsRequest
@@ -88,6 +89,15 @@ interface InventoryApi {
         @Path("id") id: String,
         @Body body: CreateOpnameUnitsRequest
     ): Response<ApiResponse<CreateOpnameUnitsData>>
+
+    /** Tandai barang NIHIL: sudah dicari di gudang, tak ada satu pun. INI yang
+     *  membuat sesi bisa ditutup — barang yang fisiknya habis tak bisa di-scan,
+     *  jadi tanpa penanda ini ia menahan sesinya selamanya. */
+    @POST("api/inventory/opname/{id}/nihil")
+    suspend fun tandaiOpnameNihil(
+        @Path("id") id: String,
+        @Body body: TandaiNihilRequest
+    ): Response<ApiResponse<OpnameDetailDto>>
 
     @GET("api/inventory/opname/{id}/units")
     suspend fun listOpnameUnits(@Path("id") id: String): Response<ApiResponse<OpnameUnitListData>>

@@ -597,6 +597,14 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   dikenal.
   **Input jendela waktu** ada di sheet buat-sesi (`OpnameListScreen`), MATI
   secara default — sesi tanpa batas adalah perilaku lama dan tetap sah.
+  **Tombol "Nihil"** ada di baris barang yang belum dihitung (`StockSearchRow`),
+  hanya untuk yang boleh menghitung DAN yang belum punya unit — menandai nihil
+  barang yang sudah dihitung akan membuang hasil kerja orang lain, dan server
+  pun menolaknya. Dikonfirmasi dulu karena tercatat SELISIH PENUH (barang
+  dilaporkan hilang), bukan "lewati saja". `tandaiNihil` SENGAJA tidak diantre
+  offline seperti scan: nihil adalah PERNYATAAN yang bisa diulang kapan saja,
+  dan pernyataan yang "tersimpan" menurut layar tapi belum sampai server jauh
+  lebih menyesatkan daripada penolakan yang jelas.
   Validasinya di `ui/opname/OpnameJendela.kt` (fungsi murni, diuji): cerminan
   `parse_jendela` Rust, memeriksa rentang angka juga karena regex saja
   meloloskan bulan 13 / jam 25. Perbandingan urutan mulai-selesai **leksikografis

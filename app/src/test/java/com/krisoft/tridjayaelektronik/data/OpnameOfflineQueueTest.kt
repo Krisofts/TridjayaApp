@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.data
 
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitDao
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
+import com.krisoft.tridjayaelektronik.data.model.TandaiNihilRequest
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameRequest
@@ -150,6 +151,17 @@ class OpnameOfflineQueueTest {
 
         /** Dijalankan SELAGI GET unit "terbang" — untuk mensimulasikan scan yang menyelinap. */
         var saatListUnits: (suspend () -> Unit)? = null
+
+        /** Kode barang yang diminta dinyatakan nihil, per panggilan. */
+        var nihilDikirim: List<List<String>> = emptyList()
+
+        override suspend fun tandaiOpnameNihil(
+            id: String,
+            body: TandaiNihilRequest
+        ): Response<ApiResponse<OpnameDetailDto>> {
+            nihilDikirim = nihilDikirim + listOf(body.kodeBarang)
+            return Response.success(ApiResponse("ok", OpnameDetailDto(id = id)))
+        }
 
         override suspend fun createOpnameUnits(
             id: String,
@@ -640,6 +652,44 @@ class OpnameOfflineQueueTest {
             alasanTolakLabel("foto_wajib_untuk_manual")
         )
     }
+    @Test
+    fun `nihil membersihkan kode kosong dan duplikat sebelum dikirim`() = runBlocking {
+        // Daftar datang dari UI (bisa "tandai semua sisa"), jadi duplikat &
+        // spasi bukan hal aneh. Mengirimnya apa adanya membuat server
+        // mengerjakan barang yang sama berkali-kali dalam satu permintaan.
+        val api = FakeApi(response = null)
+        val hasil = repo(FakeUnitDao(), api).tandaiNihil(sessionId, listOf(" P1 ", "P1", "", "  ", "P2"))
+
+        assertTrue(hasil is AuthResult.Success)
+        assertEquals(listOf(listOf("P1", "P2")), api.nihilDikirim)
+    }
+
+    @Test
+    fun `nihil tanpa satu pun kode ditolak tanpa menyentuh jaringan`() = runBlocking {
+        val api = FakeApi(response = null)
+        val hasil = repo(FakeUnitDao(), api).tandaiNihil(sessionId, listOf("", "   "))
+
+        assertTrue(hasil is AuthResult.Failure)
+        assertTrue("tak boleh ada permintaan terkirim", api.nihilDikirim.isEmpty())
+    }
+
+    @Test
+    fun `nihil TIDAK diantre offline seperti scan`() = runBlocking {
+        // Nihil adalah PERNYATAAN, bukan temuan fisik yang bisa hilang kalau tak
+        // segera dikirim: petugas bisa mengulanginya kapan saja. Pernyataan yang
+        // "tersimpan" menurut layar tapi belum sampai server jauh lebih
+        // menyesatkan — ia menyangkut barang yang dilaporkan HILANG.
+        val dao = FakeUnitDao()
+        val api = object : StubInventoryApi() {
+            override suspend fun tandaiOpnameNihil(id: String, body: TandaiNihilRequest):
+                Response<ApiResponse<OpnameDetailDto>> = throw IOException("tidak ada jaringan")
+        }
+        val hasil = repo(dao, api).tandaiNihil(sessionId, listOf("P1"))
+
+        assertTrue("gagal harus dilaporkan apa adanya", hasil is AuthResult.Failure)
+        assertEquals("tak boleh menyisakan baris di buffer lokal", 0, dao.rows.size)
+    }
+
 }
 
 /**
@@ -675,6 +725,9 @@ internal open class StubInventoryApi : InventoryApi {
 
     override suspend fun createOpnameUnits(id: String, body: CreateOpnameUnitsRequest):
         Response<ApiResponse<CreateOpnameUnitsData>> = nope()
+
+    override suspend fun tandaiOpnameNihil(id: String, body: TandaiNihilRequest):
+        Response<ApiResponse<OpnameDetailDto>> = nope()
 
     override suspend fun listOpnameUnits(id: String): Response<ApiResponse<OpnameUnitListData>> = nope()
 

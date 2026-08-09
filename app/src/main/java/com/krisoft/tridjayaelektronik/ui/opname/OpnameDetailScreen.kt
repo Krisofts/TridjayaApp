@@ -134,6 +134,9 @@ fun OpnameDetailScreen(
     var search by remember { mutableStateOf("") }
     var stockFilter by remember { mutableStateOf(StockFilter.BELUM) }
     var scanSheetOpen by remember { mutableStateOf(false) }
+    // Dikonfirmasi dulu: nihil tercatat SELISIH PENUH (barang dilaporkan
+    // hilang), bukan "lewati saja".
+    var konfirmasiNihil by remember { mutableStateOf<OpnameStockItemDto?>(null) }
     var confirmAction by remember { mutableStateOf<String?>(null) } // "complete" | "cancel"
     var isExportingPdf by remember { mutableStateOf(false) }
 
@@ -439,7 +442,14 @@ fun OpnameDetailScreen(
                                         }
                                     } else {
                                         {}
-                                    }
+                                    },
+                                    onNihil = if (
+                                        state.canHitung &&
+                                        (unitsByCode[stockItem.kodeBarang.uppercase()]?.size ?: 0) == 0
+                                    ) {
+                                        { konfirmasiNihil = stockItem }
+                                    } else null,
+                                    nihilBusy = state.nihilBusy,
                                 )
                             }
                         }
@@ -625,6 +635,31 @@ fun OpnameDetailScreen(
         )
     }
 
+    konfirmasiNihil?.let { barang ->
+        AlertDialog(
+            onDismissRequest = { konfirmasiNihil = null },
+            title = { Text("Nyatakan barang ini nihil?") },
+            text = {
+                Text(
+                    "${barang.namaBarang ?: barang.kodeBarang} akan tercatat SELISIH PENUH — " +
+                        "barang yang menurut sistem ada tapi tak ditemukan di gudang. " +
+                        "Kalau nanti ketemu, cukup scan serialnya dan tanda ini batal sendiri."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.tandaiNihil(listOf(barang.kodeBarang))
+                    konfirmasiNihil = null
+                }) {
+                    Text("Ya, nihil", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { konfirmasiNihil = null }) { Text("Batal") }
+            }
+        )
+    }
+
     confirmAction?.let { action ->
         val isComplete = action == "complete"
         val isDelete = action == "delete"
@@ -728,7 +763,12 @@ private fun StockFilterChip(label: String, selected: Boolean, onClick: () -> Uni
 private fun StockSearchRow(
     item: OpnameStockItemDto,
     unitCount: Int,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    /** `null` = tombol nihil tak ditampilkan (bukan penghitung, atau barangnya
+     *  sudah punya unit — menandai nihil barang yang sudah dihitung akan
+     *  membuang hasil kerja orang lain, dan server pun menolaknya). */
+    onNihil: (() -> Unit)? = null,
+    nihilBusy: Boolean = false,
 ) {
     ClayCard(
         modifier = Modifier
@@ -763,6 +803,12 @@ private fun StockSearchRow(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
+                }
+            } else if (onNihil != null) {
+                // "Nihil" = sudah dicari, tak ada satu pun. Tercatat selisih
+                // PENUH, jadi ia temuan — bukan "lewati saja".
+                TextButton(onClick = onNihil, enabled = !nihilBusy) {
+                    Text("Nihil", style = MaterialTheme.typography.labelMedium)
                 }
             } else {
                 Icon(

@@ -38,6 +38,8 @@ data class OpnameDetailUiState(
     val selectedItem: OpnameStockItemDto? = null,
     /** Pesan hasil scan terakhir (tersimpan / diantre / ditolak). */
     val scanMessage: String? = null,
+    /** Barang yang sedang dinyatakan nihil — tombolnya dikunci selama proses. */
+    val nihilBusy: Boolean = false,
     val errorMessage: String? = null,
     /**
      * Boleh IKUT MENGHITUNG (buka sheet scan). Datang dari SERVER
@@ -244,6 +246,40 @@ class OpnameDetailViewModel @Inject constructor(
                 canManage = bolehKelola && detail.status == "draft",
                 canDelete = bolehKelola && detail.status == "cancelled",
             )
+        }
+    }
+
+    /**
+     * Nyatakan barang NIHIL: sudah dicari di gudang, tak ada satu pun.
+     *
+     * Ini yang membuat sesi bisa DITUTUP — barang yang fisiknya habis tak bisa
+     * di-scan, jadi tanpa penanda ini ia menahan sesinya selamanya (diukur di
+     * produksi 2026-08-09: 0 dari 7 sesi pernah selesai).
+     *
+     * Hasilnya dilaporkan sebagai selisih PENUH, bukan "dilewati" — karena itu
+     * layar memintanya dikonfirmasi dulu.
+     */
+    fun tandaiNihil(kodeBarang: List<String>) {
+        if (kodeBarang.isEmpty() || _uiState.value.nihilBusy) return
+        _uiState.update { it.copy(nihilBusy = true, statusError = null) }
+        viewModelScope.launch {
+            when (val hasil = repository.tandaiNihil(sessionId, kodeBarang)) {
+                is AuthResult.Success -> {
+                    applyDetail(hasil.data)
+                    _uiState.update {
+                        it.copy(
+                            nihilBusy = false,
+                            scanMessage = "${kodeBarang.size} barang ditandai nihil",
+                        )
+                    }
+                    // Daftar barang ikut disegarkan: baris yang barusan
+                    // dinyatakan nihil pindah dari "belum" ke "sudah".
+                    refreshDetail()
+                }
+                is AuthResult.Failure -> _uiState.update {
+                    it.copy(nihilBusy = false, statusError = hasil.message)
+                }
+            }
         }
     }
 

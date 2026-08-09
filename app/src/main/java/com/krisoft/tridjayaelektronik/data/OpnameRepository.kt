@@ -16,6 +16,7 @@ import com.krisoft.tridjayaelektronik.data.model.OpnameStockItemDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameUnitDto
 import com.krisoft.tridjayaelektronik.data.model.OpnameUnitInput
 import com.krisoft.tridjayaelektronik.data.model.RejectUnitBody
+import com.krisoft.tridjayaelektronik.data.model.TandaiNihilRequest
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
@@ -480,6 +481,25 @@ class OpnameRepository @Inject constructor(
             }
         }
         return items
+    }
+
+    /**
+     * Nyatakan sekumpulan barang NIHIL — sudah dicari, tak ada satu pun.
+     *
+     * SENGAJA tidak diantre offline seperti scan. Nihil adalah PERNYATAAN,
+     * bukan temuan fisik yang bisa hilang kalau tak segera dikirim: petugas
+     * bisa mengulanginya kapan saja, dan pernyataan yang "tersimpan" menurut
+     * layar tapi belum sampai server jauh lebih menyesatkan — ia menyangkut
+     * barang yang dilaporkan HILANG. Pola sama `manualUnit` dan usulan SN.
+     */
+    suspend fun tandaiNihil(sessionId: String, kodeBarang: List<String>): AuthResult<OpnameDetailDto> {
+        val bersih = kodeBarang.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (bersih.isEmpty()) {
+            return AuthResult.Failure("validation", "Tidak ada barang yang dipilih")
+        }
+        return call("Gagal menandai barang nihil") {
+            api.tandaiOpnameNihil(sessionId, TandaiNihilRequest(bersih))
+        }
     }
 
     /**
