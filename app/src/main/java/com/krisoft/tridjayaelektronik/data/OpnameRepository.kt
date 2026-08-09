@@ -68,10 +68,40 @@ fun normalizeSerial(raw: String): String? {
     return serial
 }
 
+/** Kode penolakan gerbang sesi — cerminan konstanta `TOLAK_*` di `opname.rs`. */
+const val TOLAK_SESI_TAK_DRAFT = "sesi_tak_draft"
+const val TOLAK_JENDELA_BELUM_MULAI = "jendela_belum_mulai"
+const val TOLAK_JENDELA_SUDAH_TUTUP = "jendela_sudah_tutup"
+
+/**
+ * Penolakan yang TIDAK akan berubah kalau dicoba lagi.
+ *
+ * Yang tidak ada di sini bersifat SEMENTARA, dan barisnya WAJIB tetap di
+ * antrean lokal. Satu-satunya anggota sementara hari ini adalah
+ * [TOLAK_JENDELA_BELUM_MULAI]: petugas yang men-scan sejam sebelum sesi dibuka
+ * sedang melakukan pekerjaan yang benar, cuma kepagian — menghapus barisnya
+ * membuang hasil kerjanya tanpa satu pun jejak, dan ia baru sadar saat
+ * hitungannya kurang di akhir sesi.
+ */
+private val TOLAK_PERMANEN = setOf(
+    "duplikat_dalam_sesi",
+    "foto_wajib_untuk_manual",
+    "kondisi_tidak_dikenal",
+    TOLAK_SESI_TAK_DRAFT,
+    TOLAK_JENDELA_SUDAH_TUTUP,
+)
+
+/** `true` = barisnya boleh dibuang dari antrean lokal. */
+fun tolakPermanen(reason: String): Boolean = reason in TOLAK_PERMANEN
+
 /** Alasan penolakan dari server dalam bahasa yang bisa dibaca petugas di lapangan. */
 fun alasanTolakLabel(reason: String): String = when (reason) {
     "duplikat_dalam_sesi" -> "serial ini sudah discan di sesi ini"
     "foto_wajib_untuk_manual" -> "input manual wajib menyertakan dua foto bukti"
+    "kondisi_tidak_dikenal" -> "kondisi barang tidak dikenali server"
+    TOLAK_SESI_TAK_DRAFT -> "sesi opname sudah ditutup"
+    TOLAK_JENDELA_BELUM_MULAI -> "sesi opname belum dibuka — tersimpan, dikirim otomatis nanti"
+    TOLAK_JENDELA_SUDAH_TUTUP -> "jendela opname sudah tutup"
     else -> reason
 }
 
@@ -242,7 +272,17 @@ class OpnameRepository @Inject constructor(
             is AuthResult.Success -> {
                 val rejected = pushed.data.rejected.firstOrNull { it.serialNumber == serial }
                 if (rejected != null) {
-                    ScanResult.Rejected(serial, alasanTolakLabel(rejected.reason))
+                    val pesan = rejected.reasonText?.takeIf { it.isNotBlank() }
+                        ?: alasanTolakLabel(rejected.reason)
+                    // Penolakan SEMENTARA dilaporkan `Queued`, bukan `Rejected`:
+                    // barisnya memang masih ada di antrean dan akan terkirim
+                    // sendiri. Menyebutnya "ditolak" menyuruh petugas men-scan
+                    // ulang unit yang sebenarnya sudah tercatat.
+                    if (tolakPermanen(rejected.reason)) {
+                        ScanResult.Rejected(serial, pesan)
+                    } else {
+                        ScanResult.Queued(serial, pesan)
+                    }
                 } else {
                     ScanResult.Accepted(
                         serial,
@@ -470,9 +510,16 @@ class OpnameRepository @Inject constructor(
         if (result is AuthResult.Success) {
             val now = System.currentTimeMillis()
             result.data.accepted.forEach { unitDao.markSynced(sessionId, it.serialNumber, now, it.temuan) }
-            // Ditolak server (mis. petugas lain sudah scan serial itu) — jangan
-            // tinggalkan baris hantu di buffer lokal.
-            result.data.rejected.forEach { unitDao.delete(sessionId, it.serialNumber) }
+            // Ditolak server — dibuang HANYA bila penolakannya permanen.
+            //
+            // Penolakan SEMENTARA (`jendela_belum_mulai`) barisnya dibiarkan
+            // tetap pending, jadi `pushPending` berikutnya mengirimnya lagi
+            // begitu jendela terbuka. Menghapusnya membuang hasil scan petugas
+            // yang cuma kepagian — kesalahan yang tak menimbulkan error, tak
+            // terlihat di layar, dan baru ketahuan saat hitungan akhir kurang.
+            result.data.rejected
+                .filter { tolakPermanen(it.reason) }
+                .forEach { unitDao.delete(sessionId, it.serialNumber) }
         }
         return result
     }

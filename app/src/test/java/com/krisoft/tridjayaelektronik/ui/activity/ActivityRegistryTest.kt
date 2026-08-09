@@ -473,3 +473,36 @@ class ActivityOpnameCabangTest {
         assertEquals(ActivitySource.OPNAME_SESI_DRAFT, kartu.source)
     }
 }
+
+/**
+ * Deep-link notifikasi "sesi opname dibuka".
+ *
+ * Rantainya stringly-typed dan melintasi dua repo: `route_for_kind` (Rust)
+ * mengirim navKey, `deliveryNotifRouteKey` (app) menerjemahkan tipe notif jadi
+ * navKey yang sama, lalu `routeForNavKey` mengubahnya jadi route. Satu mata
+ * rantai meleset = notif yang di-tap tak membuka apa-apa, tanpa error.
+ */
+class NotifOpnameSesiDibukaTest {
+
+    @Test
+    fun `tipe notif menunjuk navKey yang sama dengan kartu Activity`() {
+        assertEquals(
+            "opname",
+            com.krisoft.tridjayaelektronik.ui.notifications.deliveryNotifRouteKey("opname_sesi_dibuka"),
+        )
+    }
+
+    @Test
+    fun `navKey itu punya route`() {
+        assertEquals("home_opname", routeForNavKey("opname"))
+    }
+
+    @Test
+    fun `antrian validasi tetap ke layarnya sendiri`() {
+        // Dua kind opname, dua tujuan berbeda — penerimanya juga berbeda.
+        assertEquals(
+            "opname_validasi",
+            com.krisoft.tridjayaelektronik.ui.notifications.deliveryNotifRouteKey("opname_manual_submitted"),
+        )
+    }
+}

@@ -70,6 +70,11 @@ fun deliveryNotifRouteKey(type: String): String? = when (type) {
     // sejak lambda `onOpenDelivery` diperbaiki; tanpa baris ini tap-nya mendarat
     // di hub SPK.
     "opname_manual_submitted" -> "opname_validasi"
+    // Ajakan memulai opname untuk SELURUH cabang -> layar daftar sesi, sama
+    // dengan tujuan kartu "Opname Cabang" di Activity. Sengaja bukan
+    // "opname_validasi": penerimanya petugas yang akan menghitung, bukan
+    // admin-stok yang memutus unit ketik-manual.
+    "opname_sesi_dibuka" -> "opname"
     // SENGAJA tak ada baris untuk notif "sudah diputuskan": penerimanya adalah
     // PENGINPUT (kepala cabang), sedangkan layar validasi opname dijaga
     // admin-stok saja — mengarahkannya ke sini membuat notif yang mendarat di

@@ -190,7 +190,12 @@ data class OpnameUnitAccepted(
 @Serializable
 data class OpnameUnitRejected(
     val serialNumber: String = "",
-    val reason: String = ""
+    /** KODE mesin (`duplikat_dalam_sesi`, `jendela_belum_mulai`, ...) — bukan
+     *  kalimat. Dipetakan ke bahasa petugas lewat `alasanTolakLabel`. */
+    val reason: String = "",
+    /** Kalimat rinci dari server, sudah memuat jam jendelanya. Kosong untuk
+     *  kode lama yang tak membawanya. */
+    val reasonText: String? = null
 )
 
 /**

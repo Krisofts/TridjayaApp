@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.MultipartBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -295,6 +296,65 @@ class OpnameOfflineQueueTest {
         // Server pemilik kebenaran: unit itu sudah tercatat atas nama petugas lain, jadi
         // menyimpannya di HP ini cuma bikin hitungan lokal lebih besar dari hitungan server.
         assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `ditolak karena sesi belum dibuka maka barisnya BERTAHAN dan dikirim ulang`() = runBlocking {
+        // Petugas men-scan sejam sebelum jendela opname terbuka. Pekerjaannya
+        // benar, cuma kepagian — membuang barisnya (perilaku lama untuk SETIAP
+        // penolakan) menghilangkan hasil scan tanpa error, tanpa tanda di layar,
+        // dan baru ketahuan saat hitungan akhir kurang.
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+        val repository = repo(dao, api)
+
+        repository.scanUnit(sessionId, "BRG-1", "Kulkas", "sn-002")
+        api.response = CreateOpnameUnitsData(
+            rejected = listOf(
+                OpnameUnitRejected(
+                    serialNumber = "SN-002",
+                    reason = TOLAK_JENDELA_BELUM_MULAI,
+                    reasonText = "Sesi opname baru dibuka 10/08 08:00",
+                )
+            )
+        )
+        val hasil = repository.pushPending(sessionId)
+        assertTrue(hasil is AuthResult.Success)
+
+        assertEquals("baris tak boleh dibuang", 1, dao.rows.size)
+        assertNull("harus tetap pending supaya dicoba lagi", dao.rows.first().syncedAtMillis)
+
+        // Jendela terbuka: pengiriman berikutnya diterima, tanpa petugas
+        // men-scan ulang apa pun.
+        api.response = CreateOpnameUnitsData(
+            accepted = listOf(OpnameUnitAccepted(serialNumber = "SN-002"))
+        )
+        repository.pushPending(sessionId)
+        assertEquals(1, dao.rows.size)
+        assertNotNull("sudah terkirim", dao.rows.first().syncedAtMillis)
+    }
+
+    @Test
+    fun `scan yang kepagian dilaporkan Queued, bukan Rejected`() = runBlocking {
+        // "Ditolak" menyuruh petugas men-scan ulang unit yang sebenarnya sudah
+        // tercatat di antrean.
+        val dao = FakeUnitDao()
+        val api = FakeApi(
+            response = CreateOpnameUnitsData(
+                rejected = listOf(
+                    OpnameUnitRejected(
+                        serialNumber = "SN-003",
+                        reason = TOLAK_JENDELA_BELUM_MULAI,
+                        reasonText = "Sesi opname baru dibuka 10/08 08:00",
+                    )
+                )
+            )
+        )
+        val hasil = repo(dao, api).scanUnit(sessionId, "BRG-1", "Kulkas", "sn-003")
+        assertTrue("dapat $hasil", hasil is OpnameRepository.ScanResult.Queued)
+        // Kalimat rinci server dipakai apa adanya — ia memuat JAM jendelanya,
+        // yang tak bisa diturunkan dari kode penolakannya saja.
+        assertTrue((hasil as OpnameRepository.ScanResult.Queued).reason.contains("10/08 08:00"))
     }
 
     @Test

@@ -584,6 +584,17 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   bukan sekadar konservatif. Tombol hapus per baris memakai `serialMilikSaya`
   (dari daftar unit versi server): petugas boleh mengoreksi salah scan sendiri,
   tak boleh membongkar klaim orang lain.
+  **Penolakan server kini dibagi dua (2026-08-09, bersama jendela waktu migrasi
+  196)**: PERMANEN (`duplikat_dalam_sesi`, `jendela_sudah_tutup`, dst) barisnya
+  dibuang dari Room seperti dulu; SEMENTARA (`jendela_belum_mulai`) barisnya
+  **BERTAHAN** dan dikirim ulang otomatis begitu jendela terbuka, dan hasilnya
+  dilaporkan `ScanResult.Queued` bukan `Rejected`. Aturan lama (buang SETIAP
+  penolakan) benar selama semua penolakan permanen; begitu server bisa menjawab
+  "sesi belum dibuka", ia membuang hasil scan petugas yang cuma kepagian —
+  tanpa error, tanpa tanda di layar, baru ketahuan saat hitungan akhir kurang.
+  **Kode tak dikenal diperlakukan SEMENTARA** (`tolakPermanen` daftar-putih):
+  APK yang tertinggal versi tak boleh membuang data karena kode barunya belum
+  dikenal.
 - **Pusat Notifikasi** (`ui/notifications/`) + deep-link FCM; notifikasi terbaca bisa dihapus.
 - Indent, mutasi histori, deadstock, perubahan harga ERP, payroll, input serial — masing-masing
   satu layar + ViewModel, semuanya ber-gate (lihat `ActivityRegistry`/`QuickAccessMenus`).
