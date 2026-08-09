@@ -7,6 +7,8 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.krisoft.tridjayaelektronik.data.KONDISI_PILIHAN
+import com.krisoft.tridjayaelektronik.data.kondisiLabel
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto
 import java.io.File
@@ -178,17 +180,22 @@ object OpnamePdfExporter {
         } else {
             // Draft: satu baris per UNIT FISIK (serial), bukan angka jumlah — daftar ini
             // yang bisa dicocokkan ulang ke barang di gudang.
-            var tidakLayak = 0
+            // Rekap PER NILAI kondisi, bukan biner "layak vs bukan": sejak
+            // kosakatanya empat (migrasi 194), satu angka "tidak layak"
+            // menggabungkan tiga tindak lanjut yang berbeda — dibuang,
+            // diperbaiki, atau dikirim balik ke supplier. Yang membaca laporan
+            // ini justru orang yang harus memutuskan tindak lanjutnya.
+            val perKondisi = linkedMapOf<String, Int>()
             units.sortedWith(compareBy({ it.kodeBarang }, { it.serialNumber }))
                 .forEachIndexed { index, unit ->
-                    if (unit.kondisi != "layak") tidakLayak += 1
+                    perKondisi[unit.kondisi] = (perKondisi[unit.kondisi] ?: 0) + 1
                     drawCells(
                         listOf(
                             "${index + 1}",
                             unit.kodeBarang,
                             unit.namaBarang ?: "-",
                             unit.serialNumber,
-                            if (unit.kondisi == "layak") "Layak" else "Tidak layak"
+                            kondisiLabel(unit.kondisi)
                         ),
                         textPaint
                     )
@@ -196,8 +203,15 @@ object OpnamePdfExporter {
             ensureSpace(ROW_HEIGHT * 2)
             canvas.drawLine(MARGIN, y - 10f, PAGE_WIDTH - MARGIN, y - 10f, linePaint)
             val jenis = units.map { it.kodeBarang.uppercase() }.distinct().size
+            // Urutkan mengikuti KONDISI_PILIHAN supaya susunannya sama dengan
+            // pemilih di layar scan; nilai asing (server lebih baru) ikut di
+            // belakang apa adanya, bukan dibuang diam-diam.
+            val rekap = (KONDISI_PILIHAN + perKondisi.keys.filterNot { it in KONDISI_PILIHAN })
+                .distinct()
+                .mapNotNull { k -> perKondisi[k]?.let { "$it ${kondisiLabel(k).lowercase()}" } }
+                .joinToString(" \u00b7 ")
             drawCells(
-                listOf("", "", "TOTAL ($jenis jenis)", "${units.size} unit", "$tidakLayak tidak layak"),
+                listOf("", "", "TOTAL ($jenis jenis)", "${units.size} unit", rekap),
                 boldPaint
             )
         }
