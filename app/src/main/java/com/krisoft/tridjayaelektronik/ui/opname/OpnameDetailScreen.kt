@@ -5,6 +5,8 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,7 +33,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +57,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
+import com.krisoft.tridjayaelektronik.data.KONDISI_PILIHAN
+import com.krisoft.tridjayaelektronik.data.kondisiLabel
 import com.krisoft.tridjayaelektronik.data.export.OpnamePdfExporter
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.BarcodeScanButton
@@ -547,8 +552,10 @@ fun OpnameDetailScreen(
                 viewModel.selectItem(null)
                 search = ""
             },
-            onScan = { serial, tidakLayak -> viewModel.scan(serial, tidakLayak) },
-            onManual = { serial, tidakLayak -> viewModel.startManualUnit(serial, tidakLayak) },
+            onScan = { serial, kondisi, keterangan -> viewModel.scan(serial, kondisi, keterangan) },
+            onManual = { serial, kondisi, keterangan ->
+                viewModel.startManualUnit(serial, kondisi, keterangan)
+            },
             onDelete = { unit -> viewModel.deleteUnit(unit) },
             canPropose = state.canPropose,
             onUsulkan = { unit -> viewModel.startProposal(unit) }
@@ -930,7 +937,8 @@ private fun ManualUnitDialog(
             Column {
                 Text(
                     text = "${draft.serialNumber}\n${draft.kodeBarang}${draft.namaBarang?.let { " · $it" } ?: ""}" +
-                        if (draft.tidakLayak) "\nKondisi: TIDAK LAYAK" else "",
+                        "\nKondisi: ${kondisiLabel(draft.kondisi).uppercase()}" +
+                        (draft.keterangan?.let { "\nKeterangan: $it" } ?: ""),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -1168,7 +1176,7 @@ private fun CompletedItemRow(item: OpnameItemDto) {
  * yang rusak — tapi TIDAK langsung tersimpan: [onManual] membuka dialog dua foto bukti
  * dan unitnya menunggu validasi admin-stok (ketikan tangan tak membuktikan barangnya ada).
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ScanUnitSheet(
     item: OpnameStockItemDto,
@@ -1177,15 +1185,19 @@ private fun ScanUnitSheet(
     saveError: String?,
     scanMessage: String?,
     onDismiss: () -> Unit,
-    onScan: (serial: String, tidakLayak: Boolean) -> Unit,
+    onScan: (serial: String, kondisi: String, keterangan: String?) -> Unit,
     /** `true` = dialog dua-foto terbuka; `false` = ditolak, ketikan dipertahankan. */
-    onManual: (serial: String, tidakLayak: Boolean) -> Boolean,
+    onManual: (serial: String, kondisi: String, keterangan: String?) -> Boolean,
     onDelete: (OpnameUnitEntity) -> Unit,
     canPropose: Boolean,
     onUsulkan: ((OpnameUnitEntity) -> Unit)?
 ) {
     var manual by remember { mutableStateOf("") }
-    var tidakLayak by remember { mutableStateOf(false) }
+    // Kondisi & keterangan BERTAHAN antar scan dalam satu sheet: petugas yang
+    // menemukan satu rak rusak menandai berturut-turut, dan mereset ke "layak"
+    // tiap unit membuat dia diam-diam mencatat sisanya sebagai layak.
+    var kondisi by remember { mutableStateOf(KONDISI_LAYAK) }
+    var keterangan by remember { mutableStateOf("") }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1219,25 +1231,41 @@ private fun ScanUnitSheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 BarcodeScanButton(contentDescription = "Scan serial unit") { hasil ->
-                    onScan(hasil, tidakLayak)
+                    onScan(hasil, kondisi, keterangan.takeIf { it.isNotBlank() })
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Kondisi unit berikutnya",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KONDISI_PILIHAN.forEach { nilai ->
+                    FilterChip(
+                        selected = kondisi == nilai,
+                        onClick = { kondisi = nilai },
+                        label = { Text(kondisiLabel(nilai)) }
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = tidakLayak, onCheckedChange = { tidakLayak = it })
-                Text(
-                    text = "Unit berikutnya TIDAK layak",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            ExpressiveTextField(
+                value = keterangan,
+                onValueChange = { keterangan = it },
+                placeholder = "Keterangan kondisi (opsional)",
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
             ExpressiveFilledButton(
                 onClick = {
                     // Dikosongkan hanya bila dialognya benar-benar terbuka — kalau serialnya
                     // ditolak, ketikan panjang petugas tak boleh ikut lenyap.
-                    if (onManual(manual, tidakLayak)) manual = ""
+                    if (onManual(manual, kondisi, keterangan.takeIf { it.isNotBlank() })) manual = ""
                 },
                 enabled = !isSaving && manual.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()

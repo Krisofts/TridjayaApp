@@ -543,6 +543,14 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
 - **Stok opname per unit/serial** (`ui/opname/`, `data/OpnameRepository.kt`): hitung fisik per unit
   ber-serial — **bukan** angka jumlah per SKU — layar scan per unit, laporan PDF berisi daftar
   serial, antrean offline. Normalisasi serial dijaga sejajar implementasi Rust lewat unit test.
+  **Kondisi unit = 4 nilai** sejak 2026-08-09 (`KONDISI_PILIHAN`: layak / tidak_layak / repair /
+  retur, + kolom keterangan bebas), menggantikan checkbox biner "TIDAK layak". Daftarnya cerminan
+  `opname::KONDISI_VALID` Rust (migrasi 194) dan dijaga `OpnameKondisiTest` — kontrak
+  stringly-typed lintas repo tanpa pemeriksa kompiler. **Server kini MENOLAK nilai asing** per
+  baris (`kondisi_tidak_dikenal`); dulu dipaksa jadi `layak` diam-diam, jadi nilai yang meleset
+  bukan lagi "tersimpan salah" melainkan unitnya tak terhitung sama sekali. Kondisi & keterangan
+  sengaja BERTAHAN antar scan dalam satu sheet (satu rak rusak ditandai berturut-turut);
+  meresetnya tiap unit membuat petugas diam-diam mencatat sisanya sebagai layak.
 - **Pusat Notifikasi** (`ui/notifications/`) + deep-link FCM; notifikasi terbaca bisa dihapus.
 - Indent, mutasi histori, deadstock, perubahan harga ERP, payroll, input serial — masing-masing
   satu layar + ViewModel, semuanya ber-gate (lihat `ActivityRegistry`/`QuickAccessMenus`).

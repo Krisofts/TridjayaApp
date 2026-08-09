@@ -26,6 +26,27 @@ import javax.inject.Singleton
 
 const val KONDISI_LAYAK = "layak"
 const val KONDISI_TIDAK_LAYAK = "tidak_layak"
+/** Rusak tapi masih bisa diperbaiki. */
+const val KONDISI_REPAIR = "repair"
+/** Dikembalikan ke supplier/pusat. */
+const val KONDISI_RETUR = "retur"
+
+/**
+ * Cermin `opname::KONDISI_VALID` di Rust (migrasi 194). Server MENOLAK nilai di
+ * luar daftar ini per baris (`kondisi_tidak_dikenal`) sejak 2026-08-09 — dulu
+ * dipaksa jadi `layak` diam-diam, sehingga unit rusak masuk hitungan stok layak
+ * jual tanpa satu pun sinyal. Urutannya sekaligus urutan tampil di pemilih.
+ */
+val KONDISI_PILIHAN = listOf(KONDISI_LAYAK, KONDISI_TIDAK_LAYAK, KONDISI_REPAIR, KONDISI_RETUR)
+
+/** Label Indonesia untuk nilai kondisi; nilai asing ditampilkan apa adanya. */
+fun kondisiLabel(kondisi: String): String = when (kondisi) {
+    KONDISI_LAYAK -> "Layak"
+    KONDISI_TIDAK_LAYAK -> "Tidak layak"
+    KONDISI_REPAIR -> "Repair"
+    KONDISI_RETUR -> "Retur"
+    else -> kondisi
+}
 
 /** Batas kolom `stock_opname_units.serial_number` di MySQL. */
 const val SERIAL_MAX_LENGTH = 64
@@ -249,7 +270,8 @@ class OpnameRepository @Inject constructor(
         serialNumberRaw: String,
         kondisi: String,
         fotoSnUrl: String,
-        fotoBarangUrl: String
+        fotoBarangUrl: String,
+        keterangan: String? = null
     ): ScanResult {
         val serial = normalizeSerial(serialNumberRaw)
             ?: return ScanResult.Rejected(
@@ -265,6 +287,7 @@ class OpnameRepository @Inject constructor(
                     kodeBarang = kodeBarang,
                     serialNumber = serial,
                     kondisi = kondisi,
+                    keterangan = keterangan?.takeIf { it.isNotBlank() },
                     inputMethod = INPUT_MANUAL,
                     fotoSnUrl = fotoSnUrl,
                     fotoBarangUrl = fotoBarangUrl
@@ -294,7 +317,7 @@ class OpnameRepository @Inject constructor(
                             kodeBarang = kodeBarang,
                             namaBarang = namaBarang,
                             kondisi = kondisi,
-                            keterangan = null,
+                            keterangan = keterangan?.takeIf { it.isNotBlank() },
                             temuan = accepted?.temuan,
                             inputMethod = if (statusServer == null) INPUT_SCAN else INPUT_MANUAL,
                             validationStatus = statusServer,
