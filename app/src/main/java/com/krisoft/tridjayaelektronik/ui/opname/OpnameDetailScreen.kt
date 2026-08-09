@@ -244,7 +244,16 @@ fun OpnameDetailScreen(
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "${detail.dealerName.ifBlank { detail.dealerCode }} · ${formatOpnameDate(detail.periodeDate)} · ${if (detail.jenis == "mingguan") "Mingguan" else "Bulanan"}",
+                                            // Jendela waktu ikut di baris ini, bukan
+                                            // di kartu terpisah: ia menentukan apakah
+                                            // petugas bisa scan SEKARANG, jadi harus
+                                            // terbaca bersama identitas sesinya.
+                                            text = listOfNotNull(
+                                                detail.dealerName.ifBlank { detail.dealerCode },
+                                                formatOpnameDate(detail.periodeDate),
+                                                if (detail.jenis == "mingguan") "Mingguan" else "Bulanan",
+                                                labelJendela(detail.mulaiAt, detail.selesaiAt),
+                                            ).joinToString(" \u00b7 "),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

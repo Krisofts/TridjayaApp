@@ -595,6 +595,13 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   **Kode tak dikenal diperlakukan SEMENTARA** (`tolakPermanen` daftar-putih):
   APK yang tertinggal versi tak boleh membuang data karena kode barunya belum
   dikenal.
+  **Input jendela waktu** ada di sheet buat-sesi (`OpnameListScreen`), MATI
+  secara default — sesi tanpa batas adalah perilaku lama dan tetap sah.
+  Validasinya di `ui/opname/OpnameJendela.kt` (fungsi murni, diuji): cerminan
+  `parse_jendela` Rust, memeriksa rentang angka juga karena regex saja
+  meloloskan bulan 13 / jam 25. Perbandingan urutan mulai-selesai **leksikografis
+  atas string wall-clock**, sengaja tanpa aritmetika tanggal — itu sekaligus
+  menjauhkannya dari `java.time` yang haram di `app/src/main`.
 - **Pusat Notifikasi** (`ui/notifications/`) + deep-link FCM; notifikasi terbaca bisa dihapus.
 - Indent, mutasi histori, deadstock, perubahan harga ERP, payroll, input serial — masing-masing
   satu layar + ViewModel, semuanya ber-gate (lihat `ActivityRegistry`/`QuickAccessMenus`).

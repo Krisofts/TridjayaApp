@@ -60,9 +60,24 @@ class OpnameListViewModel @Inject constructor(
     }
 
     /** Creates a session and reports the new detail back so the screen can jump straight into it. */
-    fun create(dealerCode: String, periodeDate: String, jenis: String, catatan: String, onCreated: (OpnameDetailDto) -> Unit) {
+    fun create(
+        dealerCode: String,
+        periodeDate: String,
+        jenis: String,
+        catatan: String,
+        mulaiAt: String,
+        selesaiAt: String,
+        onCreated: (OpnameDetailDto) -> Unit,
+    ) {
         if (dealerCode.isBlank()) {
             _uiState.update { it.copy(createError = "Pilih cabang/dealer dulu") }
+            return
+        }
+        // Dicek lagi di sini, bukan cuma di sheet: layar bisa saja memanggil
+        // dengan nilai lain suatu hari, dan jendela ngawur yang lolos ke server
+        // dijawab 400 generik tanpa menunjuk kolomnya.
+        masalahJendela(mulaiAt, selesaiAt)?.let { pesan ->
+            _uiState.update { it.copy(createError = pesan) }
             return
         }
         _uiState.update { it.copy(isCreating = true, createError = null) }
@@ -71,7 +86,9 @@ class OpnameListViewModel @Inject constructor(
                 dealerCode = dealerCode,
                 periodeDate = periodeDate,
                 jenis = jenis,
-                catatan = catatan.trim().ifBlank { null }
+                catatan = catatan.trim().ifBlank { null },
+                mulaiAt = mulaiAt.takeIf { it.isNotBlank() }?.let(::normalisasiJendela),
+                selesaiAt = selesaiAt.takeIf { it.isNotBlank() }?.let(::normalisasiJendela),
             )
             when (val result = repository.create(request)) {
                 is AuthResult.Success -> {

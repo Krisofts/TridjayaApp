@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -36,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -212,8 +214,8 @@ fun OpnameListScreen(
                 showCreate = false
                 viewModel.clearCreateError()
             },
-            onSubmit = { dealer, periode, jenis, catatan ->
-                viewModel.create(dealer, periode, jenis, catatan) { detail ->
+            onSubmit = { dealer, periode, jenis, catatan, mulai, selesai ->
+                viewModel.create(dealer, periode, jenis, catatan, mulai, selesai) { detail ->
                     showCreate = false
                     selectedId = detail.id
                 }
@@ -345,12 +347,26 @@ private fun OpnameCreateSheet(
     state: OpnameListUiState,
     todayIso: String,
     onDismiss: () -> Unit,
-    onSubmit: (dealer: String, periode: String, jenis: String, catatan: String) -> Unit
+    onSubmit: (
+        dealer: String,
+        periode: String,
+        jenis: String,
+        catatan: String,
+        mulai: String,
+        selesai: String,
+    ) -> Unit
 ) {
     var dealerCode by remember { mutableStateOf("") }
     var jenis by remember { mutableStateOf("bulanan") }
     var periode by remember { mutableStateOf(todayIso) }
     var catatan by remember { mutableStateOf("") }
+    // Jendela waktu MATI secara default: sesi tanpa batas adalah perilaku lama
+    // dan tetap sah. Menyalakannya diam-diam berarti admin yang cuma ingin
+    // membuat sesi biasa tiba-tiba mengunci petugasnya ke rentang jam.
+    var batasiWaktu by remember { mutableStateOf(false) }
+    var mulai by remember { mutableStateOf("") }
+    var selesai by remember { mutableStateOf("") }
+    val masalah = if (batasiWaktu) masalahJendela(mulai, selesai) else null
     var dealerMenuOpen by remember { mutableStateOf(false) }
     val dealers = state.context?.dealers.orEmpty()
 
@@ -440,6 +456,62 @@ private fun OpnameCreateSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = batasiWaktu,
+                    onCheckedChange = { nyala ->
+                        batasiWaktu = nyala
+                        // Diisi jam kerja umum saat dinyalakan supaya admin
+                        // tinggal menyunting, bukan mengetik bentuknya dari nol.
+                        if (nyala && mulai.isBlank() && selesai.isBlank()) {
+                            mulai = "$periode 08:00"
+                            selesai = "$periode 17:00"
+                        }
+                    }
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text("Batasi waktu opname", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "Di luar rentang ini scan DITOLAK server",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (batasiWaktu) {
+                Spacer(modifier = Modifier.height(10.dp))
+                ExpressiveTextField(
+                    value = mulai,
+                    onValueChange = { mulai = it },
+                    label = "Mulai (YYYY-MM-DD HH:MM)",
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                ExpressiveTextField(
+                    value = selesai,
+                    onValueChange = { selesai = it },
+                    label = "Selesai (YYYY-MM-DD HH:MM)",
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (masalah != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = masalah,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Seluruh pegawai cabang ini akan dapat notifikasi saat sesi dibuat.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
             ExpressiveTextField(
                 value = catatan,
@@ -455,8 +527,17 @@ private fun OpnameCreateSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
             ExpressiveFilledButton(
-                onClick = { onSubmit(dealerCode, periode.trim(), jenis, catatan) },
-                enabled = !state.isCreating,
+                onClick = {
+                    onSubmit(
+                        dealerCode,
+                        periode.trim(),
+                        jenis,
+                        catatan,
+                        if (batasiWaktu) mulai.trim() else "",
+                        if (batasiWaktu) selesai.trim() else "",
+                    )
+                },
+                enabled = !state.isCreating && masalah == null,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.isCreating) {

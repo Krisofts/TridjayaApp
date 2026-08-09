@@ -16,6 +16,11 @@ data class OpnameSessionDto(
     val cabangId: String? = null,
     val cabangName: String? = null,
     val periodeDate: String = "",
+    /** Jendela boleh-menghitung (WIB, migrasi 196). `null` = TANPA jendela —
+     *  boleh kapan saja, BUKAN "sudah lewat tenggat". Seluruh sesi pra-migrasi
+     *  begitu, dan server lama juga tak mengirimnya. */
+    val mulaiAt: String? = null,
+    val selesaiAt: String? = null,
     val jenis: String = "bulanan",
     val status: String = "draft",
     val createdByUserId: String = "",
@@ -61,6 +66,11 @@ data class OpnameDetailDto(
     val cabangId: String? = null,
     val cabangName: String? = null,
     val periodeDate: String = "",
+    /** Jendela boleh-menghitung (WIB, migrasi 196). `null` = TANPA jendela —
+     *  boleh kapan saja, BUKAN "sudah lewat tenggat". Seluruh sesi pra-migrasi
+     *  begitu, dan server lama juga tak mengirimnya. */
+    val mulaiAt: String? = null,
+    val selesaiAt: String? = null,
     val jenis: String = "bulanan",
     val status: String = "draft",
     val createdByUserId: String = "",
@@ -132,7 +142,11 @@ data class CreateOpnameRequest(
     val dealerCode: String,
     val periodeDate: String,
     val jenis: String? = null,
-    val catatan: String? = null
+    val catatan: String? = null,
+    /** `YYYY-MM-DDTHH:MM` WIB. `null` = sesi tanpa batas waktu (perilaku lama,
+     *  tetap sah). Server MENEGAKKAN-nya: scan di luar rentang ditolak. */
+    val mulaiAt: String? = null,
+    val selesaiAt: String? = null
 )
 
 /** Satu unit fisik terhitung — satu baris per serial number. */
