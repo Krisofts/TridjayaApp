@@ -298,6 +298,10 @@ private fun activityVisual(id: String): Pair<ImageVector, Color> = when (id) {
     "daftar_spk" -> Icons.Rounded.History to Color(0xFF667085)
     "approval_inden" -> Icons.Rounded.PlaylistAddCheck to MaterialTheme.colorScheme.secondary
     "antrian_pdi" -> Icons.Rounded.FactCheck to Color(0xFF6941C6)
+    // Ikon & warna SAMA dengan tile "Opname" di grid Akses Cepat Operasional
+    // (HomeScreen.kt) — dua pintu, satu layar; warna berbeda akan terbaca
+    // sebagai dua fitur berbeda.
+    "opname_cabang" -> Icons.Rounded.FactCheck to Color(0xFF0BA5EC)
     "opname_validasi" -> Icons.Rounded.FactCheck to Color(0xFFB5670C)
     "aki_saya", "aki_approval" -> Icons.Rounded.BatteryChargingFull to Color(0xFF9C27B0)
     "antrian_kasir" -> Icons.Rounded.PointOfSale to Color(0xFF0086C9)

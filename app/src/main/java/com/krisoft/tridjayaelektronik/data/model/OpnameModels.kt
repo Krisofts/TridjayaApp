@@ -74,7 +74,23 @@ data class OpnameDetailDto(
     val totalStokFisik: Long = 0,
     val createdAt: String = "",
     val updatedAt: String = "",
-    val items: List<OpnameItemDto> = emptyList()
+    val items: List<OpnameItemDto> = emptyList(),
+    /**
+     * Boleh IKUT MENGHITUNG di sesi ini — dihitung SERVER (`authorize_hitung`,
+     * sudah termasuk syarat sesi masih draft).
+     *
+     * `null` = server BELUM mengenal field ini (bukan "tidak boleh"). Bedanya
+     * penting: memakai `false` sebagai default akan mencabut tombol scan bahkan
+     * dari PEMILIK sesi begitu APK ini beredar di atas server lama — mengurangi
+     * fungsi yang sudah jalan. Pemanggil wajib jatuh balik ke aturan lama
+     * (`isOwner && draft`) saat `null`. Pola sama `validationStatus` di
+     * `manualUnit`: ikuti jawaban server, jangan mengarang.
+     */
+    val canHitung: Boolean? = null,
+    /** Boleh MENGELOLA sesi: tutup/batal/hapus (`authorize_owner`). Terpisah
+     *  dari [canHitung] — petugas cabang menghitung, tidak menutup. `null`
+     *  diperlakukan sama: jatuh balik ke `isOwner`. */
+    val canManage: Boolean? = null
 )
 
 @Serializable

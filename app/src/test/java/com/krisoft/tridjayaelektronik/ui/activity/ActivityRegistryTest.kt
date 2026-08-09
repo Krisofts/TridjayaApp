@@ -418,3 +418,58 @@ class ActivityRegistryTest {
         assertFalse("absen_masuk" in ids("crm-manager"))
     }
 }
+
+/**
+ * Kartu "Opname Cabang" (2026-08-09). Pintu masuk petugas cabang ke sesi opname
+ * yang sedang berjalan — dulu opname hanya bisa dijangkau lewat tile Akses
+ * Cepat tab Operasional yang gate-nya `opname.view` (pengelola & pemantau saja).
+ */
+class ActivityOpnameCabangTest {
+
+    private val kartu = ACTIVITY_ITEMS.first { it.id == "opname_cabang" }
+
+    @Test
+    fun `memakai kunci opname hitung, bukan opname view`() {
+        // `opname.view` menyetir menu Stock Opname di WEB; memakainya di sini
+        // berarti kartu ini cuma tampil untuk pengelola — kebalikan maksudnya.
+        assertEquals("opname.hitung", kartu.capability)
+    }
+
+    @Test
+    fun `cadangan offline mencerminkan OPNAME_HITUNG_ROLES di rust-shared`() {
+        // Nilainya ditulis literal, bukan merujuk konstantanya sendiri: test
+        // yang membandingkan konstanta dengan dirinya sendiri selalu hijau.
+        assertEquals(
+            setOf("admin", "superadmin", "admin-stok", "kepala-cabang", "karyawan"),
+            kartu.allowedRoles,
+        )
+    }
+
+    @Test
+    fun `karyawan biasa melihat Opname Cabang tapi bukan antrian validasi`() {
+        // Dua kartu opname, dua audiens: petugas menghitung, admin-stok memutus
+        // unit ketik-manual.
+        val karyawan = visibleActivityItems(setOf("karyawan"), null, akunUji = false).map { it.id }
+        assertTrue("opname_cabang" in karyawan)
+        assertFalse("opname_validasi" in karyawan)
+    }
+
+    @Test
+    fun `manager tidak melihat kartu ini`() {
+        // Manager/owner pemantau lintas cabang — `authorize_hitung` menolaknya,
+        // jadi kartunya tak boleh ada (menu mati = keluhan CRM 2026-07-27).
+        val manager = visibleActivityItems(setOf("manager"), null, akunUji = false).map { it.id }
+        assertFalse("opname_cabang" in manager)
+    }
+
+    @Test
+    fun `navKey menunjuk layar sesi opname yang sudah ada`() {
+        assertEquals("opname", kartu.navKey)
+        assertEquals("home_opname", routeForNavKey(kartu.navKey))
+    }
+
+    @Test
+    fun `angka kartu datang dari daftar sesi draft, bukan antrian validasi`() {
+        assertEquals(ActivitySource.OPNAME_SESI_DRAFT, kartu.source)
+    }
+}

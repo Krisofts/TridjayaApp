@@ -55,6 +55,10 @@ enum class ActivitySource {
      *  menunggu putusan admin-stok. Sesi opname cabang TERKUNCI selama antriannya
      *  belum kosong, jadi angkanya bukan sekadar informasi. */
     OPNAME_MANUAL_PENDING,
+    /** `GET /inventory/opname?status=draft` — sesi opname yang sedang berjalan
+     *  di CABANG petugas. Server-lah yang men-scope-nya ke cabang akun
+     *  (`list_opname`), bukan parameter dari app. */
+    OPNAME_SESI_DRAFT,
 }
 
 data class ActivityItem(
@@ -88,6 +92,21 @@ data class ActivityItem(
  * (dijaga `ActivityRegistryTest`).
  */
 internal val RAPORT_INPUT_ROLES = setOf("karyawan")
+
+/**
+ * Cerminan `capabilities::OPNAME_HITUNG_ROLES` (rust-shared) — cadangan OFFLINE
+ * saja; sumber utamanya kunci `opname.hitung` dari `GET /api/me/capabilities`.
+ *
+ * Memuat `karyawan` dan itu memang disengaja: sejak migrasi 144 role primary
+ * dikecilkan jadi {superadmin, owner, manager, karyawan}, jadi `karyawan`
+ * adalah role hampir seluruh pegawai. Yang menyempitkan aksesnya BUKAN daftar
+ * ini melainkan penguncian cabang di server (`authorize_hitung`:
+ * `session.dealer_code` harus sama dengan cabang AKUN). Kartu yang tampil untuk
+ * orang yang cabangnya beda paling jauh membawanya ke daftar sesi kosong —
+ * jauh lebih murah daripada petugas yang berhak tapi kartunya hilang.
+ */
+internal val OPNAME_HITUNG_MENU_ROLES =
+    setOf("admin", "superadmin", "admin-stok", "kepala-cabang", "karyawan")
 
 /** `indent.submit` — `require_indent_submitter_role` (inventory `indent.rs`). */
 internal val INDENT_SUBMIT_ROLES = setOf("admin", "superadmin", "kepala-cabang", "manager")
@@ -357,6 +376,23 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "inventory-service indent.rs require_indent_approver_role",
         source = ActivitySource.INDENT_PENDING,
         navKey = "indent",
+    ),
+    ActivityItem(
+        id = "opname_cabang",
+        label = "Opname Cabang",
+        subtitle = "Hitung fisik unit di gudang cabang",
+        kind = ActivityKind.ANTRIAN,
+        // `opname.hitung` — kunci BARU di katalog rust-shared (2026-08-09),
+        // sengaja BUKAN `opname.view`: kunci itu menyetir menu Stock Opname di
+        // web, dan memakainya di sini berarti kartu ini cuma tampil untuk
+        // pengelola — persis kebalikan dari maksudnya. Kunci karangan juga tak
+        // boleh: peta kemampuan fail-closed, kunci tak dikenal menyembunyikan
+        // kartunya dari SEMUA orang tanpa error.
+        capability = "opname.hitung",
+        allowedRoles = OPNAME_HITUNG_MENU_ROLES,
+        backendGuard = "inventory-service opname.rs authorize_hitung (capabilities::OPNAME_HITUNG_ROLES)",
+        source = ActivitySource.OPNAME_SESI_DRAFT,
+        navKey = "opname",
     ),
     ActivityItem(
         id = "opname_validasi",

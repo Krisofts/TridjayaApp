@@ -329,7 +329,7 @@ fun OpnameDetailScreen(
                         }
                     }
 
-                    if (state.canManage) {
+                    if (state.canHitung) {
                         item(key = "count_input") {
                             Column(modifier = Modifier.padding(top = 12.dp)) {
                                 Text(
@@ -423,7 +423,7 @@ fun OpnameDetailScreen(
                                 StockSearchRow(
                                     item = stockItem,
                                     unitCount = unitsByCode[stockItem.kodeBarang.uppercase()]?.size ?: 0,
-                                    onClick = if (state.canManage) {
+                                    onClick = if (state.canHitung) {
                                         {
                                             viewModel.selectItem(stockItem)
                                             scanSheetOpen = true
@@ -474,7 +474,15 @@ fun OpnameDetailScreen(
                             items(state.units, key = { "unit_${it.serialNumber}" }) { unit ->
                                 ScannedUnitRow(
                                     unit = unit,
-                                    onDelete = if (state.canManage) {
+                                    // Pemilik sesi boleh menghapus unit siapa pun;
+                                    // petugas hanya miliknya sendiri. Cermin
+                                    // `delete_unit(.., only_counted_by)` di server —
+                                    // tanpa ini tombolnya muncul lalu dijawab 403.
+                                    onDelete = if (
+                                        state.canManage ||
+                                        (state.canHitung &&
+                                            unit.serialNumber.uppercase() in state.serialMilikSaya)
+                                    ) {
                                         { viewModel.deleteUnit(unit) }
                                     } else null,
                                     onUsulkan = if (bolehUsulkanSn(unit, state.canPropose)) {

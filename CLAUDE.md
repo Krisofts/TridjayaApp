@@ -566,6 +566,24 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   vonis basi di layar yang justru dipakai memverifikasi. Konsekuensinya kartu itu kosong saat
   offline — itu jujur, pembandingnya memang tak terbaca. `refreshValidationStatuses` karena
   itu MENGEMBALIKAN daftar unit versi server, bukan cuma menulis ke Room.
+  **Multi-petugas + kartu "Opname Cabang" (2026-08-09)**: server memisahkan izin
+  MENGHITUNG (`opname.hitung`, dikunci ke cabang akun) dari izin MEMILIKI SESI,
+  jadi petugas cabang kini bisa ikut scan di sesi yang dibuat orang lain. Kartu
+  Activity `opname_cabang` memakai kunci `opname.hitung` — BUKAN `opname.view`,
+  yang menyetir menu Stock Opname di web dan cuma dipegang pengelola/pemantau.
+  **Tile "Opname" di grid Akses Cepat Operasional SENGAJA tidak dihapus** walau
+  konvensi repo bilang menu yang naik ke Activity dilepas dari grid: dua kunci
+  itu beda audiens (manager/owner punya `opname.view` tapi TIDAK punya
+  `opname.hitung`), jadi menghapusnya akan membuang satu-satunya pintu pemantau.
+  `canManage`/`canHitung` kini datang dari server (`OpnameDetailDto`), bukan lagi
+  disimpulkan `isOwner && draft` — kesimpulan itu menyembunyikan tombol scan dari
+  petugas yang justru berhak. Keduanya **`Boolean?`, bukan `Boolean = false`**:
+  `null` berarti "server belum mengenal field ini" dan app jatuh balik ke aturan
+  lama. Default `false` akan mencabut tombol scan bahkan dari pemilik sesi begitu
+  APK baru beredar di atas server lama — mengurangi fungsi yang sudah jalan,
+  bukan sekadar konservatif. Tombol hapus per baris memakai `serialMilikSaya`
+  (dari daftar unit versi server): petugas boleh mengoreksi salah scan sendiri,
+  tak boleh membongkar klaim orang lain.
 - **Pusat Notifikasi** (`ui/notifications/`) + deep-link FCM; notifikasi terbaca bisa dihapus.
 - Indent, mutasi histori, deadstock, perubahan harga ERP, payroll, input serial — masing-masing
   satu layar + ViewModel, semuanya ber-gate (lihat `ActivityRegistry`/`QuickAccessMenus`).

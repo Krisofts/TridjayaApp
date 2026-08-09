@@ -159,6 +159,10 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "bukti_chat" -> ROUTE_BUKTI_CHAT
     "review_bukti_chat" -> ROUTE_REVIEW_BUKTI_CHAT
     "indent" -> ROUTE_INDENT
+    // Daftar sesi opname cabang (petugas yang ikut menghitung). Route-nya SUDAH
+    // ter-mount sejak lama sebagai anak tab Operasional — kartu Activity cuma
+    // menambah pintu, bukan layar baru.
+    "opname" -> ROUTE_OPNAME
     // Antrian validasi unit opname ketik-manual (admin-stok).
     "opname_validasi" -> ROUTE_OPNAME_VALIDASI
     "spk_input" -> ROUTE_DLV_CREATE

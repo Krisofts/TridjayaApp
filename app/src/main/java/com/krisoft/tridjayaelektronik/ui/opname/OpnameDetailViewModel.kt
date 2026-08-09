@@ -39,8 +39,26 @@ data class OpnameDetailUiState(
     /** Pesan hasil scan terakhir (tersimpan / diantre / ditolak). */
     val scanMessage: String? = null,
     val errorMessage: String? = null,
-    /** Draft session owned by the current user → counting/complete/cancel controls show. */
+    /**
+     * Boleh IKUT MENGHITUNG (buka sheet scan). Datang dari SERVER
+     * (`canHitung`), bukan disimpulkan `isOwner && draft` seperti sebelum
+     * 2026-08-09: sejak penulisan unit dibuka untuk se-cabang, kesimpulan itu
+     * menyembunyikan tombol scan dari petugas yang justru berhak.
+     */
+    val canHitung: Boolean = false,
+    /** Sesi draft MILIK sendiri → tombol Selesaikan/Batalkan muncul. */
     val canManage: Boolean = false,
+    /**
+     * Serial yang di sesi ini dicatat oleh AKUN INI (menurut server). Dipakai
+     * memutuskan tombol hapus per baris: petugas boleh mengoreksi salah scan
+     * miliknya sendiri, tapi tak boleh membongkar klaim orang lain. Server
+     * menegakkannya; ini cuma supaya tombolnya tak muncul lalu dijawab 403.
+     *
+     * Kosong saat offline/gagal muat — tombol hapus hilang sementara, dan itu
+     * pilihan yang benar: tombol yang muncul lalu ditolak lebih membingungkan
+     * daripada tombol yang belum muncul.
+     */
+    val serialMilikSaya: Set<String> = emptySet(),
     /** Sesi dibatalkan + milik sendiri → tombol Hapus Sesi muncul. */
     val canDelete: Boolean = false,
     val isSaving: Boolean = false,
@@ -174,8 +192,15 @@ class OpnameDetailViewModel @Inject constructor(
                     // menegakkannya) — sesi batal/selesai buffernya sengaja kosong.
                     launch {
                         val serverUnits = repository.refreshValidationStatuses(id, result.data.status)
+                        val saya = authRepository.currentUserId
                         _uiState.update {
-                            it.copy(selisihKondisi = serverUnits.filter { u -> u.kondisiSelisih })
+                            it.copy(
+                                selisihKondisi = serverUnits.filter { u -> u.kondisiSelisih },
+                                serialMilikSaya = serverUnits
+                                    .filter { u -> saya != null && u.countedByUserId == saya }
+                                    .map { u -> u.serialNumber.uppercase() }
+                                    .toSet(),
+                            )
                         }
                     }
                     // Coverage list matters for any viewer while the session is still
@@ -204,13 +229,20 @@ class OpnameDetailViewModel @Inject constructor(
     }
 
     private fun applyDetail(detail: OpnameDetailDto) {
+        // Server yang tahu jawabannya; aturan lama cuma dipakai saat server
+        // BELUM mengirim flagnya (`null`). Memakai `false` di situ akan
+        // mencabut tombol scan bahkan dari pemilik sesi pada server lama —
+        // mengurangi fungsi yang sudah jalan, bukan sekadar konservatif.
         val isOwner = detail.createdByUserId.isNotBlank() &&
             detail.createdByUserId == authRepository.currentUserId
+        val bolehKelola = detail.canManage ?: isOwner
+        val bolehHitung = detail.canHitung ?: (isOwner && detail.status == "draft")
         _uiState.update {
             it.copy(
                 detail = detail,
-                canManage = isOwner && detail.status == "draft",
-                canDelete = isOwner && detail.status == "cancelled",
+                canHitung = bolehHitung,
+                canManage = bolehKelola && detail.status == "draft",
+                canDelete = bolehKelola && detail.status == "cancelled",
             )
         }
     }

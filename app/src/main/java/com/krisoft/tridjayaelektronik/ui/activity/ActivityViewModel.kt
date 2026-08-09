@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.ui.activity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.krisoft.tridjayaelektronik.data.STATUS_DRAFT
 import com.krisoft.tridjayaelektronik.data.AbsensiRepository
 import com.krisoft.tridjayaelektronik.data.AktivitasChatRepository
 import com.krisoft.tridjayaelektronik.data.AuthRepository
@@ -275,6 +276,16 @@ class ActivityViewModel @Inject constructor(
                 when (val r = listIndentUseCase(status = "menunggu")) {
                     is AuthResult.Success -> counts[ActivitySource.INDENT_PENDING] = r.data.count
                     is AuthResult.Failure -> failed += ActivitySource.INDENT_PENDING
+                }
+            }
+
+            if (ActivitySource.OPNAME_SESI_DRAFT in sources) jobs += async {
+                // Server yang men-scope daftarnya ke cabang akun (`list_opname`),
+                // jadi app TIDAK mengirim filter cabang — mengirimnya akan jadi
+                // parameter yang bisa dipalsukan untuk hal yang sudah dijaga.
+                when (val r = opnameRepository.list(STATUS_DRAFT)) {
+                    is AuthResult.Success -> counts[ActivitySource.OPNAME_SESI_DRAFT] = r.data.size
+                    is AuthResult.Failure -> failed += ActivitySource.OPNAME_SESI_DRAFT
                 }
             }
 

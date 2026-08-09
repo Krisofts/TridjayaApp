@@ -57,3 +57,36 @@ class OpnameKondisiTest {
         assertEquals("kondisi_baru_dari_server", kondisiLabel("kondisi_baru_dari_server"))
     }
 }
+
+/**
+ * Flag izin dari server (`canHitung`/`canManage`) NULLABLE, bukan default
+ * `false`.
+ *
+ * Bedanya bukan gaya: `false` sebagai default akan mencabut tombol scan bahkan
+ * dari PEMILIK sesi begitu APK baru beredar di atas server lama — mengurangi
+ * fungsi yang sudah jalan. `null` membuat app bisa membedakan "server bilang
+ * tidak boleh" dari "server belum mengenal pertanyaannya", lalu jatuh balik ke
+ * aturan lama.
+ */
+class OpnameIzinDefaultTest {
+
+    @Test
+    fun `server lama menghasilkan null, bukan false`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val lama = json.decodeFromString<com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto>(
+            """{"id":"s1","status":"draft","createdByUserId":"u1"}"""
+        )
+        assertEquals(null, lama.canHitung)
+        assertEquals(null, lama.canManage)
+    }
+
+    @Test
+    fun `server baru menghasilkan nilai yang dikirimnya`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val baru = json.decodeFromString<com.krisoft.tridjayaelektronik.data.model.OpnameDetailDto>(
+            """{"id":"s1","status":"draft","createdByUserId":"u1","canHitung":true,"canManage":false}"""
+        )
+        assertEquals(true, baru.canHitung)
+        assertEquals(false, baru.canManage)
+    }
+}
