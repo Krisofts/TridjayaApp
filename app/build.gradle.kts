@@ -27,8 +27,8 @@ android {
         applicationId = "com.krisoft.tridjayaelektronik"
         minSdk = 24
         targetSdk = 35
-        versionCode = 77
-        versionName = "2.66"
+        versionCode = 78
+        versionName = "2.67"
 
         // Gateway Rust tridjaya, deployed at tridjaya.com (HTTPS, no emulator/LAN
         // workaround needed since it's a public domain). Migrated 2026-07-13 from
