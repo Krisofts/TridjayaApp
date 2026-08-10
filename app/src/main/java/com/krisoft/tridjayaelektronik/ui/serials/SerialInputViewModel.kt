@@ -6,6 +6,8 @@ import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.SerialInputRepository
 import com.krisoft.tridjayaelektronik.data.normalizeSerial
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageRowDto
+import com.krisoft.tridjayaelektronik.data.model.SerialKondisiLogRowDto
+import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -57,6 +59,24 @@ data class SerialInputUiState(
     val tagLeasingCount: Int = 0,
     /** Semua serial yang sudah ada di registry produk ini, sudah dinormalkan. */
     val sudahTerdaftar: Set<String> = emptySet(),
+    /**
+     * Baris registry produk terpilih, apa adanya dari server — bahan bagian
+     * "SN sudah tercatat". Field auditnya (`kondisiByName`, `kondisiAt`)
+     * SENGAJA tak pernah ditebak klien: sesudah menyunting kondisi, daftarnya
+     * ditarik ulang, bukan ditambal lokal, supaya yang tampil selalu vonis
+     * versi server berikut siapa yang menuliskannya.
+     */
+    val tercatat: List<SerialRegistryRow> = emptyList(),
+    /** Serial yang panel detailnya sedang dibuka; `null` = tertutup. */
+    val detailSerial: String? = null,
+    val detailSaving: Boolean = false,
+    val detailError: String? = null,
+    /** Riwayat perubahan kondisi unit yang sedang dibuka, terbaru dulu. */
+    val riwayat: List<SerialKondisiLogRowDto> = emptyList(),
+    val riwayatLoading: Boolean = false,
+    /** Gagal memuat riwayat TIDAK memblokir penyuntingan — ia alat baca. */
+    val riwayatError: String? = null,
+    val riwayatTruncated: Boolean = false,
     val existingLoading: Boolean = false,
     /** Isi kotak ketik satu unit (scan mengisi daftar langsung, tak lewat sini). */
     val entri: String = "",
@@ -241,6 +261,7 @@ class SerialInputViewModel @Inject constructor(
                 existingCount = 0,
                 tagLeasingCount = 0,
                 sudahTerdaftar = emptySet(),
+                tercatat = emptyList(),
                 // Kode hasil generate produk SEBELUMNYA wajib ikut hilang: label
                 // `GEN-…` ditempel ke unit fisik, dan daftar yang tertinggal di
                 // layar produk lain adalah undangan menempelkannya ke barang yang
@@ -263,7 +284,8 @@ class SerialInputViewModel @Inject constructor(
                         // Deteksi duplikat memakai SELURUH baris: kunci unik registry
                         // `(dealer, barang, serial)` tak peduli `isSerial`, jadi serial
                         // yang bentrok dengan tag leasing pun ditolak server.
-                        sudahTerdaftar = res.data.mapNotNull { row -> normalizeSerial(row.serialNumber) }.toSet()
+                        sudahTerdaftar = res.data.mapNotNull { row -> normalizeSerial(row.serialNumber) }.toSet(),
+                        tercatat = res.data
                     )
                 }
                 is AuthResult.Failure -> _state.update { it.copy(existingLoading = false, formError = res.message) }
@@ -273,6 +295,106 @@ class SerialInputViewModel @Inject constructor(
 
     fun clearSelection() {
         _state.update { it.copy(selected = null, result = null, formError = null).kosongkanEntri() }
+    }
+
+    // ── Detail & riwayat unit yang SUDAH tercatat ───────────────────────────
+
+    /**
+     * Buka panel detail satu unit terdaftar dan tarik riwayatnya.
+     *
+     * Riwayat ditarik saat DIBUKA, bukan diikutkan daftar produk: satu produk
+     * bisa punya ratusan unit dan riwayat seluruhnya tak pernah dibaca
+     * sekaligus — memuatnya di muka membuat layar yang dipakai berjam-jam di
+     * gudang menunggu data yang mungkin tak dilihat sama sekali.
+     */
+    fun bukaDetailUnit(serial: String) {
+        _state.update {
+            it.copy(
+                detailSerial = serial,
+                detailError = null,
+                riwayat = emptyList(),
+                riwayatError = null,
+                riwayatTruncated = false,
+                riwayatLoading = true
+            )
+        }
+        muatRiwayat(serial)
+    }
+
+    fun tutupDetailUnit() {
+        _state.update { it.copy(detailSerial = null, detailError = null, riwayat = emptyList()) }
+    }
+
+    private fun muatRiwayat(serial: String) {
+        val current = _state.value
+        val dealer = current.dealerCode ?: return
+        val kodeBarang = current.selected?.kode ?: return
+        viewModelScope.launch {
+            when (val res = repository.kondisiLog(dealer, kodeBarang, serial)) {
+                is AuthResult.Success -> _state.update {
+                    // Balasan bisa datang setelah petugas menutup panel / membuka
+                    // unit lain — buang kalau bukan milik yang sedang terbuka,
+                    // kalau tidak riwayat unit A tampil di bawah unit B.
+                    if (it.detailSerial != serial) it else it.copy(
+                        riwayatLoading = false,
+                        riwayat = res.data.items,
+                        riwayatTruncated = res.data.truncated,
+                        riwayatError = null
+                    )
+                }
+                is AuthResult.Failure -> _state.update {
+                    if (it.detailSerial != serial) it else it.copy(
+                        riwayatLoading = false,
+                        riwayatError = res.message
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Ubah kondisi unit yang SUDAH terdaftar (koreksi/evaluasi ulang).
+     *
+     * Sesudah berhasil, daftar registry DITARIK ULANG alih-alih ditambal lokal:
+     * `kondisiByName`/`kondisiAt` adalah jejak audit yang ditulis server, dan
+     * menebaknya di klien berarti menampilkan jejak yang tak pernah tersimpan.
+     */
+    fun simpanKondisiUnit(serial: String, kondisi: String?, keterangan: String?) {
+        val current = _state.value
+        val dealer = current.dealerCode ?: return
+        val product = current.selected ?: return
+        if (kondisi == null) {
+            // Server tak punya cara MENCABUT vonis (endpointnya menuntut kondisi
+            // yang sah), jadi ini dikatakan apa adanya alih-alih diam-diam gagal.
+            _state.update { it.copy(detailError = "Kondisi yang sudah ditetapkan tak bisa dikosongkan lagi — pilih salah satu.") }
+            return
+        }
+        _state.update { it.copy(detailSaving = true, detailError = null) }
+        viewModelScope.launch {
+            when (val res = repository.setKondisi(dealer, product.kode, listOf(serial), kondisi, keterangan)) {
+                is AuthResult.Success -> {
+                    when (val segar = repository.existingSerials(dealer, product.kode)) {
+                        is AuthResult.Success -> _state.update {
+                            it.copy(
+                                detailSaving = false,
+                                tercatat = segar.data,
+                                existingCount = segar.data.count { row -> row.isSerial },
+                                tagLeasingCount = segar.data.count { row -> !row.isSerial },
+                                sudahTerdaftar = segar.data.mapNotNull { row -> normalizeSerial(row.serialNumber) }.toSet()
+                            )
+                        }
+                        // Penyimpanan BERHASIL walau pembacaan ulang gagal —
+                        // mengatakan "gagal" di sini akan menyuruh petugas
+                        // menyimpan ulang vonis yang sudah tersimpan.
+                        is AuthResult.Failure -> _state.update {
+                            it.copy(detailSaving = false, detailError = "Tersimpan, tapi daftar gagal dimuat ulang: ${segar.message}")
+                        }
+                    }
+                    muatRiwayat(serial)
+                }
+                is AuthResult.Failure -> _state.update { it.copy(detailSaving = false, detailError = res.message) }
+            }
+        }
     }
 
     // ── Pemasukan per unit (scan / ketik) ───────────────────────────────────
@@ -476,6 +598,24 @@ class SerialInputViewModel @Inject constructor(
                     sudahTerdaftar = it.sudahTerdaftar + serials,
                     coverage = coverageDitambah(it.coverage, product.kode, hasil.inserted)
                 )
+            }
+
+            // Unit yang baru didaftarkan harus muncul di bagian "SN sudah
+            // tercatat" tanpa perlu keluar-masuk produk — kalau tidak, petugas
+            // tak punya cara memeriksa hasil kerjanya sendiri. Gagal memuat
+            // ulang TIDAK dilaporkan sebagai kegagalan simpan: pendaftarannya
+            // sudah berhasil, yang basi cuma tampilannya.
+            if (hasil.inserted > 0) {
+                val segar = repository.existingSerials(dealer, product.kode)
+                if (segar is AuthResult.Success) {
+                    _state.update {
+                        it.copy(
+                            tercatat = segar.data,
+                            tagLeasingCount = segar.data.count { row -> !row.isSerial },
+                            sudahTerdaftar = segar.data.mapNotNull { row -> normalizeSerial(row.serialNumber) }.toSet()
+                        )
+                    }
+                }
             }
         }
     }

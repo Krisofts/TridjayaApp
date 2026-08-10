@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.serials
 
 import com.krisoft.tridjayaelektronik.data.SERIAL_MAX_LENGTH
+import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
 import com.krisoft.tridjayaelektronik.data.normalizeSerial
 
 /**
@@ -105,4 +106,43 @@ fun tambahSerial(
         return HasilTambahSerial.Ditolak("$serial sudah terdaftar untuk produk ini.")
     }
     return HasilTambahSerial.Diterima(serial)
+}
+
+/**
+ * Satu baris jejak: siapa menetapkan kondisi & kapan, lalu asal-usul barisnya.
+ * Kondisi yang belum pernah ditetapkan dikatakan APA ADANYA — menuliskannya
+ * sebagai "-" saja membuat unit tanpa vonis tak bisa dibedakan dari unit yang
+ * datanya sekadar tak terbaca.
+ */
+fun jejakUnit(baris: SerialRegistryRow): String {
+    val vonis = when {
+        baris.kondisi == null -> "Kondisi belum pernah ditetapkan"
+        else -> buildString {
+            append("Kondisi oleh ")
+            append(baris.kondisiByName?.takeIf { it.isNotBlank() } ?: "tak diketahui")
+            baris.kondisiAt?.takeIf { it.isNotBlank() }?.let { append(" · ").append(waktuSingkat(it)) }
+        }
+    }
+    val asal = when (baris.sourceFile) {
+        "manual-input" -> "diketik admin-stok"
+        "manager-generated" -> "kode GEN- dibuat sistem"
+        "usulan-cabang" -> "dari usulan cabang"
+        "" -> "asal tak diketahui"
+        else -> "impor ${baris.sourceFile}"
+    }
+    val pendaftar = baris.createdByName?.takeIf { it.isNotBlank() }?.let { " oleh $it" }.orEmpty()
+    return "$vonis\n$asal$pendaftar"
+}
+
+/** `2026-08-10T17:05:00` → `10 Agu 17:05`. Tanpa `java.time` (haram di minSdk 24). */
+fun waktuSingkat(iso: String): String {
+    val bagian = iso.split("T")
+    if (bagian.size < 2) return iso
+    val tgl = bagian[0].split("-")
+    if (tgl.size < 3) return iso
+    val bulan = listOf("Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
+    val idx = tgl[1].toIntOrNull()?.minus(1) ?: return iso
+    val namaBulan = bulan.getOrNull(idx) ?: return iso
+    val jam = bagian[1].take(5)
+    return "${tgl[2].trimStart('0')} $namaBulan $jam"
 }

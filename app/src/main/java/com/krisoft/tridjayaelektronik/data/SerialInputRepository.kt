@@ -8,6 +8,7 @@ import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageData
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
+import com.krisoft.tridjayaelektronik.data.model.SerialKondisiLogData
 import com.krisoft.tridjayaelektronik.data.model.SetKondisiBody
 import com.krisoft.tridjayaelektronik.data.model.SetKondisiResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
@@ -158,6 +159,33 @@ class SerialInputRepository @Inject constructor(
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data)
         else parseError(response, "Gagal menyimpan kondisi unit")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Riwayat perubahan kondisi satu unit. Registry hanya menyimpan keadaan
+     * TERAKHIR; tanpa riwayat, vonis yang ditimpa orang lain hilang tanpa jejak
+     * — padahal vonis kondisi menahan barang dari penjualan.
+     *
+     * Fail-soft di pemanggil: gagal memuat riwayat TIDAK boleh memblokir
+     * penyuntingan kondisi, karena riwayat itu alat baca, bukan syarat tulis.
+     */
+    suspend fun kondisiLog(
+        kodeDealer: String,
+        kodeBarang: String?,
+        serialNumber: String?,
+        limit: Int? = null
+    ): AuthResult<SerialKondisiLogData> = try {
+        val response = api.serialKondisiLog(
+            kodeDealer = kodeDealer,
+            kodeBarang = kodeBarang?.takeIf { it.isNotBlank() },
+            serialNumber = serialNumber?.takeIf { it.isNotBlank() },
+            limit = limit
+        )
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal memuat riwayat kondisi")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }

@@ -369,7 +369,20 @@ data class SerialRegistryRow(
      */
     val isSerial: Boolean = true,
     val kondisi: String? = null,
-    val kondisiKeterangan: String? = null
+    val kondisiKeterangan: String? = null,
+    /** Siapa & kapan kondisi terakhir ditetapkan; `null` = belum pernah. */
+    val kondisiByName: String? = null,
+    val kondisiAt: String? = null,
+    /**
+     * Asal-usul baris: `manual-input` (admin-stok mengetik), `manager-generated`
+     * (kode `GEN-`), `usulan-cabang` (cabang mengusulkan, admin-stok menyetujui),
+     * atau nama berkas impor Excel. Dipakai layar Input SN untuk menjelaskan
+     * dari mana sebuah unit masuk registry — `createdByName` saja tak bisa
+     * membedakan yang diketik sendiri dari yang disetujui dari usulan cabang.
+     */
+    val sourceFile: String = "",
+    val createdByName: String? = null,
+    val importedAt: String? = null
 ) {
     /** Perlu diperingatkan sebelum dijual. */
     val bermasalah: Boolean get() = kondisi != null && kondisi != KONDISI_LAYAK
@@ -550,6 +563,36 @@ data class SetKondisiBody(
     val serialNumbers: List<String>,
     val kondisi: String,
     val keterangan: String? = null
+)
+
+/**
+ * Satu perubahan kondisi unit (`GET /inventory/serial-numbers/kondisi-log`),
+ * cerminan baris `stock_serial_kondisi_log`.
+ *
+ * `kondisiLama` `null` = belum pernah ditetapkan siapa pun sebelum perubahan
+ * itu — SENGAJA bukan `layak`. Membedakan keduanya adalah gunanya kolom ini:
+ * baris impor Excel tak pernah dilihat admin-stok.
+ */
+@Serializable
+data class SerialKondisiLogRowDto(
+    val id: String = "",
+    val kodeBarang: String = "",
+    val serialNumber: String = "",
+    val kondisiLama: String? = null,
+    val kondisiBaru: String = "",
+    val keterangan: String? = null,
+    val changedByName: String? = null,
+    val changedAt: String? = null
+)
+
+@Serializable
+data class SerialKondisiLogData(
+    val kodeDealer: String = "",
+    val count: Int = 0,
+    /** `true` = masih ada baris lebih tua di luar batas; JANGAN simpulkan ini
+     *  seluruh riwayat unitnya. */
+    val truncated: Boolean = false,
+    val items: List<SerialKondisiLogRowDto> = emptyList()
 )
 
 @Serializable
