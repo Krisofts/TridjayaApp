@@ -534,6 +534,30 @@ data class MutasiHistoriDetailListDto(
     val items: List<MutasiHistoriDetailRowDto> = emptyList()
 )
 
+/**
+ * Body `POST /inventory/serial-numbers/kondisi` — vonis admin-stok atas unit
+ * yang SUDAH terdaftar di registry. Satu panggilan = satu nilai `kondisi` untuk
+ * sekumpulan serial dalam satu produk di satu cabang, jadi batch dengan kondisi
+ * berbeda WAJIB dikirim sebagai panggilan terpisah.
+ *
+ * `kondisi` harus salah satu `KONDISI_PILIHAN` (cerminan `opname::KONDISI_VALID`);
+ * server menolak nilai asing, bukan memaksanya jadi `layak`.
+ */
+@Serializable
+data class SetKondisiBody(
+    val kodeDealer: String,
+    val kodeBarang: String,
+    val serialNumbers: List<String>,
+    val kondisi: String,
+    val keterangan: String? = null
+)
+
+@Serializable
+data class SetKondisiResultDto(
+    val updated: Int = 0,
+    val skipped: List<SkippedSerialDto> = emptyList()
+)
+
 @Serializable
 data class SkippedSerialDto(val serialNumber: String = "", val reason: String = "")
 

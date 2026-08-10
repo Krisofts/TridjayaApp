@@ -63,7 +63,20 @@ data class SerialInputUiState(
     /** Alasan penolakan entri terakhir — hilang begitu petugas mengetik lagi. */
     val entriError: String? = null,
     /** Unit yang sudah dikumpulkan dan siap disimpan, urut sesuai pemasukan. */
-    val daftar: List<String> = emptyList(),
+    val daftar: List<UnitEntri> = emptyList(),
+    /**
+     * Kondisi yang akan menempel pada unit BERIKUTNYA yang discan. `null` =
+     * belum ditetapkan. Sengaja LENGKET antar-scan, sama seperti sheet opname:
+     * satu rak barang rusak ditandai berturut-turut, dan meresetnya tiap unit
+     * membuat petugas diam-diam membiarkan sisanya tanpa vonis.
+     */
+    val kondisiBerikutnya: String? = null,
+    val keteranganBerikutnya: String = "",
+    /** Unit yang sedang dibuka pemilih kondisinya; `null` = dialog tertutup. */
+    val kondisiUntukUnit: String? = null,
+    /** Kondisi gagal disimpan padahal serialnya sudah masuk registry. */
+    val kondisiError: String? = null,
+    val kondisiUpdated: Int = 0,
     val saving: Boolean = false,
     val result: SerialCreateResultDto? = null,
     val formError: String? = null,
@@ -277,16 +290,61 @@ class SerialInputViewModel @Inject constructor(
      */
     fun tambahEntri(raw: String) {
         val current = _state.value
-        when (val hasil = tambahSerial(raw, current.daftar, current.sudahTerdaftar)) {
+        when (val hasil = tambahSerial(raw, current.daftar.map { it.serial }, current.sudahTerdaftar)) {
             is HasilTambahSerial.Diterima -> _state.update {
-                it.copy(daftar = it.daftar + hasil.serial, entri = "", entriError = null, result = null)
+                it.copy(
+                    daftar = it.daftar + UnitEntri(
+                        serial = hasil.serial,
+                        kondisi = it.kondisiBerikutnya,
+                        // Kolom keterangan hanya TAMPIL untuk kondisi bermasalah, jadi
+                        // hanya itu yang boleh ikut terkirim. Membawa sisa ketikan yang
+                        // sedang tersembunyi berarti menulis catatan ke unit tanpa
+                        // pernah diperlihatkan ke orang yang menandatanganinya.
+                        keterangan = it.keteranganBerikutnya.trim()
+                            .takeIf { k -> k.isNotEmpty() && kondisiPakaiKeterangan(it.kondisiBerikutnya) }
+                    ),
+                    entri = "",
+                    entriError = null,
+                    result = null
+                )
             }
             is HasilTambahSerial.Ditolak -> _state.update { it.copy(entriError = hasil.alasan) }
         }
     }
 
     fun hapusEntri(serial: String) {
-        _state.update { it.copy(daftar = it.daftar - serial, entriError = null) }
+        _state.update { it.copy(daftar = it.daftar.filterNot { u -> u.serial == serial }, entriError = null) }
+    }
+
+    /** Kondisi untuk unit yang discan SELANJUTNYA (lengket). */
+    fun onKondisiBerikutnyaChange(kondisi: String?) {
+        _state.update { it.copy(kondisiBerikutnya = kondisi) }
+    }
+
+    fun onKeteranganBerikutnyaChange(value: String) {
+        _state.update { it.copy(keteranganBerikutnya = value) }
+    }
+
+    fun bukaPemilihKondisi(serial: String) {
+        _state.update { it.copy(kondisiUntukUnit = serial) }
+    }
+
+    fun tutupPemilihKondisi() {
+        _state.update { it.copy(kondisiUntukUnit = null) }
+    }
+
+    /** Ubah vonis SATU unit yang sudah ada di daftar (koreksi salah tekan). */
+    fun setKondisiUnit(serial: String, kondisi: String?, keterangan: String?) {
+        _state.update { st ->
+            st.copy(
+                daftar = st.daftar.map { u ->
+                    if (u.serial == serial) {
+                        u.copy(kondisi = kondisi, keterangan = keterangan?.trim()?.takeIf { k -> k.isNotEmpty() })
+                    } else u
+                },
+                kondisiUntukUnit = null
+            )
+        }
     }
 
     /**
@@ -361,25 +419,63 @@ class SerialInputViewModel @Inject constructor(
             _state.update { it.copy(formError = "Belum ada unit yang dimasukkan — scan atau ketik serialnya dulu.") }
             return
         }
-        _state.update { it.copy(saving = true, formError = null, result = null) }
+        _state.update { it.copy(saving = true, formError = null, result = null, kondisiError = null, kondisiUpdated = 0) }
         viewModelScope.launch {
-            when (val res = repository.createSerialNumbers(dealer, product.kode, product.nama, daftar)) {
-                is AuthResult.Success -> _state.update {
-                    it.copy(
-                        saving = false,
-                        result = res.data,
-                        daftar = emptyList(),
-                        entri = "",
-                        entriError = null,
-                        existingCount = it.existingCount + res.data.inserted,
-                        // Yang benar-benar masuk kini bagian dari registry: tanpa ini
-                        // men-scan ulang unit yang barusan disimpan tidak diperingatkan,
-                        // dan petugas mengira scan-nya belum terhitung.
-                        sudahTerdaftar = it.sudahTerdaftar + daftar,
-                        coverage = coverageDitambah(it.coverage, product.kode, res.data.inserted)
-                    )
+            val serials = daftar.map { it.serial }
+            val dibuat = repository.createSerialNumbers(dealer, product.kode, product.nama, serials)
+            if (dibuat is AuthResult.Failure) {
+                _state.update { it.copy(saving = false, formError = dibuat.message) }
+                return@launch
+            }
+            val hasil = (dibuat as AuthResult.Success).data
+
+            // Kondisi ditetapkan SESUDAH pendaftaran, endpoint terpisah. Baris yang
+            // `skipped` (duplikat) SENGAJA tetap ikut: mereka ADA di registry, dan
+            // vonis atasnya sama sahnya — justru itu satu-satunya cara mengoreksi
+            // kondisi unit yang dulu terdaftar tanpa vonis.
+            val batches = kelompokkanKondisi(daftar)
+            var updated = 0
+            var gagal: String? = null
+            for (batch in batches) {
+                when (val res = repository.setKondisi(
+                    kodeDealer = dealer,
+                    kodeBarang = product.kode,
+                    serialNumbers = batch.serials,
+                    kondisi = batch.kondisi,
+                    keterangan = batch.keterangan
+                )) {
+                    is AuthResult.Success -> updated += res.data.updated
+                    // Berhenti di kegagalan PERTAMA: melanjutkan berarti sebagian
+                    // vonis masuk dan sebagian tidak, tanpa cara memberi tahu
+                    // petugas yang mana. Serialnya sendiri sudah terdaftar.
+                    is AuthResult.Failure -> {
+                        gagal = res.message
+                        break
+                    }
                 }
-                is AuthResult.Failure -> _state.update { it.copy(saving = false, formError = res.message) }
+            }
+
+            _state.update {
+                it.copy(
+                    saving = false,
+                    result = hasil,
+                    kondisiUpdated = updated,
+                    kondisiError = gagal,
+                    // Daftar DIPERTAHANKAN saat kondisi gagal — serialnya memang sudah
+                    // masuk, tapi vonisnya belum, dan menekan Simpan lagi aman:
+                    // pendaftaran ulang dilewati server sebagai duplikat sementara
+                    // penetapan kondisinya dicoba lagi. Mengosongkannya akan membuang
+                    // satu-satunya catatan unit mana yang vonisnya belum tersimpan.
+                    daftar = if (gagal == null) emptyList() else it.daftar,
+                    entri = if (gagal == null) "" else it.entri,
+                    entriError = null,
+                    existingCount = it.existingCount + hasil.inserted,
+                    // Yang benar-benar masuk kini bagian dari registry: tanpa ini
+                    // men-scan ulang unit yang barusan disimpan tidak diperingatkan,
+                    // dan petugas mengira scan-nya belum terhitung.
+                    sudahTerdaftar = it.sudahTerdaftar + serials,
+                    coverage = coverageDitambah(it.coverage, product.kode, hasil.inserted)
+                )
             }
         }
     }

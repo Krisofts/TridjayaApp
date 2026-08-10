@@ -43,6 +43,8 @@ import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
 import com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody
 import com.krisoft.tridjayaelektronik.data.model.SetoranKasirBody
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageData
+import com.krisoft.tridjayaelektronik.data.model.SetKondisiBody
+import com.krisoft.tridjayaelektronik.data.model.SetKondisiResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.SpkEditResultDto
@@ -262,6 +264,12 @@ interface DeliveryFlowApi {
      *  (mismatch → 403 Forbidden eksplisit, beda dari GET yang auto-floor). */
     @POST("api/inventory/serial-numbers")
     suspend fun createSerialNumbers(@Body body: CreateSerialNumbersBody): Response<ApiResponse<SerialCreateResultDto>>
+
+    /** Vonis kondisi unit yang SUDAH terdaftar (layak/tidak_layak/repair/retur) —
+     *  admin-stok saja, sama sempitnya dengan yang menulis registry. Satu panggilan =
+     *  satu nilai kondisi; batch berkondisi berbeda dikirim terpisah. */
+    @POST("api/inventory/serial-numbers/kondisi")
+    suspend fun setSerialKondisi(@Body body: SetKondisiBody): Response<ApiResponse<SetKondisiResultDto>>
 
     /** Foto bukti usulan SN (multipart `file`, maks 5MB) → `{ url }` relatif
      *  `/uploads/serial/...`. Endpoint TERPISAH dari foto delivery: direktorinya

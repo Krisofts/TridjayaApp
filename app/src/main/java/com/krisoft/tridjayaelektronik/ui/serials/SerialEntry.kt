@@ -3,6 +3,64 @@ package com.krisoft.tridjayaelektronik.ui.serials
 import com.krisoft.tridjayaelektronik.data.SERIAL_MAX_LENGTH
 import com.krisoft.tridjayaelektronik.data.normalizeSerial
 
+/**
+ * Satu unit yang sudah discan/diketik dan menunggu disimpan.
+ *
+ * [kondisi] `null` = **belum ditetapkan**, dan itu BUKAN sinonim `layak`. Server
+ * memperlakukan `stock_serial_numbers.kondisi` NULL sebagai "tak ada pembanding"
+ * saat membandingkan registry dengan temuan opname (`kondisi_registry:
+ * Option<String>`), jadi mengisi `layak` otomatis berarti mengarang vonis yang
+ * tak pernah diucapkan siapa pun — dan selisih registry-vs-lapangan yang jadi
+ * gunanya modul itu ikut hilang.
+ */
+data class UnitEntri(
+    val serial: String,
+    val kondisi: String? = null,
+    val keterangan: String? = null
+)
+
+/**
+ * Kondisi yang pantas dijelaskan. `null` (belum ditetapkan) dan `layak` tidak:
+ * tak ada yang perlu diterangkan dari unit yang belum divonis atau yang baik-baik
+ * saja. Dipakai UI untuk memutuskan kapan kolom keterangan tampil, DAN dipakai
+ * ViewModel untuk memutuskan kapan isinya boleh ikut terkirim — dua keputusan itu
+ * WAJIB memakai aturan yang sama, kalau tidak ada catatan yang tersimpan ke unit
+ * tanpa pernah terlihat oleh orang yang menetapkannya.
+ */
+fun kondisiPakaiKeterangan(kondisi: String?): Boolean =
+    kondisi != null && kondisi != com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
+
+/** Satu panggilan `POST /inventory/serial-numbers/kondisi`. */
+data class KondisiBatch(
+    val kondisi: String,
+    val keterangan: String?,
+    val serials: List<String>
+)
+
+/**
+ * Kelompokkan unit jadi panggilan-panggilan kondisi.
+ *
+ * Endpoint-nya menerima SATU `kondisi` + SATU `keterangan` untuk sekumpulan
+ * serial, jadi pengelompokannya harus per **pasangan** (kondisi, keterangan) —
+ * bukan per kondisi saja. Menggabungkan dua keterangan berbeda ke satu panggilan
+ * berarti salah satunya ditulis ke unit yang bukan miliknya: "layar retak"
+ * menempel di unit yang dusnya cuma sobek, dan tak ada error apa pun yang
+ * menandainya.
+ *
+ * Unit tanpa kondisi TIDAK ikut — lihat [UnitEntri.kondisi]. Urutan pemasukan
+ * dipertahankan supaya laporan hasilnya bisa dibaca berdampingan dengan daftar
+ * di layar.
+ */
+fun kelompokkanKondisi(units: List<UnitEntri>): List<KondisiBatch> {
+    val urutan = LinkedHashMap<Pair<String, String?>, MutableList<String>>()
+    for (unit in units) {
+        val kondisi = unit.kondisi ?: continue
+        val keterangan = unit.keterangan?.trim()?.takeIf { it.isNotEmpty() }
+        urutan.getOrPut(kondisi to keterangan) { mutableListOf() }.add(unit.serial)
+    }
+    return urutan.map { (kunci, serials) -> KondisiBatch(kunci.first, kunci.second, serials) }
+}
+
 /** Hasil satu percobaan memasukkan serial — hasil scan maupun ketikan. */
 sealed interface HasilTambahSerial {
     data class Diterima(val serial: String) : HasilTambahSerial

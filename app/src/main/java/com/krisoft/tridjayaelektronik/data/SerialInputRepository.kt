@@ -8,6 +8,8 @@ import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageData
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
+import com.krisoft.tridjayaelektronik.data.model.SetKondisiBody
+import com.krisoft.tridjayaelektronik.data.model.SetKondisiResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
@@ -124,6 +126,38 @@ class SerialInputRepository @Inject constructor(
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data)
         else parseError(response, "Gagal menyimpan serial number")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Vonis kondisi atas unit yang SUDAH terdaftar. Endpoint TERPISAH dari
+     * pendaftaran (`createSerialNumbers` tak menerima `kondisi`), jadi menetapkan
+     * kondisi selalu berarti panggilan kedua — dan kegagalannya TIDAK membatalkan
+     * pendaftaran yang sudah berhasil.
+     *
+     * Satu panggilan = satu nilai kondisi untuk sekumpulan serial. Kondisi
+     * berbeda wajib jadi panggilan berbeda — lihat [com.krisoft.tridjayaelektronik.ui.serials.kelompokkanKondisi].
+     */
+    suspend fun setKondisi(
+        kodeDealer: String,
+        kodeBarang: String,
+        serialNumbers: List<String>,
+        kondisi: String,
+        keterangan: String?
+    ): AuthResult<SetKondisiResultDto> = try {
+        val response = api.setSerialKondisi(
+            SetKondisiBody(
+                kodeDealer = kodeDealer,
+                kodeBarang = kodeBarang,
+                serialNumbers = serialNumbers,
+                kondisi = kondisi,
+                keterangan = keterangan?.takeIf { it.isNotBlank() }
+            )
+        )
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal menyimpan kondisi unit")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
