@@ -613,6 +613,29 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
 - **Pusat Notifikasi** (`ui/notifications/`) + deep-link FCM; notifikasi terbaca bisa dihapus.
 - Indent, mutasi histori, deadstock, perubahan harga ERP, payroll, input serial — masing-masing
   satu layar + ViewModel, semuanya ber-gate (lihat `ActivityRegistry`/`QuickAccessMenus`).
+- **Input Serial Number (`ui/serials/`) = SATU tile, DUA pekerjaan.** Layar pertamanya
+  pilihan mode (`SerialInputMode`), bukan langsung daftar produk: `TETAPKAN` mendaftarkan
+  SN pabrik yang sudah tertempel di unit (`POST /inventory/serial-numbers`), `BUAT_BARU`
+  membuat kode pengganti `GEN-…` untuk barang yang memang tak pernah punya nomor pabrik
+  (`POST /inventory/serial-numbers/generate`). Keduanya dulu ditumpuk dalam satu form dan
+  yang kedua tersembunyi di kaki halaman — di web keduanya memang menu terpisah
+  (`AdminStokSerialInputPage.tsx` + `SerialGeneratePage.tsx`).
+  **Tetap satu tile** (`serial_input`, kunci `serial.input`) walau web punya dua menu:
+  `SERIAL_INPUT_ROLES` dan `SERIAL_GENERATE_ROLES` sama-sama `["admin-stok"]`, jadi tile
+  kedua tak menyaring siapa pun — ia cuma menambah kunci yang bisa melenceng.
+  **Daftar produknya membawa badge cakupan + filter Semua/Belum lengkap/Lengkap** dari
+  `GET /inventory/serial-numbers/summary` (`SerialCoverage.kt`, fungsi murni + diuji).
+  Alur kerjanya menetapkan SN ke SELURUH produk, jadi tanpa filter itu satu-satunya cara
+  tahu mana yang belum tergarap adalah membuka produk satu per satu. **`TAK_DIKETAHUI`
+  BUKAN sinonim `BELUM`**: saat cakupan gagal dimuat atau dipotong di batas server (8.000
+  kode, field `truncated`), produk yang absen dari peta bisa saja sudah lengkap —
+  memvonisnya `BELUM` memicu pendaftaran ulang. Cakupan gagal SENGAJA tidak mengisi
+  `contextError`: daftar produk yang sudah terbaca tak boleh ditutup layar error, karena
+  pendaftaran SN tetap sah tanpa peta kelengkapan.
+  Registry inilah yang jadi bahan verifikasi lapangan — petugas cabang men-scan barcode
+  tiap unit saat opname dan server menolak serial yang sama dua kali dalam satu sesi
+  (`duplikat_dalam_sesi`), jadi produk yang SN-nya belum ditetapkan di sini **tak bisa
+  diverifikasi sama sekali** di sana.
 - **Panduan Alur + Direktori Petugas** (`ui/activity/PanduanAlurScreen.kt`) dari tombol PINTASAN.
 - Settings: profile display, nomor WA bisa diubah, semua role terlihat, logout dikonfirmasi,
   cabang, cek pembaruan (`ui/settings/SettingsFormat.kt` memformat nilai tampilan)

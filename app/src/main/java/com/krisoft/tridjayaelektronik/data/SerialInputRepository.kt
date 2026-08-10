@@ -5,6 +5,7 @@ import com.krisoft.tridjayaelektronik.data.model.CreateSerialNumbersBody
 import com.krisoft.tridjayaelektronik.data.model.CreateSerialRequestBody
 import com.krisoft.tridjayaelektronik.data.model.GenerateSerialBody
 import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
+import com.krisoft.tridjayaelektronik.data.model.SerialCoverageData
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
@@ -52,6 +53,21 @@ class SerialInputRepository @Inject constructor(
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.items)
         else parseError(response, "Gagal memuat stok cabang")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Cakupan SN seluruh produk satu cabang — bahan badge "SN 3/5" + filter
+     * "belum lengkap". Dipanggil SEKALI per cabang, bukan per produk: alur
+     * kerjanya menetapkan SN ke SEMUA produk, jadi yang dibutuhkan pertama
+     * adalah peta gudang, bukan hitungan satu barang.
+     */
+    suspend fun serialCoverage(kodeDealer: String): AuthResult<SerialCoverageData> = try {
+        val response = api.serialCoverage(kodeDealer = kodeDealer)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal memuat cakupan serial number")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }

@@ -42,6 +42,7 @@ import com.krisoft.tridjayaelektronik.data.model.RejectAkiBody
 import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
 import com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody
 import com.krisoft.tridjayaelektronik.data.model.SetoranKasirBody
+import com.krisoft.tridjayaelektronik.data.model.SerialCoverageData
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialListData
 import com.krisoft.tridjayaelektronik.data.model.SpkEditResultDto
@@ -241,6 +242,16 @@ interface DeliveryFlowApi {
         @Query("onlySerial") onlySerial: Boolean = true,
         @Query("excludeAssigned") excludeAssigned: Boolean = true
     ): Response<ApiResponse<SerialListData>>
+
+    /** Cakupan SN per produk satu cabang — jawaban atas "produk mana yang SN-nya
+     *  belum lengkap". SENGAJA tidak dipakai picker SPK: sales butuh daftar SN satu
+     *  produk, bukan peta kelengkapan satu gudang. Server memotong di 8.000 kode dan
+     *  menandainya lewat `truncated`; saat true, produk yang absen dari `items` TIDAK
+     *  boleh divonis nol SN. */
+    @GET("api/inventory/serial-numbers/summary")
+    suspend fun serialCoverage(
+        @Query("kodeDealer") kodeDealer: String
+    ): Response<ApiResponse<SerialCoverageData>>
 
     /** Konteks mutasi (dealer sendiri) — reuse utk resolve `sourceDealerCode` akun
      *  admin-stok sebelum input SN manual (grup gateway `mutasi`, login-only). */
