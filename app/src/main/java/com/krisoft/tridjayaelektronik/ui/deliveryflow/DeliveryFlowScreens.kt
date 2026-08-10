@@ -712,6 +712,27 @@ private fun SpkUnitList(units: List<DeliveryJobDto>) {
                                 fontWeight = FontWeight.Bold, color = Color(0xFF9E4B00),
                             )
                         }
+                        // Selisih warna SKU vs kolom isian (2026-08-10). Di
+                        // baris UNIT, bukan di kepala kartu: tiap unit punya
+                        // vonisnya sendiri, dan SPK banyak barang bisa cuma
+                        // satu unitnya yang bermasalah.
+                        pesanWarnaSelisih(u.warnaSelisih)?.let { w ->
+                            Spacer(Modifier.height(4.dp))
+                            val warnaTeks =
+                                if (w.nada == NadaSelisih.PERINGATAN) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            Text(
+                                w.judul,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = warnaTeks,
+                            )
+                            Text(
+                                w.penjelasan,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         u.hargaOtr?.let {
