@@ -53,6 +53,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
 import com.krisoft.tridjayaelektronik.data.KONDISI_PILIHAN
 import com.krisoft.tridjayaelektronik.data.kondisiLabel
+import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.BarcodeScanButton
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.CabangSelector
@@ -111,6 +112,9 @@ fun SerialInputScreen(
                 onBukaPemilihKondisi = viewModel::bukaPemilihKondisi,
                 onTutupPemilihKondisi = viewModel::tutupPemilihKondisi,
                 onSetKondisiUnit = viewModel::setKondisiUnit,
+                onBukaDetail = viewModel::bukaDetailUnit,
+                onTutupDetail = viewModel::tutupDetailUnit,
+                onSimpanKondisiTercatat = viewModel::simpanKondisiUnit,
                 onSave = viewModel::save,
                 onBack = viewModel::clearSelection
             )
@@ -455,6 +459,9 @@ private fun TetapkanFormScreen(
     onBukaPemilihKondisi: (String) -> Unit,
     onTutupPemilihKondisi: () -> Unit,
     onSetKondisiUnit: (String, String?, String?) -> Unit,
+    onBukaDetail: (String) -> Unit,
+    onTutupDetail: () -> Unit,
+    onSimpanKondisiTercatat: (String, String?, String?) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -472,6 +479,18 @@ private fun TetapkanFormScreen(
                 unit = unit,
                 onTutup = onTutupPemilihKondisi,
                 onPilih = { kondisi, keterangan -> onSetKondisiUnit(serial, kondisi, keterangan) }
+            )
+        }
+    }
+
+    state.detailSerial?.let { serial ->
+        val baris = state.tercatat.firstOrNull { it.serialNumber == serial }
+        if (baris != null) {
+            DetailUnitTercatatDialog(
+                baris = baris,
+                state = state,
+                onTutup = onTutupDetail,
+                onSimpan = { kondisi, keterangan -> onSimpanKondisiTercatat(serial, kondisi, keterangan) }
             )
         }
     }
@@ -685,6 +704,10 @@ private fun TetapkanFormScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SnTercatatSection(state = state, onBukaDetail = onBukaDetail)
+
             Spacer(modifier = Modifier.height(16.dp))
 
             ExpressiveFilledButton(
@@ -777,6 +800,203 @@ private fun PemilihKondisiDialog(
             }) { Text("Simpan status") }
         },
         dismissButton = { TextButton(onClick = onTutup) { Text("Batal") } }
+    )
+}
+
+/**
+ * Daftar unit yang SUDAH tercatat di registry produk ini, lengkap dengan jejak
+ * siapa/kapan menetapkan kondisinya dan dari mana barisnya masuk.
+ *
+ * Ada supaya penetapan SN bisa DIEVALUASI, bukan cuma ditumpuk: sebelum ini,
+ * satu-satunya angka yang terlihat adalah "SN tercatat: 3" — tak ada cara
+ * memeriksa unit mana saja, siapa memutuskan kondisinya, atau apakah vonisnya
+ * masih benar.
+ */
+@Composable
+private fun SnTercatatSection(state: SerialInputUiState, onBukaDetail: (String) -> Unit) {
+    Text(
+        text = "SN sudah tercatat (${state.tercatat.size})",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold
+    )
+    if (state.existingLoading) {
+        Text(
+            text = "Memuat…",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        return
+    }
+    if (state.tercatat.isEmpty()) {
+        Text(
+            text = "Belum ada satu pun unit produk ini yang terdaftar.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        return
+    }
+    Text(
+        text = "Ketuk satu unit untuk mengubah kondisi/keterangan dan melihat riwayatnya.",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        state.tercatat.forEach { baris ->
+            ClayCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .clickable { onBukaDetail(baris.serialNumber) }
+                        .padding(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = baris.serialNumber,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        // Tag leasing ditandai TERPISAH dari kondisi: ia bukan unit
+                        // fisik, jadi memberinya badge kondisi akan menyarankan ada
+                        // barang yang bisa diperiksa.
+                        if (!baris.isSerial) {
+                            Text(
+                                text = "tag leasing",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            KondisiBadge(kondisi = baris.kondisi)
+                        }
+                    }
+                    baris.kondisiKeterangan?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    Text(
+                        text = jejakUnit(baris),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Panel evaluasi satu unit terdaftar: ubah vonis + baca riwayat perubahannya. */
+@Composable
+private fun DetailUnitTercatatDialog(
+    baris: SerialRegistryRow,
+    state: SerialInputUiState,
+    onTutup: () -> Unit,
+    onSimpan: (String?, String?) -> Unit
+) {
+    var kondisi by remember(baris.serialNumber) { mutableStateOf(baris.kondisi) }
+    var keterangan by remember(baris.serialNumber) { mutableStateOf(baris.kondisiKeterangan.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onTutup,
+        title = { Text(baris.serialNumber) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = jejakUnit(baris),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    KONDISI_PILIHAN.forEach { pilihan ->
+                        FilterChip(
+                            selected = kondisi == pilihan,
+                            onClick = { kondisi = pilihan },
+                            label = { Text(kondisiLabel(pilihan)) }
+                        )
+                    }
+                }
+                if (kondisiPakaiKeterangan(kondisi)) {
+                    ExpressiveTextField(
+                        value = keterangan,
+                        onValueChange = { keterangan = it },
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        placeholder = "Keterangan (mis. layar retak)"
+                    )
+                }
+                state.detailError?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Riwayat perubahan",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                when {
+                    state.riwayatLoading -> Text(
+                        text = "Memuat riwayat…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // Riwayat gagal TIDAK memblokir penyuntingan — ia alat baca,
+                    // dan menutup tombol simpan karenanya akan menghentikan
+                    // pekerjaan atas alasan yang tak ada hubungannya.
+                    state.riwayatError != null -> Text(
+                        text = "Riwayat gagal dimuat: ${state.riwayatError}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                    state.riwayat.isEmpty() -> Text(
+                        text = "Belum pernah diubah sejak didaftarkan.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    else -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.riwayat.forEach { log ->
+                            val dari = log.kondisiLama?.let { kondisiLabel(it) } ?: "belum ditetapkan"
+                            Text(
+                                text = "$dari → ${kondisiLabel(log.kondisiBaru)}" +
+                                    (log.keterangan?.takeIf { it.isNotBlank() }?.let { " · \"$it\"" } ?: "") +
+                                    "\n${log.changedByName ?: "tak diketahui"}" +
+                                    (log.changedAt?.let { " · ${waktuSingkat(it)}" } ?: ""),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (state.riwayatTruncated) {
+                            Text(
+                                text = "Masih ada perubahan lebih lama yang tak ditampilkan.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSimpan(kondisi, keterangan.takeIf { kondisiPakaiKeterangan(kondisi) }) },
+                enabled = !state.detailSaving && baris.isSerial
+            ) { Text(if (state.detailSaving) "Menyimpan…" else "Simpan kondisi") }
+        },
+        dismissButton = { TextButton(onClick = onTutup) { Text("Tutup") } }
     )
 }
 

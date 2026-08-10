@@ -43,6 +43,7 @@ import com.krisoft.tridjayaelektronik.data.model.ReturnAkiBody
 import com.krisoft.tridjayaelektronik.data.model.SelfPickupCompleteBody
 import com.krisoft.tridjayaelektronik.data.model.SetoranKasirBody
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageData
+import com.krisoft.tridjayaelektronik.data.model.SerialKondisiLogData
 import com.krisoft.tridjayaelektronik.data.model.SetKondisiBody
 import com.krisoft.tridjayaelektronik.data.model.SetKondisiResultDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
@@ -270,6 +271,17 @@ interface DeliveryFlowApi {
      *  satu nilai kondisi; batch berkondisi berbeda dikirim terpisah. */
     @POST("api/inventory/serial-numbers/kondisi")
     suspend fun setSerialKondisi(@Body body: SetKondisiBody): Response<ApiResponse<SetKondisiResultDto>>
+
+    /** Riwayat perubahan kondisi unit — admin-stok & manager bebas cabang, role
+     *  cabang dipaksa cabangnya sendiri. Terbaru dulu; `truncated` = masih ada yang
+     *  lebih tua di luar batas. */
+    @GET("api/inventory/serial-numbers/kondisi-log")
+    suspend fun serialKondisiLog(
+        @Query("kodeDealer") kodeDealer: String,
+        @Query("kodeBarang") kodeBarang: String? = null,
+        @Query("serialNumber") serialNumber: String? = null,
+        @Query("limit") limit: Int? = null
+    ): Response<ApiResponse<SerialKondisiLogData>>
 
     /** Foto bukti usulan SN (multipart `file`, maks 5MB) → `{ url }` relatif
      *  `/uploads/serial/...`. Endpoint TERPISAH dari foto delivery: direktorinya
