@@ -26,9 +26,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Numbers
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -50,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.krisoft.tridjayaelektronik.data.KATEGORI_JARANG_BER_SN
 import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
 import com.krisoft.tridjayaelektronik.data.KONDISI_PILIHAN
 import com.krisoft.tridjayaelektronik.data.kondisiLabel
@@ -139,7 +142,12 @@ fun SerialInputScreen(
         onCabangChange = viewModel::changeCabang,
         onRefresh = viewModel::refreshStok,
         onRetry = viewModel::retry,
-        onSelect = viewModel::selectProduct
+        onSelect = viewModel::selectProduct,
+        onBukaLembarKategori = viewModel::bukaLembarKategori,
+        onTutupLembarKategori = viewModel::tutupLembarKategori,
+        onToggleKategori = viewModel::toggleKategori,
+        onTerapkanSaran = viewModel::terapkanSaranKategori,
+        onTampilkanSemua = viewModel::tampilkanSemuaKategori
     )
 }
 
@@ -242,7 +250,12 @@ private fun ProductPickerScreen(
     onCabangChange: (String) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
-    onSelect: (StokCabangRow) -> Unit
+    onSelect: (StokCabangRow) -> Unit,
+    onBukaLembarKategori: () -> Unit,
+    onTutupLembarKategori: () -> Unit,
+    onToggleKategori: (String) -> Unit,
+    onTerapkanSaran: () -> Unit,
+    onTampilkanSemua: () -> Unit
 ) {
     // State-swap di dalam route ini (bukan nav destination sendiri) — pola sama
     // PayrollScreen/IndentDetailScreen.
@@ -258,10 +271,12 @@ private fun ProductPickerScreen(
         state.filter,
         state.coverage,
         state.coverageTruncated,
-        state.coverageError
+        state.coverageError,
+        state.kategoriDisembunyikan
     ) {
         val query = state.search.trim()
         state.items.mapNotNull { row ->
+            if (!lolosFilterKategori(row, state.kategoriDisembunyikan)) return@mapNotNull null
             val cocokTeks = query.isBlank() ||
                 row.kode.contains(query, ignoreCase = true) ||
                 row.nama.contains(query, ignoreCase = true)
@@ -275,6 +290,16 @@ private fun ProductPickerScreen(
             )
             if (lolosFilterKelengkapan(status, state.filter)) row to status else null
         }
+    }
+
+    if (state.lembarKategori) {
+        LembarKategoriDialog(
+            state = state,
+            onTutup = onTutupLembarKategori,
+            onToggle = onToggleKategori,
+            onTerapkanSaran = onTerapkanSaran,
+            onTampilkanSemua = onTampilkanSemua
+        )
     }
 
     TridjayaCollapsibleHeader(title = mode.judul, onBack = onBack) { contentModifier ->
@@ -317,6 +342,17 @@ private fun ProductPickerScreen(
                         label = { Text(pilihan.label) }
                     )
                 }
+                FilterChip(
+                    selected = state.kategoriDisembunyikan.isNotEmpty(),
+                    onClick = onBukaLembarKategori,
+                    label = {
+                        Text(
+                            if (state.kategoriDisembunyikan.isEmpty()) "Kategori"
+                            else "Kategori (${state.kategoriDisembunyikan.size} disembunyikan)"
+                        )
+                    },
+                    leadingIcon = { Icon(Icons.Rounded.FilterList, contentDescription = null) }
+                )
             }
 
             CoverageNotice(state = state)
@@ -444,6 +480,96 @@ private fun KelengkapanBadge(status: Kelengkapan, snTercatat: Int?, stok: Int) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
+}
+
+/**
+ * Pemilih kategori: **dicentang = DISEMBUNYIKAN** dari daftar produk.
+ *
+ * Polaritas itu mengikuti cara kerjanya di gudang — petugas mencentang kategori
+ * yang SUDAH selesai atau yang memang tak perlu didata, lalu sisanya adalah
+ * antrean kerjanya. Label tiap baris menyebut jumlah produknya supaya
+ * konsekuensi mencentang terlihat sebelum diketuk, bukan sesudah daftarnya
+ * mendadak kosong.
+ */
+@Composable
+private fun LembarKategoriDialog(
+    state: SerialInputUiState,
+    onTutup: () -> Unit,
+    onToggle: (String) -> Unit,
+    onTerapkanSaran: () -> Unit,
+    onTampilkanSemua: () -> Unit
+) {
+    val kategori = remember(state.items) { kategoriTersedia(state.items) }
+    val adaSaran = remember(state.items) {
+        kategori.any { it.first in KATEGORI_JARANG_BER_SN }
+    }
+
+    AlertDialog(
+        onDismissRequest = onTutup,
+        title = { Text("Sembunyikan kategori") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = "Yang dicentang tidak ditampilkan di daftar produk. Pilihan ini " +
+                        "tersimpan per cabang dan bertahan sampai diubah lagi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (adaSaran) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Saran, bukan vonis — dan kalimatnya menyebut dasarnya
+                    // (sifat barang), bukan angka cakupan, karena cakupan hari
+                    // ini masih mengukur "belum digarap".
+                    Text(
+                        text = "Saran: sparepart, ban, oli, aksesoris, baterai, dan charger jarang " +
+                            "punya nomor seri pabrik. Ini saran dari jenis barangnya, bukan dari " +
+                            "data cakupan — periksa dulu sebelum dipakai.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                    TextButton(onClick = onTerapkanSaran) { Text("Centang yang disarankan") }
+                }
+                if (state.kategoriDisembunyikan.isNotEmpty()) {
+                    TextButton(onClick = onTampilkanSemua) {
+                        Text("Tampilkan semua (${state.kategoriDisembunyikan.size} dilepas)")
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                if (kategori.isEmpty()) {
+                    Text(
+                        text = "Daftar produk belum termuat, jadi kategorinya belum diketahui.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                kategori.forEach { (nama, jumlah) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggle(nama) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = nama in state.kategoriDisembunyikan,
+                            onCheckedChange = { onToggle(nama) }
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = nama, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                text = "$jumlah produk berstok" +
+                                    if (nama in KATEGORI_JARANG_BER_SN) " · jarang ber-SN" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onTutup) { Text("Selesai") } }
+    )
 }
 
 // ── Mode 1: tetapkan SN pabrik ───────────────────────────────────────────────

@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.serials
 
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageRowDto
+import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 
 /**
  * Vonis kelengkapan SN satu produk. Cerminan `kelengkapan()` di web
@@ -72,4 +73,34 @@ fun coverageDitambah(
         serial = (before?.serial ?: 0) + tambahan,
         nonSerial = before?.nonSerial ?: 0
     ))
+}
+
+/**
+ * Kategori yang benar-benar ada di daftar produk cabang ini, urut abjad,
+ * berikut jumlah produknya — bahan lembar "Sembunyikan kategori".
+ *
+ * Diturunkan dari stok yang SEDANG dimuat, bukan daftar tetap: tiap cabang
+ * memegang kategori yang berbeda (88 kategori di seluruh ERP), dan menampilkan
+ * kategori yang tak dipunyai cabang ini membuat lembarnya panjang tanpa guna.
+ * Kategori kosong dinamai eksplisit — barang tanpa kategori tetap harus bisa
+ * disembunyikan, dan baris tanpa label tak bisa diketuk dengan yakin.
+ */
+fun kategoriTersedia(items: List<StokCabangRow>): List<Pair<String, Int>> =
+    items.groupingBy { it.kategori.trim().ifBlank { KATEGORI_TANPA_NAMA } }
+        .eachCount()
+        .toList()
+        .sortedBy { it.first }
+
+/** Label untuk barang yang kolom kategorinya kosong di ERP. */
+const val KATEGORI_TANPA_NAMA = "(tanpa kategori)"
+
+/**
+ * Apakah satu produk lolos saringan kategori.
+ *
+ * Perbandingan memakai nama PERSIS setelah trim — bukan `contains` — karena
+ * `BANTAL` mengandung `BAN`; lihat catatan di [com.krisoft.tridjayaelektronik.data.KATEGORI_JARANG_BER_SN].
+ */
+fun lolosFilterKategori(row: StokCabangRow, disembunyikan: Set<String>): Boolean {
+    if (disembunyikan.isEmpty()) return true
+    return row.kategori.trim().ifBlank { KATEGORI_TANPA_NAMA } !in disembunyikan
 }
