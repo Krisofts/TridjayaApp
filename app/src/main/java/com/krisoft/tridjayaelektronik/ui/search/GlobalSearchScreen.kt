@@ -84,8 +84,10 @@ import com.krisoft.tridjayaelektronik.ui.theme.AgingBadge
 import com.krisoft.tridjayaelektronik.ui.theme.agingColor
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextButton
 import com.krisoft.tridjayaelektronik.ui.theme.FilterPanelChip
+import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 
 /**
@@ -118,14 +120,8 @@ fun GlobalSearchScreen(
         // Results / history / prompt fill the space above the bar.
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when {
-                state.isSearching -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        repeat(6) { SkeletonCard() }
-                    }
-                }
+                // Cek panjang query DULU: sinkronisasi stok yang masih jalan tak boleh
+                // menutupi daftar histori di layar yang belum diketik apa pun.
                 state.query.trim().length < 2 -> {
                     IdleView(
                         history = state.history,
@@ -134,13 +130,45 @@ fun GlobalSearchScreen(
                         onClearAll = { viewModel.clearHistory() }
                     )
                 }
+                state.isSearching -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        repeat(6) { SkeletonCard() }
+                    }
+                }
                 state.hasSearched && state.isEmpty -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        ExpressiveEmptyState(
-                            icon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                            title = "Tidak ditemukan",
-                            subtitle = "Tidak ada yang cocok dengan \"${state.query.trim()}\""
-                        )
+                    // Hasil kosong punya TIGA sebab yang berbeda artinya bagi user; lihat
+                    // `searchEmptyVerdict` (fungsi murni, diuji).
+                    when (searchEmptyVerdict(state.isSyncingProducts, state.productSyncError, state.showProducts)) {
+                        SearchEmptyVerdict.MEMUAT -> Column(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                "Menyiapkan data barang…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            repeat(5) { SkeletonCard() }
+                        }
+                        SearchEmptyVerdict.GAGAL_SYNC -> ScrollableCenter {
+                            ExpressiveErrorState(
+                                message = "Data barang belum tersedia di HP ini: ${state.productSyncError}",
+                                onRetry = { viewModel.retryProductSync() }
+                            )
+                        }
+                        SearchEmptyVerdict.TIDAK_DITEMUKAN -> Box(
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ExpressiveEmptyState(
+                                icon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                title = "Tidak ditemukan",
+                                subtitle = "Tidak ada yang cocok dengan \"${state.query.trim()}\""
+                            )
+                        }
                     }
                 }
                 else -> {

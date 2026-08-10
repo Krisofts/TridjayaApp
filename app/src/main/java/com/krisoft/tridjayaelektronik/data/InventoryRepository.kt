@@ -193,11 +193,20 @@ class InventoryRepository @Inject constructor(
         }
     }
 
-    /** Refreshes the local cache from the network only if the last sync is older than 6 hours. */
+    /**
+     * Refreshes the local cache from the network only if the last sync is older than 6 hours.
+     *
+     * **Tabel kosong ikut dianggap basi, walau metanya masih segar.** [sync] memperbarui
+     * `syncMeta` juga di dua jalan keluar yang TIDAK menulis satu baris pun (server menjawab
+     * 0 baris → cache lama dipertahankan; snapshot dipotong batas halaman), jadi tanpa
+     * pemeriksaan ini tabel yang benar-benar kosong bisa terkunci kosong selama 5 jam tanpa
+     * satu pun percobaan ulang — dan layar yang cuma membaca cache (`GlobalSearchScreen`)
+     * menjawab "tidak ditemukan" sepanjang jendela itu.
+     */
     suspend fun syncIfStale(): AuthResult<Unit> {
         val lastSync = syncMetaDao.get(SyncMetaEntity.KEY_BRANCH_STOCK)?.lastSyncMillis ?: 0L
         val isStale = System.currentTimeMillis() - lastSync >= SYNC_INTERVAL_MILLIS
-        if (!isStale) return AuthResult.Success(Unit)
+        if (!isStale && branchStockDao.count() > 0) return AuthResult.Success(Unit)
         return sync()
     }
 

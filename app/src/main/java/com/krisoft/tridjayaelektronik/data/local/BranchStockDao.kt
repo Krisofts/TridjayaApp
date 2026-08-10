@@ -111,6 +111,11 @@ interface BranchStockDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(rows: List<BranchStockEntity>)
 
+    /** Dipakai [com.krisoft.tridjayaelektronik.data.InventoryRepository.syncIfStale] untuk
+     *  membedakan "cache masih segar" dari "cache memang kosong". */
+    @Query("SELECT COUNT(*) FROM branch_stock")
+    suspend fun count(): Int
+
     @Query("DELETE FROM branch_stock")
     suspend fun clearAll()
 
