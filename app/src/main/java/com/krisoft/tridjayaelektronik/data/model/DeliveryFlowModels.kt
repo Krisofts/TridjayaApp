@@ -372,6 +372,37 @@ data class SerialRegistryRow(
 data class SerialListData(val items: List<SerialRegistryRow> = emptyList())
 
 /**
+ * Cakupan SN satu kode barang di satu cabang (`GET /inventory/serial-numbers/summary`)
+ * — bahan badge "SN 3/5" dan filter "belum lengkap" di layar Input Serial Number.
+ *
+ * Dihitung SERVER (GROUP BY), bukan diturunkan klien dari daftar registry: satu
+ * cabang bisa punya baris registry jauh melebihi batas daftar, jadi menghitung
+ * sendiri dari halaman yang sudah terpotong melaporkan cakupan terlalu kecil dan
+ * menyuruh admin mendaftarkan ulang SN yang sebenarnya sudah ada.
+ */
+@Serializable
+data class SerialCoverageRowDto(
+    val kodeBarang: String = "",
+    /** Seluruh baris registry, TERMASUK tag leasing. */
+    val total: Int = 0,
+    /** Baris ber-`isSerial` saja — INI yang sebanding dengan jumlah stok fisik. */
+    val serial: Int = 0,
+    val nonSerial: Int = 0
+)
+
+@Serializable
+data class SerialCoverageData(
+    val kodeDealer: String = "",
+    val count: Int = 0,
+    /**
+     * `true` = daftar dipotong di batas server (8.000 kode). Produk yang TIDAK
+     * ada di dalamnya tak boleh disimpulkan nol SN — lihat [com.krisoft.tridjayaelektronik.ui.serials.kelengkapanSerial].
+     */
+    val truncated: Boolean = false,
+    val items: List<SerialCoverageRowDto> = emptyList()
+)
+
+/**
  * Konteks mutasi (`GET /inventory/mutasi/context`) — dipakai layar Input Serial Number
  * admin-stok utk resolve dealer sendiri sebelum POST manual. Respons penuh juga bawa
  * `canRequest`/`isManager`/`dealers` (form mutasi create/receive) — diabaikan di sini,

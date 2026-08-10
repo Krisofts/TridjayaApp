@@ -4,23 +4,50 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.SerialInputRepository
+import com.krisoft.tridjayaelektronik.data.model.SerialCoverageRowDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/**
+ * Dua pekerjaan berbeda yang dulu ditumpuk dalam satu form. Dipisah jadi pilihan
+ * eksplisit karena keduanya menjawab pertanyaan yang berbeda: [TETAPKAN] untuk
+ * barang yang SUDAH punya nomor seri pabrik (tinggal didaftarkan), [BUAT_BARU]
+ * untuk barang yang memang tak pernah punya (sofa, kursi) sehingga nomornya
+ * dibuat sistem lalu ditempel ke unitnya.
+ */
+enum class SerialInputMode(val judul: String) {
+    TETAPKAN("Tetapkan SN ke Produk"),
+    BUAT_BARU("Buat SN Baru (GEN-)")
+}
 
 data class SerialInputUiState(
     val loadingContext: Boolean = true,
     val contextError: String? = null,
     val dealerCode: String? = null,
+    /** `null` = masih di layar pilihan. */
+    val mode: SerialInputMode? = null,
     val items: List<StokCabangRow> = emptyList(),
     val itemsLoading: Boolean = false,
     val search: String = "",
+    val filter: FilterKelengkapan = FilterKelengkapan.SEMUA,
+    val coverage: Map<String, SerialCoverageRowDto> = emptyMap(),
+    val coverageTruncated: Boolean = false,
+    val coverageLoading: Boolean = false,
+    /**
+     * Gagal muat cakupan TIDAK memblokir layar — mendaftarkan SN tetap boleh
+     * jalan tanpa peta kelengkapan. Yang berubah cuma vonisnya: semua produk
+     * jadi `TAK_DIKETAHUI` supaya tak ada yang didaftarkan ulang atas tebakan.
+     */
+    val coverageError: String? = null,
     val selected: StokCabangRow? = null,
     val existingCount: Int = 0,
     val existingLoading: Boolean = false,
@@ -54,8 +81,26 @@ class SerialInputViewModel @Inject constructor(
         viewModelScope.launch {
             val dealer = (repository.context() as? AuthResult.Success)?.data?.sourceDealerCode
             _state.update { it.copy(loadingContext = false, dealerCode = dealer?.ifBlank { null }) }
-            dealer?.takeIf { it.isNotBlank() }?.let { loadStok(it) }
+            dealer?.takeIf { it.isNotBlank() }?.let { loadCabang(it) }
         }
+    }
+
+    /** Pilih pekerjaan. Ganti mode selalu mengosongkan produk & isian: SN yang
+     *  sudah diketik milik alur "tetapkan", tak ada artinya di alur "buat baru". */
+    fun chooseMode(mode: SerialInputMode) {
+        _state.update {
+            it.copy(mode = mode, selected = null, text = "", generateCount = "", generated = emptyList(), result = null, formError = null)
+        }
+    }
+
+    fun clearMode() {
+        _state.update {
+            it.copy(mode = null, selected = null, text = "", generateCount = "", generated = emptyList(), result = null, formError = null)
+        }
+    }
+
+    fun onFilterChange(filter: FilterKelengkapan) {
+        _state.update { it.copy(filter = filter) }
     }
 
     /**
@@ -72,10 +117,16 @@ class SerialInputViewModel @Inject constructor(
                 result = null,
                 formError = null,
                 contextError = null,
-                items = emptyList()
+                items = emptyList(),
+                // Cakupan cabang lama TIDAK boleh menempel di daftar cabang baru:
+                // badge "lengkap" milik gudang lain akan menyembunyikan produk
+                // yang di sini justru belum bernomor sama sekali.
+                coverage = emptyMap(),
+                coverageTruncated = false,
+                coverageError = null
             )
         }
-        viewModelScope.launch { loadStok(kodeDealer) }
+        viewModelScope.launch { loadCabang(kodeDealer) }
     }
 
     /**
@@ -85,14 +136,56 @@ class SerialInputViewModel @Inject constructor(
      */
     fun refreshStok() {
         val dealer = _state.value.dealerCode ?: return
-        viewModelScope.launch { loadStok(dealer) }
+        viewModelScope.launch { loadCabang(dealer) }
     }
 
-    private suspend fun loadStok(dealer: String) {
-        _state.update { it.copy(itemsLoading = true) }
-        when (val stok = repository.stokCabang(dealer)) {
-            is AuthResult.Success -> _state.update { it.copy(itemsLoading = false, items = stok.data) }
-            is AuthResult.Failure -> _state.update { it.copy(itemsLoading = false, contextError = stok.message) }
+    /**
+     * Tombol "Coba lagi" pada layar error. Memakai [load] di sini SALAH: ia
+     * membaca ulang cabang default akun dan menimpa cabang yang dipilih manual,
+     * jadi admin-stok yang sedang menggarap gudang lain dipindah diam-diam ke
+     * cabangnya sendiri — dan daftar yang muncul sesudahnya terlihat seperti
+     * hasil retry yang berhasil.
+     */
+    fun retry() {
+        val dealer = _state.value.dealerCode
+        if (dealer.isNullOrBlank()) load() else viewModelScope.launch { loadCabang(dealer) }
+    }
+
+    /**
+     * Stok + cakupan SN ditarik BERSAMAAN (`coroutineScope`/`async`), bukan
+     * berurutan: keduanya bahan satu layar yang sama dan tak saling bergantung,
+     * jadi menunggu berurutan cuma menjumlahkan dua round-trip. Pola sama
+     * `SalesRepository.homeDashboard()`.
+     */
+    private suspend fun loadCabang(dealer: String) {
+        _state.update { it.copy(itemsLoading = true, coverageLoading = true) }
+        coroutineScope {
+            val stokAsync = async { repository.stokCabang(dealer) }
+            val coverageAsync = async { repository.serialCoverage(dealer) }
+
+            when (val stok = stokAsync.await()) {
+                // `contextError` DINOLKAN saat berhasil — tanpa itu error dari
+                // percobaan sebelumnya menempel selamanya dan layar error muncul
+                // lagi begitu daftar kebetulan kosong (mis. cabang tanpa stok).
+                is AuthResult.Success -> _state.update { it.copy(itemsLoading = false, items = stok.data, contextError = null) }
+                is AuthResult.Failure -> _state.update { it.copy(itemsLoading = false, contextError = stok.message) }
+            }
+            when (val coverage = coverageAsync.await()) {
+                is AuthResult.Success -> _state.update {
+                    it.copy(
+                        coverageLoading = false,
+                        coverage = coverage.data.items.associateBy { row -> row.kodeBarang },
+                        coverageTruncated = coverage.data.truncated,
+                        coverageError = null
+                    )
+                }
+                // Cakupan gagal BUKAN kegagalan layar — `contextError` sengaja tak
+                // disentuh, kalau tidak daftar produk yang sudah terbaca ikut
+                // ditutup layar error dan pendaftaran SN berhenti total.
+                is AuthResult.Failure -> _state.update {
+                    it.copy(coverageLoading = false, coverage = emptyMap(), coverageError = coverage.message)
+                }
+            }
         }
     }
 
@@ -102,7 +195,21 @@ class SerialInputViewModel @Inject constructor(
 
     fun selectProduct(row: StokCabangRow) {
         _state.update {
-            it.copy(selected = row, text = "", result = null, formError = null, existingLoading = true, existingCount = 0)
+            it.copy(
+                selected = row,
+                text = "",
+                result = null,
+                formError = null,
+                existingLoading = true,
+                existingCount = 0,
+                // Kode hasil generate produk SEBELUMNYA wajib ikut hilang: label
+                // `GEN-…` ditempel ke unit fisik, dan daftar yang tertinggal di
+                // layar produk lain adalah undangan menempelkannya ke barang yang
+                // salah — kode itu nyata, sudah tertulis di registry atas nama
+                // barang yang tadi, bukan yang sekarang.
+                generateCount = "",
+                generated = emptyList()
+            )
         }
         val dealer = _state.value.dealerCode ?: return
         viewModelScope.launch {
@@ -153,7 +260,8 @@ class SerialInputViewModel @Inject constructor(
                         // Kode yang dibuat SUDAH masuk registry — hitungan "SN
                         // tercatat" harus ikut naik, kalau tidak petugas mengira
                         // kodenya gagal dan menekan tombolnya lagi.
-                        existingCount = it.existingCount + res.data.size
+                        existingCount = it.existingCount + res.data.size,
+                        coverage = coverageDitambah(it.coverage, product.kode, res.data.size)
                     )
                 }
                 is AuthResult.Failure -> _state.update { it.copy(generating = false, formError = res.message) }
@@ -178,7 +286,8 @@ class SerialInputViewModel @Inject constructor(
                         saving = false,
                         result = res.data,
                         text = "",
-                        existingCount = it.existingCount + res.data.inserted
+                        existingCount = it.existingCount + res.data.inserted,
+                        coverage = coverageDitambah(it.coverage, product.kode, res.data.inserted)
                     )
                 }
                 is AuthResult.Failure -> _state.update { it.copy(saving = false, formError = res.message) }

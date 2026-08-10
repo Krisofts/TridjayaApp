@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.ui.serials
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,21 +17,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Numbers
+import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -50,9 +57,23 @@ import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 /**
- * Input Serial Number (admin-stok) — pilih produk stok cabang sendiri, lalu masukkan serial
- * number satu per baris. Mismatch jumlah baris vs sisa kebutuhan hanya warning (backend
- * tetap terima berapa pun baris) — sama pola web `AdminStokSerialInputPage.tsx`.
+ * Input Serial Number (admin-stok) — **dua pekerjaan, dua pilihan**:
+ *
+ * - [SerialInputMode.TETAPKAN] — barang yang SUDAH bernomor seri pabrik, SN-nya
+ *   tinggal didaftarkan ke registry (satu per baris).
+ * - [SerialInputMode.BUAT_BARU] — barang yang memang tak pernah punya nomor
+ *   pabrik (sofa, kursi): kodenya dibuat sistem (`GEN-…`), dicetak lewat web,
+ *   lalu ditempel ke unitnya.
+ *
+ * Keduanya dulu ditumpuk dalam satu form, dan yang "buat baru" tersembunyi di
+ * kaki halaman sesudah produk dipilih. Di web keduanya memang menu terpisah
+ * (`AdminStokSerialInputPage.tsx` + `SerialGeneratePage.tsx`).
+ *
+ * Registry inilah yang jadi bahan verifikasi lapangan: petugas cabang men-scan
+ * barcode tiap unit saat opname, dan server menolak serial yang sama dua kali
+ * dalam satu sesi (`duplikat_dalam_sesi`). Produk yang SN-nya belum ditetapkan
+ * di sini tak bisa diverifikasi sama sekali di sana — karena itu daftar produk
+ * membawa badge cakupan + filter "Belum lengkap", bukan cuma kotak pencarian.
  */
 @Composable
 fun SerialInputScreen(
@@ -62,118 +83,47 @@ fun SerialInputScreen(
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.load() }
 
-    if (state.selected != null) {
-        SerialInputFormScreen(
-            state = state,
-            onTextChange = viewModel::onTextChange,
-            onSave = viewModel::save,
-            onBack = viewModel::clearSelection,
-            onGenerateCountChange = viewModel::onGenerateCountChange,
-            onGenerate = viewModel::generateSerials
-        )
+    val mode = state.mode
+    if (mode == null) {
+        ModeChooserScreen(onBack = onBack, onChoose = viewModel::chooseMode)
         return
     }
 
-    val filtered = state.items.filter { row ->
-        val query = state.search.trim()
-        query.isBlank() || row.kode.contains(query, ignoreCase = true) || row.nama.contains(query, ignoreCase = true)
-    }
-
-    TridjayaCollapsibleHeader(title = "Input Serial Number", onBack = onBack) { contentModifier ->
-        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        Column(modifier = contentModifier.fillMaxSize()) {
-            Text(
-                text = "Pilih cabang & produk, lalu masukkan serial number satu per baris.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp)
+    if (state.selected != null) {
+        when (mode) {
+            SerialInputMode.TETAPKAN -> TetapkanFormScreen(
+                state = state,
+                onTextChange = viewModel::onTextChange,
+                onSave = viewModel::save,
+                onBack = viewModel::clearSelection
             )
-            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                CabangSelector(
-                    selected = state.dealerCode.orEmpty(),
-                    onSelect = viewModel::changeCabang,
-                    label = "Cabang"
-                )
-            }
-            ExpressiveTextField(
-                value = state.search,
-                onValueChange = viewModel::onSearchChange,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = "Cari kode atau nama produk"
-            )
-            TridjayaPullRefresh(
-                isRefreshing = state.itemsLoading && state.items.isNotEmpty(),
-                onRefresh = viewModel::refreshStok
-            ) {
-                when {
-                    (state.loadingContext || state.itemsLoading) && state.items.isEmpty() -> {
-                        Column(modifier = Modifier.padding(top = 4.dp)) {
-                            repeat(6) { SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
-                        }
-                    }
-                    state.contextError != null && state.items.isEmpty() -> {
-                        ScrollableCenter {
-                            ExpressiveErrorState(message = state.contextError ?: "Gagal memuat", onRetry = viewModel::load)
-                        }
-                    }
-                    filtered.isEmpty() -> {
-                        ScrollableCenter {
-                            ExpressiveEmptyState(
-                                icon = { Icon(Icons.Rounded.Numbers, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                title = "Produk tidak ditemukan",
-                                subtitle = "Tidak ada produk stok cabang yang cocok dengan pencarian."
-                            )
-                        }
-                    }
-                    else -> {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + navBottom),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(filtered, key = { it.kode }) { row ->
-                                ProductRow(row, onClick = { viewModel.selectProduct(row) })
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProductRow(row: StokCabangRow, onClick: () -> Unit) {
-    ClayCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(text = row.nama.ifBlank { row.kode }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(
-                text = "${row.kode} · Stok: ${row.stok ?: 0}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp)
+            SerialInputMode.BUAT_BARU -> BuatBaruFormScreen(
+                state = state,
+                onGenerateCountChange = viewModel::onGenerateCountChange,
+                onGenerate = viewModel::generateSerials,
+                onBack = viewModel::clearSelection
             )
         }
+        return
     }
+
+    ProductPickerScreen(
+        state = state,
+        mode = mode,
+        onBack = viewModel::clearMode,
+        onSearchChange = viewModel::onSearchChange,
+        onFilterChange = viewModel::onFilterChange,
+        onCabangChange = viewModel::changeCabang,
+        onRefresh = viewModel::refreshStok,
+        onRetry = viewModel::retry,
+        onSelect = viewModel::selectProduct
+    )
 }
 
-@Composable
-private fun SerialInputFormScreen(
-    state: SerialInputUiState,
-    onTextChange: (String) -> Unit,
-    onSave: () -> Unit,
-    onBack: () -> Unit,
-    onGenerateCountChange: (String) -> Unit,
-    onGenerate: () -> Unit
-) {
-    // State-swap di dalam route ini (bukan nav destination sendiri) — pola PayrollScreen/IndentDetailScreen.
-    BackHandler(onBack = onBack)
-    val product = state.selected ?: return
-    val stok = product.stok ?: 0
-    val remaining = (stok - state.existingCount).coerceAtLeast(0)
-    val lines = state.text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    val countMismatch = lines.isNotEmpty() && lines.size != remaining
+// ── Layar pilihan ────────────────────────────────────────────────────────────
 
+@Composable
+private fun ModeChooserScreen(onBack: () -> Unit, onChoose: (SerialInputMode) -> Unit) {
     TridjayaCollapsibleHeader(title = "Input Serial Number", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         Column(
@@ -183,19 +133,322 @@ private fun SerialInputFormScreen(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp + navBottom)
         ) {
-            ClayCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = product.nama.ifBlank { product.kode }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(text = product.kode, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Stok: $stok · SN tercatat: ${if (state.existingLoading) "…" else state.existingCount} · " +
-                            "Butuh lagi: $remaining",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            Text(
+                text = "Pilih pekerjaan yang mau dilakukan.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            ModeCard(
+                icon = Icons.Rounded.Numbers,
+                judul = SerialInputMode.TETAPKAN.judul,
+                keterangan = "Barang sudah punya nomor seri pabrik — daftarkan SN-nya " +
+                    "ke produk yang belum memilikinya, satu per baris.",
+                onClick = { onChoose(SerialInputMode.TETAPKAN) }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            ModeCard(
+                icon = Icons.Rounded.QrCode2,
+                judul = SerialInputMode.BUAT_BARU.judul,
+                keterangan = "Barang tanpa nomor seri pabrik (sofa, kursi) — sistem membuat " +
+                    "kode pengganti, labelnya dicetak lewat web lalu ditempel ke tiap unit.",
+                onClick = { onChoose(SerialInputMode.BUAT_BARU) }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Setelah SN terdaftar, petugas cabang memverifikasi barangnya dengan " +
+                    "scan barcode saat stok opname — satu unit hanya terhitung sekali per sesi.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModeCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    judul: String,
+    keterangan: String,
+    onClick: () -> Unit
+) {
+    ClayCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = judul, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    text = keterangan,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// ── Pemilih produk (dipakai kedua mode) ──────────────────────────────────────
+
+@Composable
+private fun ProductPickerScreen(
+    state: SerialInputUiState,
+    mode: SerialInputMode,
+    onBack: () -> Unit,
+    onSearchChange: (String) -> Unit,
+    onFilterChange: (FilterKelengkapan) -> Unit,
+    onCabangChange: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onRetry: () -> Unit,
+    onSelect: (StokCabangRow) -> Unit
+) {
+    // State-swap di dalam route ini (bukan nav destination sendiri) — pola sama
+    // PayrollScreen/IndentDetailScreen.
+    BackHandler(onBack = onBack)
+
+    // Daftar stok satu cabang bisa ribuan baris dan layar ini punya empat sumber
+    // recomposition (ketikan, chip, pull-refresh, hasil simpan). Tanpa `remember`
+    // seluruh daftar disaring ULANG tiap ketukan huruf; statusnya juga dihitung
+    // sekali di sini, bukan dua kali (sekali menyaring, sekali menggambar badge).
+    val filtered = remember(
+        state.items,
+        state.search,
+        state.filter,
+        state.coverage,
+        state.coverageTruncated,
+        state.coverageError
+    ) {
+        val query = state.search.trim()
+        state.items.mapNotNull { row ->
+            val cocokTeks = query.isBlank() ||
+                row.kode.contains(query, ignoreCase = true) ||
+                row.nama.contains(query, ignoreCase = true)
+            if (!cocokTeks) return@mapNotNull null
+            val status = kelengkapanSerial(
+                kodeBarang = row.kode,
+                stok = row.stok ?: 0,
+                coverage = state.coverage,
+                truncated = state.coverageTruncated,
+                coverageGagal = state.coverageError != null
+            )
+            if (lolosFilterKelengkapan(status, state.filter)) row to status else null
+        }
+    }
+
+    TridjayaCollapsibleHeader(title = mode.judul, onBack = onBack) { contentModifier ->
+        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        Column(modifier = contentModifier.fillMaxSize()) {
+            Text(
+                text = when (mode) {
+                    SerialInputMode.TETAPKAN -> "Pilih cabang & produk, lalu masukkan serial number satu per baris."
+                    SerialInputMode.BUAT_BARU -> "Pilih cabang & produk, lalu tentukan berapa kode pengganti yang dibuat."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp)
+            )
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                CabangSelector(
+                    selected = state.dealerCode.orEmpty(),
+                    onSelect = onCabangChange,
+                    label = "Cabang"
+                )
+            }
+            ExpressiveTextField(
+                value = state.search,
+                onValueChange = onSearchChange,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                placeholder = "Cari kode atau nama produk"
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterKelengkapan.entries.forEach { pilihan ->
+                    FilterChip(
+                        selected = state.filter == pilihan,
+                        onClick = { onFilterChange(pilihan) },
+                        label = { Text(pilihan.label) }
                     )
                 }
             }
+
+            CoverageNotice(state = state)
+
+            TridjayaPullRefresh(
+                isRefreshing = state.itemsLoading && state.items.isNotEmpty(),
+                onRefresh = onRefresh
+            ) {
+                when {
+                    (state.loadingContext || state.itemsLoading) && state.items.isEmpty() -> {
+                        Column(modifier = Modifier.padding(top = 4.dp)) {
+                            repeat(6) { SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+                        }
+                    }
+                    state.contextError != null && state.items.isEmpty() -> {
+                        ScrollableCenter {
+                            ExpressiveErrorState(message = state.contextError ?: "Gagal memuat", onRetry = onRetry)
+                        }
+                    }
+                    filtered.isEmpty() -> {
+                        ScrollableCenter {
+                            ExpressiveEmptyState(
+                                icon = { Icon(Icons.Rounded.Numbers, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                title = "Produk tidak ditemukan",
+                                subtitle = if (state.filter == FilterKelengkapan.SEMUA) {
+                                    "Tidak ada produk stok cabang yang cocok dengan pencarian."
+                                } else {
+                                    "Tidak ada produk berstatus \"${state.filter.label}\" yang cocok. " +
+                                        "Coba filter \"Semua\"."
+                                }
+                            )
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + navBottom),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(filtered, key = { it.first.kode }) { (row, status) ->
+                                ProductRow(
+                                    row = row,
+                                    status = status,
+                                    snTercatat = state.coverage[row.kode]?.serial,
+                                    onClick = { onSelect(row) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Kenapa cakupan tak bisa dipercaya WAJIB kelihatan: badge "?" tanpa alasan
+ * terbaca sebagai bug, dan admin yang tak tahu petanya bolong akan mendaftarkan
+ * ulang SN yang sebenarnya sudah ada.
+ */
+@Composable
+private fun CoverageNotice(state: SerialInputUiState) {
+    val pesan = when {
+        state.coverageError != null ->
+            "⚠️ Cakupan SN gagal dimuat (${state.coverageError}). Status per produk tak bisa " +
+                "dipastikan — periksa dulu SN tercatat sebelum mendaftarkan ulang."
+        state.coverageTruncated ->
+            "⚠️ Cakupan dipotong di batas server — produk tanpa badge belum tentu nol SN."
+        else -> null
+    } ?: return
+
+    Text(
+        text = pesan,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.tertiary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+    )
+}
+
+@Composable
+private fun ProductRow(
+    row: StokCabangRow,
+    status: Kelengkapan,
+    snTercatat: Int?,
+    onClick: () -> Unit
+) {
+    ClayCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = row.nama.ifBlank { row.kode }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "${row.kode} · Stok: ${row.stok ?: 0}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            KelengkapanBadge(status = status, snTercatat = snTercatat, stok = row.stok ?: 0)
+        }
+    }
+}
+
+@Composable
+private fun KelengkapanBadge(status: Kelengkapan, snTercatat: Int?, stok: Int) {
+    val (teks, warna) = when (status) {
+        // `snTercatat` bisa null saat cakupan tak termuat — angkanya diganti "?"
+        // alih-alih 0, karena "0" adalah vonis yang justru tak boleh diambil.
+        Kelengkapan.LENGKAP -> "SN ${snTercatat ?: 0}/$stok" to MaterialTheme.colorScheme.primary
+        Kelengkapan.BELUM -> "SN ${snTercatat ?: 0}/$stok" to MaterialTheme.colorScheme.error
+        Kelengkapan.TAK_DIKETAHUI -> "SN ?" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        color = warna.copy(alpha = 0.12f),
+        contentColor = warna,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = teks,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+// ── Mode 1: tetapkan SN pabrik ───────────────────────────────────────────────
+
+@Composable
+private fun TetapkanFormScreen(
+    state: SerialInputUiState,
+    onTextChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler(onBack = onBack)
+    val product = state.selected ?: return
+    val stok = product.stok ?: 0
+    val remaining = (stok - state.existingCount).coerceAtLeast(0)
+    val lines = state.text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    val countMismatch = lines.isNotEmpty() && lines.size != remaining
+
+    TridjayaCollapsibleHeader(title = SerialInputMode.TETAPKAN.judul, onBack = onBack) { contentModifier ->
+        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp + navBottom)
+        ) {
+            ProductSummaryCard(state = state, product = product, stok = stok, remaining = remaining)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -253,22 +506,60 @@ private fun SerialInputFormScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            ExpressiveFilledButton(
+                onClick = onSave,
+                enabled = !state.saving && lines.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (state.saving) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Simpan ${lines.size} Serial Number")
+                }
+            }
+        }
+    }
+}
+
+// ── Mode 2: buat kode pengganti (GEN-) ───────────────────────────────────────
+
+@Composable
+private fun BuatBaruFormScreen(
+    state: SerialInputUiState,
+    onGenerateCountChange: (String) -> Unit,
+    onGenerate: () -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler(onBack = onBack)
+    val product = state.selected ?: return
+    val stok = product.stok ?: 0
+    val remaining = (stok - state.existingCount).coerceAtLeast(0)
+
+    TridjayaCollapsibleHeader(title = SerialInputMode.BUAT_BARU.judul, onBack = onBack) { contentModifier ->
+        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp + navBottom)
+        ) {
+            ProductSummaryCard(state = state, product = product, stok = stok, remaining = remaining)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             // Barang tanpa serial pabrik (sofa, kursi): kodenya dibuat sistem,
             // ditempel ke unitnya, lalu discan seperti serial biasa saat opname.
             ClayCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "Barang tanpa nomor seri pabrik",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
                         text = "Buat kode pengganti (GEN-…) lalu tempel labelnya ke tiap unit. " +
-                            "Kode langsung tercatat di registry begitu dibuat.",
-                        style = MaterialTheme.typography.labelSmall,
+                            "Kode langsung tercatat di registry begitu dibuat — menekan tombol ini " +
+                            "dua kali berarti dua set kode nyata untuk barang yang sama.",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ExpressiveTextField(
                             value = state.generateCount,
@@ -289,41 +580,64 @@ private fun SerialInputFormScreen(
                             }
                         }
                     }
-                    if (state.generated.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
+            state.formError?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            if (state.generated.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                ClayCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = "${state.generated.size} kode dibuat:",
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
                             text = state.generated.joinToString("\n"),
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 2.dp)
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                         Text(
                             text = "Cetak labelnya lewat web (menu Buat Kode Serial) — HP tak terhubung printer label.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
+                            modifier = Modifier.padding(top = 6.dp)
                         )
                     }
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            ExpressiveFilledButton(
-                onClick = onSave,
-                enabled = !state.saving && lines.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (state.saving) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Simpan ${lines.size} Serial Number")
-                }
-            }
+@Composable
+private fun ProductSummaryCard(
+    state: SerialInputUiState,
+    product: StokCabangRow,
+    stok: Int,
+    remaining: Int
+) {
+    ClayCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = product.nama.ifBlank { product.kode }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(text = product.kode, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Stok: $stok · SN tercatat: ${if (state.existingLoading) "…" else state.existingCount} · " +
+                    "Butuh lagi: $remaining",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
