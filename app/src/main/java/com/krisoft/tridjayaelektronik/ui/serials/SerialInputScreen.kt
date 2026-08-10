@@ -41,13 +41,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
+import com.krisoft.tridjayaelektronik.data.KONDISI_PILIHAN
+import com.krisoft.tridjayaelektronik.data.kondisiLabel
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.BarcodeScanButton
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.CabangSelector
@@ -101,6 +106,11 @@ fun SerialInputScreen(
                 onEntriChange = viewModel::onEntriChange,
                 onTambah = viewModel::tambahEntri,
                 onHapus = viewModel::hapusEntri,
+                onKondisiBerikutnyaChange = viewModel::onKondisiBerikutnyaChange,
+                onKeteranganBerikutnyaChange = viewModel::onKeteranganBerikutnyaChange,
+                onBukaPemilihKondisi = viewModel::bukaPemilihKondisi,
+                onTutupPemilihKondisi = viewModel::tutupPemilihKondisi,
+                onSetKondisiUnit = viewModel::setKondisiUnit,
                 onSave = viewModel::save,
                 onBack = viewModel::clearSelection
             )
@@ -440,6 +450,11 @@ private fun TetapkanFormScreen(
     onEntriChange: (String) -> Unit,
     onTambah: (String) -> Unit,
     onHapus: (String) -> Unit,
+    onKondisiBerikutnyaChange: (String?) -> Unit,
+    onKeteranganBerikutnyaChange: (String) -> Unit,
+    onBukaPemilihKondisi: (String) -> Unit,
+    onTutupPemilihKondisi: () -> Unit,
+    onSetKondisiUnit: (String, String?, String?) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -449,6 +464,17 @@ private fun TetapkanFormScreen(
     val remaining = (stok - state.existingCount).coerceAtLeast(0)
     val daftar = state.daftar
     val countMismatch = daftar.isNotEmpty() && daftar.size != remaining
+
+    state.kondisiUntukUnit?.let { serial ->
+        val unit = daftar.firstOrNull { it.serial == serial }
+        if (unit != null) {
+            PemilihKondisiDialog(
+                unit = unit,
+                onTutup = onTutupPemilihKondisi,
+                onPilih = { kondisi, keterangan -> onSetKondisiUnit(serial, kondisi, keterangan) }
+            )
+        }
+    }
 
     TridjayaCollapsibleHeader(title = SerialInputMode.TETAPKAN.judul, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -497,6 +523,50 @@ private fun TetapkanFormScreen(
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Status untuk unit berikutnya",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Menempel ke tiap unit yang discan sesudah ini, sampai diganti. " +
+                            "Bisa dikoreksi per unit lewat daftar di bawah.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // "Belum ditetapkan" adalah pilihan SAH dan defaultnya —
+                        // NULL di registry berarti "tak ada pembanding" saat opname
+                        // membandingkan vonis, bukan "layak".
+                        FilterChip(
+                            selected = state.kondisiBerikutnya == null,
+                            onClick = { onKondisiBerikutnyaChange(null) },
+                            label = { Text("Belum ditetapkan") }
+                        )
+                        KONDISI_PILIHAN.forEach { pilihan ->
+                            FilterChip(
+                                selected = state.kondisiBerikutnya == pilihan,
+                                onClick = { onKondisiBerikutnyaChange(pilihan) },
+                                label = { Text(kondisiLabel(pilihan)) }
+                            )
+                        }
+                    }
+                    if (kondisiPakaiKeterangan(state.kondisiBerikutnya)) {
+                        ExpressiveTextField(
+                            value = state.keteranganBerikutnya,
+                            onValueChange = onKeteranganBerikutnyaChange,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            placeholder = "Keterangan (mis. layar retak)"
+                        )
+                    }
                 }
             }
 
@@ -519,10 +589,12 @@ private fun TetapkanFormScreen(
                 // `verticalScroll`, dan menyarangkan dua scroller sejenis melempar
                 // IllegalStateException saat dirender.
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    daftar.forEachIndexed { index, serial ->
+                    daftar.forEachIndexed { index, unit ->
                         ClayCard(modifier = Modifier.fillMaxWidth()) {
                             Row(
-                                modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                modifier = Modifier
+                                    .clickable { onBukaPemilihKondisi(unit.serial) }
+                                    .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
@@ -531,15 +603,22 @@ private fun TetapkanFormScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = serial,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                IconButton(onClick = { onHapus(serial) }) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = unit.serial, style = MaterialTheme.typography.bodyMedium)
+                                    unit.keterangan?.let {
+                                        Text(
+                                            text = it,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                KondisiBadge(kondisi = unit.kondisi)
+                                IconButton(onClick = { onHapus(unit.serial) }) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = "Hapus $serial dari daftar",
+                                        contentDescription = "Hapus ${unit.serial} dari daftar",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -583,7 +662,27 @@ private fun TetapkanFormScreen(
                             color = MaterialTheme.colorScheme.tertiary
                         )
                     }
+                    if (state.kondisiUpdated > 0) {
+                        Text(
+                            text = "Status ${state.kondisiUpdated} unit ikut tersimpan.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
+            }
+
+            // Serial SUDAH masuk registry walau vonisnya gagal — itu wajib
+            // dikatakan, kalau tidak petugas mengira seluruh simpanannya batal
+            // lalu mengulang dari nol.
+            state.kondisiError?.let {
+                Text(
+                    text = "⚠️ Serial sudah tersimpan, tapi statusnya belum: $it\n" +
+                        "Tekan Simpan lagi untuk mencoba ulang — serial yang sudah ada akan dilewati.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -601,6 +700,84 @@ private fun TetapkanFormScreen(
             }
         }
     }
+}
+
+/**
+ * Vonis kondisi satu unit. "Belum" ditampilkan NETRAL, bukan hijau: ia bukan
+ * kabar baik maupun buruk, melainkan pernyataan bahwa belum ada yang memutuskan.
+ * Mewarnainya seperti "Layak" akan membuat unit tanpa vonis terbaca sebagai unit
+ * yang sudah diperiksa dan lolos.
+ */
+@Composable
+private fun KondisiBadge(kondisi: String?) {
+    val (teks, warna) = when (kondisi) {
+        null -> "Belum" to MaterialTheme.colorScheme.onSurfaceVariant
+        KONDISI_LAYAK -> kondisiLabel(kondisi) to MaterialTheme.colorScheme.primary
+        else -> kondisiLabel(kondisi) to MaterialTheme.colorScheme.error
+    }
+    Surface(
+        color = warna.copy(alpha = 0.12f),
+        contentColor = warna,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = teks,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+/** Koreksi vonis SATU unit yang sudah masuk daftar — untuk salah tekan chip lengket. */
+@Composable
+private fun PemilihKondisiDialog(
+    unit: UnitEntri,
+    onTutup: () -> Unit,
+    onPilih: (String?, String?) -> Unit
+) {
+    var kondisi by remember(unit.serial) { mutableStateOf(unit.kondisi) }
+    var keterangan by remember(unit.serial) { mutableStateOf(unit.keterangan.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onTutup,
+        title = { Text("Status ${unit.serial}") },
+        text = {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = kondisi == null,
+                        onClick = { kondisi = null },
+                        label = { Text("Belum") }
+                    )
+                    KONDISI_PILIHAN.forEach { pilihan ->
+                        FilterChip(
+                            selected = kondisi == pilihan,
+                            onClick = { kondisi = pilihan },
+                            label = { Text(kondisiLabel(pilihan)) }
+                        )
+                    }
+                }
+                if (kondisiPakaiKeterangan(kondisi)) {
+                    ExpressiveTextField(
+                        value = keterangan,
+                        onValueChange = { keterangan = it },
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        placeholder = "Keterangan (mis. layar retak)"
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onPilih(kondisi, keterangan.takeIf { kondisiPakaiKeterangan(kondisi) })
+            }) { Text("Simpan status") }
+        },
+        dismissButton = { TextButton(onClick = onTutup) { Text("Batal") } }
+    )
 }
 
 // ── Mode 2: buat kode pengganti (GEN-) ───────────────────────────────────────
