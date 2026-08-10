@@ -42,6 +42,20 @@ data class SpkEditResultDto(
 )
 
 /** Satu job pengiriman (1 unit fisik). Subset field yang dipakai app; semua opsional agar tahan null. */
+/**
+ * Isi field `warnaSelisih`. Lihat `DeliveryJobDto.warnaSelisih`.
+ *
+ * `jenis` sengaja String, bukan enum: nilai baru dari server tidak boleh
+ * membuat parsing seluruh SPK gagal di APK lama. Yang tak dikenal diabaikan
+ * oleh `pesanWarnaSelisih`.
+ */
+@Serializable
+data class WarnaSelisihDto(
+    val jenis: String? = null,
+    val sku: String? = null,
+    val diketik: String? = null,
+)
+
 @Serializable
 data class DeliveryJobDto(
     val id: String = "",
@@ -59,6 +73,16 @@ data class DeliveryJobDto(
     val merk: String? = null,
     val tipe: String? = null,
     val warna: String? = null,
+    /**
+     * Selisih warna SKU vs kolom `warna` (2026-08-10, `android-api.md`
+     * §12.11b). DITURUNKAN server tiap job dibaca — bukan kolom DB.
+     *
+     * `null` berarti "tak ada yang perlu ditampilkan", BUKAN error: server
+     * menghilangkan field ini saat warnanya cocok atau tak bisa dinilai, dan
+     * server lama tak mengenalnya sama sekali. Aturannya milik
+     * `delivery/warna.rs`; JANGAN dihitung ulang di app.
+     */
+    val warnaSelisih: WarnaSelisihDto? = null,
     val customerName: String? = null,
     val customerAddress: String? = null,
     val customerPhone: String? = null,
