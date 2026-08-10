@@ -3,7 +3,9 @@ package com.krisoft.tridjayaelektronik.ui.serials
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
+import com.krisoft.tridjayaelektronik.data.KATEGORI_JARANG_BER_SN
 import com.krisoft.tridjayaelektronik.data.SerialInputRepository
+import com.krisoft.tridjayaelektronik.data.SerialKategoriPreferences
 import com.krisoft.tridjayaelektronik.data.normalizeSerial
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageRowDto
 import com.krisoft.tridjayaelektronik.data.model.SerialKondisiLogRowDto
@@ -42,6 +44,10 @@ data class SerialInputUiState(
     val itemsLoading: Boolean = false,
     val search: String = "",
     val filter: FilterKelengkapan = FilterKelengkapan.SEMUA,
+    /** Kategori yang disembunyikan dari daftar produk, per cabang & bertahan antar sesi. */
+    val kategoriDisembunyikan: Set<String> = emptySet(),
+    /** Lembar pemilih kategori sedang terbuka. */
+    val lembarKategori: Boolean = false,
     val coverage: Map<String, SerialCoverageRowDto> = emptyMap(),
     val coverageTruncated: Boolean = false,
     val coverageLoading: Boolean = false,
@@ -123,7 +129,8 @@ private fun SerialInputUiState.kosongkanEntri() = copy(
 /** Input Serial Number (admin-stok) — pilih produk stok cabang sendiri, input per unit. */
 @HiltViewModel
 class SerialInputViewModel @Inject constructor(
-    private val repository: SerialInputRepository
+    private val repository: SerialInputRepository,
+    private val kategoriPrefs: SerialKategoriPreferences
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SerialInputUiState())
@@ -139,7 +146,13 @@ class SerialInputViewModel @Inject constructor(
         _state.update { it.copy(loadingContext = true, contextError = null) }
         viewModelScope.launch {
             val dealer = (repository.context() as? AuthResult.Success)?.data?.sourceDealerCode
-            _state.update { it.copy(loadingContext = false, dealerCode = dealer?.ifBlank { null }) }
+            _state.update {
+                it.copy(
+                    loadingContext = false,
+                    dealerCode = dealer?.ifBlank { null },
+                    kategoriDisembunyikan = kategoriPrefs.disembunyikan(dealer)
+                )
+            }
             dealer?.takeIf { it.isNotBlank() }?.let { loadCabang(it) }
         }
     }
@@ -156,6 +169,43 @@ class SerialInputViewModel @Inject constructor(
         _state.update {
             it.copy(mode = null, selected = null, generateCount = "", generated = emptyList(), result = null, formError = null).kosongkanEntri()
         }
+    }
+
+    fun bukaLembarKategori() {
+        _state.update { it.copy(lembarKategori = true) }
+    }
+
+    fun tutupLembarKategori() {
+        _state.update { it.copy(lembarKategori = false) }
+    }
+
+    /** Centang/lepas satu kategori. Dicentang = DISEMBUNYIKAN dari daftar. */
+    fun toggleKategori(kategori: String) {
+        val dealer = _state.value.dealerCode ?: return
+        val sekarang = _state.value.kategoriDisembunyikan
+        val baru = if (kategori in sekarang) sekarang - kategori else sekarang + kategori
+        kategoriPrefs.simpan(dealer, baru)
+        _state.update { it.copy(kategoriDisembunyikan = baru) }
+    }
+
+    /**
+     * Terapkan saran "jarang ber-SN". SENGAJA hanya mencentang kategori yang
+     * BENAR-BENAR ada di cabang ini — menyimpan nama kategori yang tak dipunyai
+     * gudangnya membuat lembar pilihan memuat baris hantu yang tak bisa
+     * dijelaskan asalnya.
+     */
+    fun terapkanSaranKategori() {
+        val dealer = _state.value.dealerCode ?: return
+        val ada = _state.value.items.map { it.kategori.trim().ifBlank { KATEGORI_TANPA_NAMA } }.toSet()
+        val baru = _state.value.kategoriDisembunyikan + KATEGORI_JARANG_BER_SN.intersect(ada)
+        kategoriPrefs.simpan(dealer, baru)
+        _state.update { it.copy(kategoriDisembunyikan = baru) }
+    }
+
+    fun tampilkanSemuaKategori() {
+        val dealer = _state.value.dealerCode ?: return
+        kategoriPrefs.simpan(dealer, emptySet())
+        _state.update { it.copy(kategoriDisembunyikan = emptySet()) }
     }
 
     fun onFilterChange(filter: FilterKelengkapan) {
@@ -181,7 +231,12 @@ class SerialInputViewModel @Inject constructor(
                 // yang di sini justru belum bernomor sama sekali.
                 coverage = emptyMap(),
                 coverageTruncated = false,
-                coverageError = null
+                coverageError = null,
+                // Saringan kategori milik CABANG, jadi ikut berganti — bukan
+                // dibawa serta. Isi gudang tiap cabang berbeda; membawa
+                // sembunyian cabang lama akan menutupi barang yang di sini
+                // justru pekerjaan utamanya.
+                kategoriDisembunyikan = kategoriPrefs.disembunyikan(kodeDealer)
             )
         }
         viewModelScope.launch { loadCabang(kodeDealer) }
