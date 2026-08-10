@@ -7,6 +7,7 @@ import com.krisoft.tridjayaelektronik.data.model.GenerateSerialBody
 import com.krisoft.tridjayaelektronik.data.model.MutasiContextDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageData
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
+import com.krisoft.tridjayaelektronik.data.model.SerialRegistryRow
 import com.krisoft.tridjayaelektronik.data.model.SerialRequestDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
@@ -72,8 +73,27 @@ class SerialInputRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
-    /** Jumlah SN yang sudah tercatat utk satu produk (onlySerial/excludeAssigned=false = SEMUA baris). */
-    suspend fun existingSerialCount(kodeDealer: String, kodeBarang: String): AuthResult<Int> = try {
+    /**
+     * SN yang sudah tercatat untuk satu produk — BARISNYA, bukan cuma
+     * jumlahnya: petugas yang men-scan unit yang ternyata sudah terdaftar harus
+     * diberi tahu SAAT ITU JUGA, bukan sesudah menekan simpan lewat daftar
+     * `skipped`. Sebagian besar barang di gudang sudah bernomor pabrik dan
+     * belum terdata, jadi "sudah/belum terdaftar" adalah pertanyaan yang
+     * ditanyakan puluhan kali per produk.
+     *
+     * `onlySerial=false`/`excludeAssigned=false` = SEMUA baris. Tag leasing ikut
+     * SENGAJA: kunci unik registry `(dealer, barang, serial)` tak peduli
+     * `is_serial`, jadi serial yang bentrok dengan tag leasing pun akan ditolak
+     * server — menyembunyikannya di sini membuat penolakannya tak bisa dijelaskan.
+     *
+     * **Server memotong di 500 baris** (`DEFAULT_LIMIT`) dan app tak mengirim
+     * `limit`. Untuk produk dengan >500 baris, deteksi "sudah terdaftar" jadi
+     * TIDAK lengkap — itu fail-open yang disengaja: server tetap menolak
+     * duplikat saat simpan dan melaporkannya di `skipped`. Yang tak boleh
+     * diturunkan dari daftar ini adalah HITUNGAN cakupan; itu diambil dari
+     * [serialCoverage] yang dihitung server tanpa batas.
+     */
+    suspend fun existingSerials(kodeDealer: String, kodeBarang: String): AuthResult<List<SerialRegistryRow>> = try {
         val response = api.serialNumbers(
             kodeDealer = kodeDealer,
             kodeBarang = kodeBarang,
@@ -81,7 +101,7 @@ class SerialInputRepository @Inject constructor(
             excludeAssigned = false
         )
         val data = response.body()?.data
-        if (response.isSuccessful && data != null) AuthResult.Success(data.items.size)
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
         else parseError(response, "Gagal memuat serial tercatat")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")

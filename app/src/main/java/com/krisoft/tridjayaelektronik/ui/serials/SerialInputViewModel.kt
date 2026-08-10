@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.SerialInputRepository
+import com.krisoft.tridjayaelektronik.data.normalizeSerial
 import com.krisoft.tridjayaelektronik.data.model.SerialCoverageRowDto
 import com.krisoft.tridjayaelektronik.data.model.SerialCreateResultDto
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
@@ -49,19 +50,44 @@ data class SerialInputUiState(
      */
     val coverageError: String? = null,
     val selected: StokCabangRow? = null,
+    /** Baris ber-`isSerial` saja — sebanding dengan stok fisik (tag leasing tidak). */
     val existingCount: Int = 0,
+    /** Baris registry yang BUKAN nomor seri unit (tag leasing) — ditampilkan agar
+     *  selisih antara "SN tercatat" dan isi registry tidak terbaca sebagai bug. */
+    val tagLeasingCount: Int = 0,
+    /** Semua serial yang sudah ada di registry produk ini, sudah dinormalkan. */
+    val sudahTerdaftar: Set<String> = emptySet(),
     val existingLoading: Boolean = false,
-    val text: String = "",
+    /** Isi kotak ketik satu unit (scan mengisi daftar langsung, tak lewat sini). */
+    val entri: String = "",
+    /** Alasan penolakan entri terakhir — hilang begitu petugas mengetik lagi. */
+    val entriError: String? = null,
+    /** Unit yang sudah dikumpulkan dan siap disimpan, urut sesuai pemasukan. */
+    val daftar: List<String> = emptyList(),
     val saving: Boolean = false,
     val result: SerialCreateResultDto? = null,
     val formError: String? = null,
     /** Jumlah kode pengganti SN yang akan dibuat (barang tanpa serial pabrik). */
     val generateCount: String = "",
+    /** Dialog konfirmasi terbuka — pembuatan kode tak bisa dibatalkan dari app. */
+    val konfirmasiGenerate: Boolean = false,
     val generating: Boolean = false,
     val generated: List<String> = emptyList()
 )
 
-/** Input Serial Number (admin-stok) — pilih produk stok cabang sendiri, input bulk 1 SN/baris. */
+/**
+ * Buang isian per-unit. Dipakai di SETIAP perpindahan konteks (ganti mode, ganti
+ * cabang, ganti produk, keluar dari form): daftar unit yang sudah discan milik
+ * satu produk di satu cabang, dan membawanya ke konteks lain berarti mendaftarkan
+ * serial ke barang yang salah — kesalahan yang tak bisa dibatalkan dari app.
+ */
+private fun SerialInputUiState.kosongkanEntri() = copy(
+    entri = "",
+    entriError = null,
+    daftar = emptyList()
+)
+
+/** Input Serial Number (admin-stok) — pilih produk stok cabang sendiri, input per unit. */
 @HiltViewModel
 class SerialInputViewModel @Inject constructor(
     private val repository: SerialInputRepository
@@ -89,13 +115,13 @@ class SerialInputViewModel @Inject constructor(
      *  sudah diketik milik alur "tetapkan", tak ada artinya di alur "buat baru". */
     fun chooseMode(mode: SerialInputMode) {
         _state.update {
-            it.copy(mode = mode, selected = null, text = "", generateCount = "", generated = emptyList(), result = null, formError = null)
+            it.copy(mode = mode, selected = null, generateCount = "", generated = emptyList(), result = null, formError = null).kosongkanEntri()
         }
     }
 
     fun clearMode() {
         _state.update {
-            it.copy(mode = null, selected = null, text = "", generateCount = "", generated = emptyList(), result = null, formError = null)
+            it.copy(mode = null, selected = null, generateCount = "", generated = emptyList(), result = null, formError = null).kosongkanEntri()
         }
     }
 
@@ -113,7 +139,6 @@ class SerialInputViewModel @Inject constructor(
             it.copy(
                 dealerCode = kodeDealer,
                 selected = null,
-                text = "",
                 result = null,
                 formError = null,
                 contextError = null,
@@ -197,11 +222,12 @@ class SerialInputViewModel @Inject constructor(
         _state.update {
             it.copy(
                 selected = row,
-                text = "",
                 result = null,
                 formError = null,
                 existingLoading = true,
                 existingCount = 0,
+                tagLeasingCount = 0,
+                sudahTerdaftar = emptySet(),
                 // Kode hasil generate produk SEBELUMNYA wajib ikut hilang: label
                 // `GEN-…` ditempel ke unit fisik, dan daftar yang tertinggal di
                 // layar produk lain adalah undangan menempelkannya ke barang yang
@@ -209,23 +235,80 @@ class SerialInputViewModel @Inject constructor(
                 // barang yang tadi, bukan yang sekarang.
                 generateCount = "",
                 generated = emptyList()
-            )
+            ).kosongkanEntri()
         }
         val dealer = _state.value.dealerCode ?: return
         viewModelScope.launch {
-            when (val res = repository.existingSerialCount(dealer, row.kode)) {
-                is AuthResult.Success -> _state.update { it.copy(existingLoading = false, existingCount = res.data) }
+            when (val res = repository.existingSerials(dealer, row.kode)) {
+                is AuthResult.Success -> _state.update {
+                    it.copy(
+                        existingLoading = false,
+                        // Hanya baris ber-`isSerial` yang sebanding dengan stok fisik;
+                        // tag leasing dihitung terpisah supaya selisihnya bisa dijelaskan.
+                        existingCount = res.data.count { row -> row.isSerial },
+                        tagLeasingCount = res.data.count { row -> !row.isSerial },
+                        // Deteksi duplikat memakai SELURUH baris: kunci unik registry
+                        // `(dealer, barang, serial)` tak peduli `isSerial`, jadi serial
+                        // yang bentrok dengan tag leasing pun ditolak server.
+                        sudahTerdaftar = res.data.mapNotNull { row -> normalizeSerial(row.serialNumber) }.toSet()
+                    )
+                }
                 is AuthResult.Failure -> _state.update { it.copy(existingLoading = false, formError = res.message) }
             }
         }
     }
 
     fun clearSelection() {
-        _state.update { it.copy(selected = null, result = null, formError = null) }
+        _state.update { it.copy(selected = null, result = null, formError = null).kosongkanEntri() }
     }
 
-    fun onTextChange(text: String) {
-        _state.update { it.copy(text = text, formError = null) }
+    // ── Pemasukan per unit (scan / ketik) ───────────────────────────────────
+
+    fun onEntriChange(value: String) {
+        _state.update { it.copy(entri = value, entriError = null) }
+    }
+
+    /**
+     * Satu unit masuk daftar. Dipakai tombol "Tambah" MAUPUN hasil scan —
+     * keduanya lewat pintu yang sama supaya aturan duplikat/normalisasi tak
+     * bercabang. Scan memanggilnya langsung dengan nilai barcode; kotak ketik
+     * dikosongkan hanya bila entrinya diterima, sehingga serial yang ditolak
+     * masih terlihat dan bisa dikoreksi.
+     */
+    fun tambahEntri(raw: String) {
+        val current = _state.value
+        when (val hasil = tambahSerial(raw, current.daftar, current.sudahTerdaftar)) {
+            is HasilTambahSerial.Diterima -> _state.update {
+                it.copy(daftar = it.daftar + hasil.serial, entri = "", entriError = null, result = null)
+            }
+            is HasilTambahSerial.Ditolak -> _state.update { it.copy(entriError = hasil.alasan) }
+        }
+    }
+
+    fun hapusEntri(serial: String) {
+        _state.update { it.copy(daftar = it.daftar - serial, entriError = null) }
+    }
+
+    /**
+     * Buka/tutup konfirmasi sebelum membuat kode `GEN-`. Ada karena tombol itu
+     * MENULIS REGISTRY seketika dan app tak punya cara membatalkannya — kode
+     * yang telanjur dibuat hanya bisa dihapus lewat DB. Sudah terjadi sekali
+     * (2026-08-10, MEJA PENDEK KAYU JATI, 3 kode salah buat), dan penyebabnya
+     * bukan kecerobohan: layar ini memang dipakai bergantian dengan penetapan
+     * SN pabrik, dan dua tombol yang berdampingan itu punya akibat yang sangat
+     * berbeda.
+     */
+    fun mintaKonfirmasiGenerate() {
+        val jumlah = _state.value.generateCount.toIntOrNull() ?: 0
+        if (jumlah !in 1..500) {
+            _state.update { it.copy(formError = "Jumlah kode harus antara 1 dan 500.") }
+            return
+        }
+        _state.update { it.copy(konfirmasiGenerate = true, formError = null) }
+    }
+
+    fun batalkanKonfirmasiGenerate() {
+        _state.update { it.copy(konfirmasiGenerate = false) }
     }
 
     fun onGenerateCountChange(value: String) {
@@ -249,7 +332,7 @@ class SerialInputViewModel @Inject constructor(
             _state.update { it.copy(formError = "Jumlah kode harus antara 1 dan 500.") }
             return
         }
-        _state.update { it.copy(generating = true, formError = null, generated = emptyList()) }
+        _state.update { it.copy(generating = true, formError = null, generated = emptyList(), konfirmasiGenerate = false) }
         viewModelScope.launch {
             when (val res = repository.generateSerials(dealer, product.kode, product.nama, jumlah)) {
                 is AuthResult.Success -> _state.update {
@@ -273,20 +356,26 @@ class SerialInputViewModel @Inject constructor(
         val current = _state.value
         val dealer = current.dealerCode ?: return
         val product = current.selected ?: return
-        val lines = current.text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.isEmpty()) {
-            _state.update { it.copy(formError = "Isi minimal 1 serial number.") }
+        val daftar = current.daftar
+        if (daftar.isEmpty()) {
+            _state.update { it.copy(formError = "Belum ada unit yang dimasukkan — scan atau ketik serialnya dulu.") }
             return
         }
         _state.update { it.copy(saving = true, formError = null, result = null) }
         viewModelScope.launch {
-            when (val res = repository.createSerialNumbers(dealer, product.kode, product.nama, lines)) {
+            when (val res = repository.createSerialNumbers(dealer, product.kode, product.nama, daftar)) {
                 is AuthResult.Success -> _state.update {
                     it.copy(
                         saving = false,
                         result = res.data,
-                        text = "",
+                        daftar = emptyList(),
+                        entri = "",
+                        entriError = null,
                         existingCount = it.existingCount + res.data.inserted,
+                        // Yang benar-benar masuk kini bagian dari registry: tanpa ini
+                        // men-scan ulang unit yang barusan disimpan tidak diperingatkan,
+                        // dan petugas mengira scan-nya belum terhitung.
+                        sudahTerdaftar = it.sudahTerdaftar + daftar,
                         coverage = coverageDitambah(it.coverage, product.kode, res.data.inserted)
                     )
                 }

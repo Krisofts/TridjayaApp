@@ -361,6 +361,13 @@ data class BrokerListData(val items: List<BrokerOption> = emptyList())
 @Serializable
 data class SerialRegistryRow(
     val serialNumber: String = "",
+    /**
+     * `false` = baris ini TAG LEASING (AS BIKE / FIF KOPO / FIF SOETA), bukan
+     * nomor seri unit fisik. Yang sebanding dengan jumlah stok hanya baris
+     * ber-`true`; menghitung semua baris membuat "SN tercatat" tampak lebih
+     * besar dari kenyataan dan sisa kebutuhan tampak lebih kecil.
+     */
+    val isSerial: Boolean = true,
     val kondisi: String? = null,
     val kondisiKeterangan: String? = null
 ) {
