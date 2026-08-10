@@ -25,14 +25,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Numbers
 import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.model.StokCabangRow
+import com.krisoft.tridjayaelektronik.ui.deliveryflow.BarcodeScanButton
 import com.krisoft.tridjayaelektronik.ui.deliveryflow.CabangSelector
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
@@ -93,13 +98,17 @@ fun SerialInputScreen(
         when (mode) {
             SerialInputMode.TETAPKAN -> TetapkanFormScreen(
                 state = state,
-                onTextChange = viewModel::onTextChange,
+                onEntriChange = viewModel::onEntriChange,
+                onTambah = viewModel::tambahEntri,
+                onHapus = viewModel::hapusEntri,
                 onSave = viewModel::save,
                 onBack = viewModel::clearSelection
             )
             SerialInputMode.BUAT_BARU -> BuatBaruFormScreen(
                 state = state,
                 onGenerateCountChange = viewModel::onGenerateCountChange,
+                onMintaKonfirmasi = viewModel::mintaKonfirmasiGenerate,
+                onBatalKonfirmasi = viewModel::batalkanKonfirmasiGenerate,
                 onGenerate = viewModel::generateSerials,
                 onBack = viewModel::clearSelection
             )
@@ -428,7 +437,9 @@ private fun KelengkapanBadge(status: Kelengkapan, snTercatat: Int?, stok: Int) {
 @Composable
 private fun TetapkanFormScreen(
     state: SerialInputUiState,
-    onTextChange: (String) -> Unit,
+    onEntriChange: (String) -> Unit,
+    onTambah: (String) -> Unit,
+    onHapus: (String) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -436,8 +447,8 @@ private fun TetapkanFormScreen(
     val product = state.selected ?: return
     val stok = product.stok ?: 0
     val remaining = (stok - state.existingCount).coerceAtLeast(0)
-    val lines = state.text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    val countMismatch = lines.isNotEmpty() && lines.size != remaining
+    val daftar = state.daftar
+    val countMismatch = daftar.isNotEmpty() && daftar.size != remaining
 
     TridjayaCollapsibleHeader(title = SerialInputMode.TETAPKAN.judul, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -452,28 +463,99 @@ private fun TetapkanFormScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            ExpressiveTextField(
-                value = state.text,
-                onValueChange = onTextChange,
-                modifier = Modifier.fillMaxWidth().height(180.dp),
-                placeholder = "Satu serial number per baris...",
-                singleLine = false
-            )
+            ClayCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Scan barcode tiap unit, atau ketik serialnya kalau barcode-nya rusak.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ExpressiveTextField(
+                            value = state.entri,
+                            onValueChange = onEntriChange,
+                            modifier = Modifier.weight(1f),
+                            placeholder = "Serial number unit",
+                            // Scan masuk lewat PINTU YANG SAMA dengan tombol Tambah
+                            // supaya aturan normalisasi & duplikat tak bercabang.
+                            trailingIcon = { BarcodeScanButton(contentDescription = "Scan serial unit") { onTambah(it) } }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ExpressiveFilledButton(
+                            onClick = { onTambah(state.entri) },
+                            enabled = state.entri.isNotBlank()
+                        ) {
+                            Text("Tambah")
+                        }
+                    }
+                    state.entriError?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+            }
 
-            Text(
-                text = "${lines.size} baris terisi",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (daftar.isEmpty()) {
+                Text(
+                    text = "Belum ada unit dimasukkan.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = "${daftar.size} unit siap disimpan",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                // Column biasa, BUKAN LazyColumn: seluruh form ini sudah di dalam
+                // `verticalScroll`, dan menyarangkan dua scroller sejenis melempar
+                // IllegalStateException saat dirender.
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    daftar.forEachIndexed { index, serial ->
+                        ClayCard(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${index + 1}.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = serial,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { onHapus(serial) }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = "Hapus $serial dari daftar",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if (countMismatch) {
                 Text(
-                    text = "⚠️ Jumlah baris (${lines.size}) tak sama dengan sisa kebutuhan ($remaining) — " +
+                    text = "⚠️ Jumlah unit (${daftar.size}) tak sama dengan sisa kebutuhan ($remaining) — " +
                         "stok GS mungkin sudah berubah. Tetap bisa disimpan.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.tertiary,
-                    modifier = Modifier.padding(top = 6.dp)
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
 
@@ -508,13 +590,13 @@ private fun TetapkanFormScreen(
 
             ExpressiveFilledButton(
                 onClick = onSave,
-                enabled = !state.saving && lines.isNotEmpty(),
+                enabled = !state.saving && daftar.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.saving) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("Simpan ${lines.size} Serial Number")
+                    Text("Simpan ${daftar.size} Serial Number")
                 }
             }
         }
@@ -527,6 +609,8 @@ private fun TetapkanFormScreen(
 private fun BuatBaruFormScreen(
     state: SerialInputUiState,
     onGenerateCountChange: (String) -> Unit,
+    onMintaKonfirmasi: () -> Unit,
+    onBatalKonfirmasi: () -> Unit,
     onGenerate: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -534,6 +618,28 @@ private fun BuatBaruFormScreen(
     val product = state.selected ?: return
     val stok = product.stok ?: 0
     val remaining = (stok - state.existingCount).coerceAtLeast(0)
+
+    // Konfirmasi WAJIB: tombolnya menulis registry seketika dan app tak punya
+    // cara membatalkannya — kode yang telanjur dibuat hanya bisa dihapus lewat
+    // DB. Dialognya menyebut nama barangnya, karena kesalahan yang sudah terjadi
+    // (2026-08-10) bukan salah jumlah melainkan salah PRODUK.
+    if (state.konfirmasiGenerate) {
+        AlertDialog(
+            onDismissRequest = onBatalKonfirmasi,
+            title = { Text("Buat kode untuk barang ini?") },
+            text = {
+                Text(
+                    "${state.generateCount} kode GEN- akan dibuat untuk " +
+                        "${product.nama.ifBlank { product.kode }} (${product.kode}) dan LANGSUNG " +
+                        "tercatat di registry. Tidak bisa dibatalkan dari app.\n\n" +
+                        "Pakai ini hanya untuk barang yang memang tak punya nomor seri pabrik. " +
+                        "Kalau barangnya sudah bernomor, pakai menu Tetapkan SN ke Produk."
+                )
+            },
+            confirmButton = { TextButton(onClick = onGenerate) { Text("Ya, buat kode") } },
+            dismissButton = { TextButton(onClick = onBatalKonfirmasi) { Text("Batal") } }
+        )
+    }
 
     TridjayaCollapsibleHeader(title = SerialInputMode.BUAT_BARU.judul, onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -570,7 +676,7 @@ private fun BuatBaruFormScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         ExpressiveFilledButton(
-                            onClick = onGenerate,
+                            onClick = onMintaKonfirmasi,
                             enabled = !state.generating && state.generateCount.isNotBlank()
                         ) {
                             if (state.generating) {
@@ -638,6 +744,17 @@ private fun ProductSummaryCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // Tanpa baris ini, "SN tercatat" yang lebih kecil dari isi registry
+            // terbaca sebagai hitungan yang salah — padahal tag leasing memang
+            // sengaja tak dihitung sebagai unit fisik.
+            if (!state.existingLoading && state.tagLeasingCount > 0) {
+                Text(
+                    text = "Registry juga memuat ${state.tagLeasingCount} tag leasing — tidak dihitung sebagai unit.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
     }
 }
