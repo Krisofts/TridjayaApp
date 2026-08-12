@@ -53,22 +53,70 @@ class ActivityRegistryTest {
     // ── Item khusus akun uji ─────────────────────────────────────────────────
 
     @Test
-    fun `Input Aktivitas hilang dari karyawan nyata, tampil untuk akun uji`() {
-        // 2026-07-31, permintaan user: fitur BETA diuji di produksi tanpa
-        // memancing karyawan nyata memakainya.
+    fun `Input Aktivitas tampil untuk semua karyawan, bukan cuma akun uji`() {
+        // 2026-08-12, permintaan user: masa uji BETA selesai — raport dibuka
+        // untuk karyawan nyata. Gate akun-uji harus TIDAK lagi memangkasnya.
         val karyawan = visibleActivityItems(setOf("karyawan"), null, akunUji = false).map { it.id }
-        assertFalse("raport" in karyawan)
-        // Arah kedua: yang hilang HANYA itu — gate ini gampang ditulis kelewat
-        // lebar dan diam-diam mengosongkan layar Activity karyawan.
+        assertTrue("raport" in karyawan)
+        // Akun uji melihat himpunan yang sama — set khusus akun uji kini kosong.
         val uji = visibleActivityItems(setOf("karyawan"), null, akunUji = true).map { it.id }
-        assertTrue("raport" in uji)
-        assertEquals(uji - "raport", karyawan)
+        assertEquals(uji, karyawan)
     }
 
     @Test
-    fun `default akunUji menyembunyikan, bukan membocorkan`() {
-        // Pemanggil yang lupa mengoper argumennya harus gagal ke sisi AMAN.
-        assertFalse("raport" in visibleActivityItems(setOf("karyawan"), null).map { it.id })
+    fun `Input Aktivitas terbuka untuk role apa pun yang login`() {
+        // Permintaan user 2026-08-12 "buka untuk semua orang". Peta kemampuan
+        // TIDAK memengaruhinya (item ini ber-capability null), jadi kartunya
+        // tetap ada walau server mengirim peta lengkap.
+        listOf("karyawan", "manager", "owner", "kasir", "driver", "hrd").forEach { role ->
+            assertTrue(
+                "role '$role' kehilangan kartu Input Aktivitas",
+                "raport" in visibleActivityItems(setOf(role), emptyMap()).map { it.id },
+            )
+        }
+        // Batasnya tetap: profil belum termuat (role kosong) → jangan menebak.
+        assertFalse("raport" in visibleActivityItems(emptySet(), null).map { it.id })
+    }
+
+    // ── Antrian PIC raport ───────────────────────────────────────────────────
+
+    @Test
+    fun `kartu Nilai Aktivitas memakai kunci raport review`() {
+        val kartu = ACTIVITY_ITEMS.first { it.id == "raport_review" }
+        assertEquals("raport.review", kartu.capability)
+        assertEquals("raport_review", kartu.navKey)
+        assertEquals(ActivitySource.RAPORT_REVIEW_PENDING, kartu.source)
+        // Nilainya ditulis literal, bukan merujuk konstantanya sendiri: test yang
+        // membandingkan konstanta dengan dirinya sendiri selalu hijau.
+        assertEquals(
+            setOf("admin", "superadmin", "manager", "kepala-cabang", "pic_raport", "pic-raport", "hrd"),
+            kartu.allowedRoles,
+        )
+    }
+
+    @Test
+    fun `PIC melihat antrian penilaian, karyawan biasa tidak`() {
+        val pic = visibleActivityItems(setOf("pic_raport"), null).map { it.id }
+        assertTrue("raport_review" in pic)
+        // Dan ia tetap punya kartu pengisiannya juga — keduanya hidup bersama.
+        assertTrue("raport" in pic)
+
+        val karyawan = visibleActivityItems(setOf("karyawan"), null).map { it.id }
+        assertFalse("raport_review" in karyawan)
+    }
+
+    @Test
+    fun `owner boleh membaca raport tapi tak boleh menilainya`() {
+        // `RAPORT_VIEW_ALL_ROLES` memuat owner, `RAPORT_REVIEW_ROLES` TIDAK —
+        // kartunya harus ikut aturan yang kedua, kalau tidak owner menekan
+        // Setuju lalu dijawab 403.
+        assertFalse("raport_review" in visibleActivityItems(setOf("owner"), null).map { it.id })
+    }
+
+    @Test
+    fun `peta kemampuan server menang atas daftar role lokal`() {
+        val caps = mapOf("raport.review" to false)
+        assertFalse("raport_review" in visibleActivityItems(setOf("manager"), caps).map { it.id })
     }
 
     @Test
