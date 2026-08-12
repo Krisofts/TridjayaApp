@@ -8,6 +8,7 @@ import com.krisoft.tridjayaelektronik.data.OpnameRepository
 import com.krisoft.tridjayaelektronik.data.KONDISI_LAYAK
 import com.krisoft.tridjayaelektronik.data.KONDISI_TIDAK_LAYAK
 import com.krisoft.tridjayaelektronik.data.SerialInputRepository
+import com.krisoft.tridjayaelektronik.data.pesanGagalKirim
 import com.krisoft.tridjayaelektronik.data.STATUS_DRAFT
 import com.krisoft.tridjayaelektronik.data.VALIDASI_PENDING
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
@@ -48,6 +49,14 @@ data class OpnameDetailUiState(
      * menyembunyikan tombol scan dari petugas yang justru berhak.
      */
     val canHitung: Boolean = false,
+    /**
+     * Boleh mencatat unit KETIK MANUAL (izin `tetapkan_sn`, migrasi 212).
+     * Server lama tak mengirim flagnya → jatuh balik ke [canHitung], jadi APK
+     * ini tak mencabut apa pun yang sudah jalan.
+     */
+    val canTetapkanSn: Boolean = false,
+    /** Boleh mencatat unit hasil SCAN (izin `verifikasi_sn`, migrasi 212). */
+    val canVerifikasiSn: Boolean = false,
     /** Sesi draft MILIK sendiri → tombol Selesaikan/Batalkan muncul. */
     val canManage: Boolean = false,
     /**
@@ -239,10 +248,19 @@ class OpnameDetailViewModel @Inject constructor(
             detail.createdByUserId == authRepository.currentUserId
         val bolehKelola = detail.canManage ?: isOwner
         val bolehHitung = detail.canHitung ?: (isOwner && detail.status == "draft")
+        // Rantai `?:` yang sama: `null` = server belum mengenal penunjukan
+        // petugas (pra-migrasi 212), dan aturan lama berbunyi "yang boleh
+        // menghitung boleh scan MAUPUN ketik manual". `false` sebagai default
+        // akan mencabut dua alur kerja yang sudah jalan begitu APK ini beredar
+        // di atas server lama.
+        val bolehTetapkan = izinPenunjukan(detail.canTetapkanSn, bolehHitung)
+        val bolehVerifikasi = izinPenunjukan(detail.canVerifikasiSn, bolehHitung)
         _uiState.update {
             it.copy(
                 detail = detail,
                 canHitung = bolehHitung,
+                canTetapkanSn = bolehTetapkan,
+                canVerifikasiSn = bolehVerifikasi,
                 canManage = bolehKelola && detail.status == "draft",
                 canDelete = bolehKelola && detail.status == "cancelled",
             )
@@ -294,6 +312,20 @@ class OpnameDetailViewModel @Inject constructor(
      */
     fun scan(serialNumber: String, kondisi: String = KONDISI_LAYAK, keterangan: String? = null) {
         val item = _uiState.value.selectedItem ?: return
+        // Vonis server dipatuhi SEBELUM barisnya ditulis ke Room. Menulis dulu
+        // lalu dijawab 403 meninggalkan baris yang ikut terhitung di layar & PDF
+        // sampai push berikutnya membuangnya — dan selama itu petugas mengira
+        // unitnya tercatat. Server tetap wasit terakhir; ini cuma menutup jendela.
+        if (!_uiState.value.canVerifikasiSn) {
+            _uiState.update {
+                it.copy(
+                    isSaving = false,
+                    scanMessage = null,
+                    saveError = ALASAN_TAK_BOLEH_SCAN
+                )
+            }
+            return
+        }
         _uiState.update { it.copy(isSaving = true, saveError = null, scanMessage = null) }
         viewModelScope.launch {
             val result = runCatching {
@@ -321,9 +353,14 @@ class OpnameDetailViewModel @Inject constructor(
                             "${result.serialNumber} tersimpan"
                         }
                     )
+                    // SEBABNYA ikut ditampilkan. Tanpa itu penolakan sementara
+                    // yang punya kalimat rinci dari server — "sesi opname baru
+                    // dibuka 12/08 08:00", satu-satunya tempat JAM jendelanya
+                    // muncul — hilang di balik kalimat generik, dan petugas cuma
+                    // melihat barisnya diam tanpa tahu apa yang ditunggu.
                     is OpnameRepository.ScanResult.Queued -> state.copy(
                         isSaving = false,
-                        scanMessage = "${result.serialNumber} tersimpan offline, menunggu jaringan"
+                        scanMessage = pesanAntre(result.serialNumber, result.reason)
                     )
                     is OpnameRepository.ScanResult.Rejected -> state.copy(
                         isSaving = false,
@@ -361,6 +398,13 @@ class OpnameDetailViewModel @Inject constructor(
      */
     fun startManualUnit(serialNumberRaw: String, kondisi: String, keterangan: String?): Boolean {
         val item = _uiState.value.selectedItem ?: return false
+        // Sama seperti scan: penolakannya disebutkan, dan dialog dua-foto tak
+        // dibuka sama sekali — menyuruh petugas memotret dua kali lalu menjawab
+        // 403 di akhir adalah kerja yang dibuang percuma.
+        if (!_uiState.value.canTetapkanSn) {
+            _uiState.update { it.copy(saveError = ALASAN_TAK_BOLEH_MANUAL, scanMessage = null) }
+            return false
+        }
         val serial = com.krisoft.tridjayaelektronik.data.normalizeSerial(serialNumberRaw)
         if (serial == null) {
             _uiState.update { it.copy(saveError = "Serial kosong atau lebih dari 64 karakter") }
@@ -619,7 +663,13 @@ class OpnameDetailViewModel @Inject constructor(
                     _uiState.update { it.copy(scanMessage = "Antrean terkirim") }
                     refreshDetail()
                 }
-                is AuthResult.Failure -> _uiState.update { it.copy(saveError = pushed.message) }
+                // Tombol "Kirim ulang" adalah tempat kedua petugas bertemu 403.
+                // Pesan mentah server di situ ("Akses ditolak") tak memberi tahu
+                // siapa pun harus berbuat apa — pakai kalimat yang sama dengan
+                // jalur scan.
+                is AuthResult.Failure -> _uiState.update {
+                    it.copy(saveError = pesanGagalKirim(pushed))
+                }
             }
         }
     }
@@ -689,6 +739,83 @@ fun pesanUnitManual(serialNumber: String, validationStatus: String?): String =
         // Status baru dari server tampil apa adanya, bukan disalahartikan jadi "menunggu".
         else -> "$serialNumber tersimpan — $validationStatus"
     }
+
+/**
+ * Aturan jatuh-balik dua flag penunjukan petugas (migrasi 212).
+ *
+ * [flagServer] `null` berarti server BELUM MENGENAL fieldnya — bukan "tidak
+ * boleh". Memperlakukannya `false` akan mencabut scan/ketik-manual dari SEMUA
+ * orang begitu APK ini beredar di atas server lama; itu bukan sikap konservatif
+ * melainkan mematikan fungsi yang sudah jalan. Aturan pra-212: yang boleh
+ * menghitung boleh keduanya.
+ *
+ * `false` EKSPLISIT dari server adalah VONIS dan wajib dipatuhi, walau
+ * [bolehHitung] `true` — server memang bisa mengizinkan seseorang mencatat
+ * sebagian saja (ditunjuk scan tapi tidak ketik-manual).
+ */
+fun izinPenunjukan(flagServer: Boolean?, bolehHitung: Boolean): Boolean =
+    flagServer ?: bolehHitung
+
+/**
+ * Kalimat sebab untuk jalur yang TERTUTUP penunjukan petugas (migrasi 212).
+ *
+ * Wajib disebut, bukan sekadar tombol yang lenyap: orang yang tombolnya hilang
+ * tanpa penjelasan menyimpulkan aplikasinya rusak, lalu menutup-buka app,
+ * memasang ulang, dan akhirnya melapor ke orang yang salah. Menyebut
+ * admin-stok adalah satu-satunya tindakan yang benar-benar mengubah keadaan.
+ */
+const val ALASAN_TAK_BOLEH_SCAN =
+    "Kamu belum ditunjuk untuk men-scan SN di cabang ini — hubungi admin stok."
+const val ALASAN_TAK_BOLEH_MANUAL =
+    "Kamu belum ditunjuk untuk mengetik SN manual di cabang ini — hubungi admin stok."
+
+/**
+ * Kalimat untuk unit yang MASIH di antrean lokal. [reason] datang dari server
+ * (mis. jam jendela opname) atau dari lapisan jaringan; ia disebutkan apa adanya
+ * karena ia satu-satunya keterangan tentang APA yang sedang ditunggu.
+ *
+ * Kosong = sinyal hilang biasa, kalimat lamanya tetap dipakai.
+ */
+fun pesanAntre(serialNumber: String, reason: String?): String {
+    val sebab = reason?.trim().orEmpty()
+    return if (sebab.isEmpty() || sebabTeknis(sebab)) {
+        "$serialNumber tersimpan offline, menunggu jaringan"
+    } else {
+        "$serialNumber tersimpan di HP, belum terkirim — $sebab"
+    }
+}
+
+/**
+ * `true` = [sebab] itu teks exception jaringan mentah, bukan keterangan yang
+ * berguna bagi petugas.
+ *
+ * `OpnameRepository.call` memakai `e.message` apa adanya saat request gagal,
+ * dan OkHttp menulisnya dalam bahasa Inggris teknis — di layar hitung fisik
+ * gudang, "Unable to resolve host tridjaya.com: No address associated with
+ * hostname" terbaca sebagai APP RUSAK dan mendorong petugas men-scan ulang unit
+ * yang sebenarnya sudah aman tersimpan. Yang benar-benar layak ditampilkan
+ * hanyalah keterangan dari SERVER (mis. jam jendela opname pada
+ * `jendela_belum_mulai`), karena cuma itu yang memberi tahu APA yang ditunggu.
+ */
+private fun sebabTeknis(sebab: String): Boolean {
+    val l = sebab.lowercase()
+    return PENANDA_SEBAB_TEKNIS.any { it in l }
+}
+
+private val PENANDA_SEBAB_TEKNIS = listOf(
+    "unable to resolve host",
+    "failed to connect",
+    "timeout",
+    "timed out",
+    "no address associated",
+    "network is unreachable",
+    "connection reset",
+    "connection refused",
+    "sslhandshake",
+    "certpathvalidator",
+    "econnaborted",
+    "software caused connection abort",
+)
 
 /** Temuan server: serial tak ada di registry cabang mana pun. */
 const val TEMUAN_TIDAK_TERDAFTAR = "tidak_terdaftar"

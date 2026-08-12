@@ -75,6 +75,15 @@ const val TOLAK_JENDELA_BELUM_MULAI = "jendela_belum_mulai"
 const val TOLAK_JENDELA_SUDAH_TUTUP = "jendela_sudah_tutup"
 
 /**
+ * Penunjukan petugas opname (migrasi 212). Server menolak PER BARIS di dalam
+ * respons 200: satu batch boleh memuat campuran scan & ketik-manual sementara
+ * petugasnya mungkin cuma dipercaya salah satunya. KEDUANYA PERMANEN — mencoba
+ * lagi tak akan mengubah apa pun sampai admin-stok mengubah penunjukannya.
+ */
+const val TOLAK_IZIN_TETAPKAN_SN = "izin_tetapkan_sn"
+const val TOLAK_IZIN_VERIFIKASI_SN = "izin_verifikasi_sn"
+
+/**
  * Penolakan yang TIDAK akan berubah kalau dicoba lagi.
  *
  * Yang tidak ada di sini bersifat SEMENTARA, dan barisnya WAJIB tetap di
@@ -90,6 +99,8 @@ private val TOLAK_PERMANEN = setOf(
     "kondisi_tidak_dikenal",
     TOLAK_SESI_TAK_DRAFT,
     TOLAK_JENDELA_SUDAH_TUTUP,
+    TOLAK_IZIN_TETAPKAN_SN,
+    TOLAK_IZIN_VERIFIKASI_SN,
 )
 
 /** `true` = barisnya boleh dibuang dari antrean lokal. */
@@ -103,7 +114,138 @@ fun alasanTolakLabel(reason: String): String = when (reason) {
     TOLAK_SESI_TAK_DRAFT -> "sesi opname sudah ditutup"
     TOLAK_JENDELA_BELUM_MULAI -> "sesi opname belum dibuka — tersimpan, dikirim otomatis nanti"
     TOLAK_JENDELA_SUDAH_TUTUP -> "jendela opname sudah tutup"
+    // Kalimatnya menyebut JALAN KELUARNYA, bukan cuma vonisnya: petugas yang
+    // cuma diberi tahu "ditolak" akan mencoba lagi seharian: menyuruhnya
+    // menghubungi admin-stok adalah satu-satunya tindakan yang mengubah apa pun.
+    TOLAK_IZIN_TETAPKAN_SN ->
+        "kamu belum ditunjuk untuk mengetik SN manual di cabang ini — hubungi admin stok"
+    TOLAK_IZIN_VERIFIKASI_SN ->
+        "kamu belum ditunjuk untuk men-scan SN di cabang ini — hubungi admin stok"
     else -> reason
+}
+
+/**
+ * Sifat sebuah kegagalan pengiriman — penentu apakah barisnya boleh tetap
+ * mengendap di antrean Room.
+ *
+ * Sampai 2026-08-12 SETIAP kegagalan (termasuk 403) dilaporkan `Queued` alias
+ * "tersimpan offline, menunggu jaringan". Akibatnya petugas yang izinnya dicabut
+ * men-scan seharian mengira datanya tersimpan: barisnya mengendap selamanya di
+ * Room dan TETAP terhitung di daftar unit serta PDF hitung fisik — angka opname
+ * yang salah tanpa satu pun error terlihat.
+ */
+enum class SifatGagal {
+    /** Vonis melekat pada permintaannya sendiri; mengulangnya percuma. */
+    PERMANEN,
+
+    /** Permintaannya sah, SESINYA yang mati. Sah lagi setelah user masuk lagi. */
+    SESI,
+
+    /** Jaringan/serverkan sedang tak bisa menjawab — antrean WAJIB bertahan. */
+    SEMENTARA
+}
+
+/**
+ * Status HTTP yang jawabannya TIDAK akan berubah kalau permintaan yang sama
+ * diulang: 400/422 (server menolak isi permintaannya), 403 (tak berhak — dan
+ * sejak migrasi 212 inilah jawaban untuk petugas yang tak ditunjuk sama sekali,
+ * lihat `authorize_hitung` di `opname.rs`), 404 (sesi/rute tak ada), 409.
+ */
+private val HTTP_PERMANEN = setOf(400, 403, 404, 409, 422)
+
+/**
+ * Yang barisnya boleh DIBUANG dari antrean lokal — lebih sempit dari
+ * [HTTP_PERMANEN], dan sengaja.
+ *
+ * 403/409/422 = server menolak ISI permintaan ini, jadi menyimpannya cuma
+ * menggelembungkan hitungan lokal. TIGA status yang PERMANEN untuk pelaporan
+ * tapi barisnya tetap BERTAHAN, masing-masing karena alasan berbeda:
+ * - **404**: rute gateway yang belum terpasang menjawab 404 juga (insiden APK
+ *   2.67) — membuang hasil scan karena backend-nya belum ter-deploy jauh lebih
+ *   mahal daripada baris yang tertahan sampai app/server diperbarui.
+ * - **401**: permintaannya sah, SESINYA yang mati; push berikutnya sesudah
+ *   login ulang akan mengirimnya.
+ * - **400**: `authorize_hitung` menjawab 400 "Akun belum terikat cabang —
+ *   hubungi admin" (`opname.rs`), dan kalimat itu sendiri menyebut jalan keluar
+ *   yang MENGUBAH jawabannya. Membuang antrean di situ memaksa petugas
+ *   mengulang keliling gudang sesudah admin membetulkan data akunnya.
+ *
+ * Syarat KEDUA (asal vonisnya) ada di [bolehBuangAntrean] — status saja tidak
+ * cukup.
+ */
+private val HTTP_BUANG_ANTREAN = setOf(403, 409, 422)
+
+/**
+ * Prefiks `code` yang dipasang [parseError] ketika badan errornya BUKAN JSON
+ * aplikasi kita: ia memakai `parsed.code` bila badannya bisa di-parse, kalau
+ * tidak jatuh ke prefiks ini digabung kode status HTTP-nya.
+ *
+ * Ini pembeda yang menentukan boleh-tidaknya membuang hasil kerja petugas:
+ * badan JSON ber-`code` (mis. `forbidden`, `validation_error`) berarti
+ * inventory-service SENDIRI yang memvonis permintaan ini, sedangkan `http_403`
+ * berarti sesuatu di DEPAN origin menjawab — Cloudflare/WAF, rate-limit, atau
+ * proxy — dan itu keadaan SEMENTARA yang tak tahu apa-apa soal penunjukan
+ * petugas.
+ */
+private const val PREFIKS_KODE_NON_APLIKASI = "http_"
+
+/**
+ * Daftar-putih, arah aman ke SEMENTARA: status yang belum dikenal (dan
+ * kegagalan tanpa status sama sekali — lempar IOException) diperlakukan
+ * sementara, pola yang sudah dipakai [tolakPermanen]. APK yang tertinggal versi
+ * tak boleh membuang hasil kerja petugas hanya karena jawabannya belum dikenal.
+ */
+fun sifatGagal(httpStatus: Int?): SifatGagal = when {
+    httpStatus == null -> SifatGagal.SEMENTARA
+    httpStatus == 401 -> SifatGagal.SESI
+    httpStatus in HTTP_PERMANEN -> SifatGagal.PERMANEN
+    // 5xx, 408, 429, dan apa pun yang belum dikenal.
+    else -> SifatGagal.SEMENTARA
+}
+
+/**
+ * `true` = barisnya boleh DIBUANG dari antrean lokal. Lihat [HTTP_BUANG_ANTREAN].
+ *
+ * DUA syarat, dan syarat kedua yang menyelamatkan hasil kerja sehari penuh:
+ * statusnya harus salah satu yang memvonis isi permintaan, **DAN** vonis itu
+ * harus datang dari aplikasi kita sendiri (badan JSON ber-`code`), bukan dari
+ * lapisan di depannya.
+ *
+ * Skenario yang ditutup syarat kedua (temuan review 2026-08-12): petugas
+ * men-scan 40 unit seharian tanpa sinyal — semuanya benar tertahan di antrean.
+ * Begitu sinyal kembali, satu POST berisi 40 baris ditembakkan dan **Cloudflare**
+ * (tridjaya.com memang di belakangnya) menjawab **403 HTML** karena WAF /
+ * rate-limit, tanpa pernah menyentuh origin. Tanpa syarat kedua, keempat puluh
+ * baris hitung fisik itu DIHAPUS dari Room dan layarnya menuduh petugas "belum
+ * ditunjuk" — kehilangan data permanen untuk kondisi yang justru sementara.
+ * Kelas yang sama muncul pada akun yang sejenak dinonaktifkan HRD.
+ *
+ * 400 SENGAJA di luar [HTTP_BUANG_ANTREAN]: `authorize_hitung` menjawab 400
+ * "Akun belum terikat cabang — hubungi admin" (opname.rs), dan pesan itu sendiri
+ * menyebutkan jalan keluar yang mengubah jawabannya. Membuang antrean di situ
+ * berarti petugas mengulang keliling gudang sesudah admin membetulkan datanya.
+ * 400 tetap PERMANEN untuk PELAPORAN (petugas wajib melihat sebabnya), cuma
+ * barisnya yang bertahan — perlakuan sama dengan 404/401.
+ */
+fun bolehBuangAntrean(failure: AuthResult.Failure): Boolean =
+    failure.httpStatus in HTTP_BUANG_ANTREAN &&
+        !failure.code.startsWith(PREFIKS_KODE_NON_APLIKASI)
+
+/**
+ * Kalimat untuk kegagalan yang BUKAN sekadar sinyal hilang. Pesan server dipakai
+ * apa adanya, lalu dilengkapi tindakan yang bisa dilakukan petugas — badan error
+ * 403 server berbunyi "Akses ditolak" saja (`ApiError::Forbidden` di
+ * `rust-shared/src/error.rs`), yang tak memberi tahu siapa pun harus berbuat apa.
+ */
+fun pesanGagalKirim(failure: AuthResult.Failure): String {
+    val dasar = failure.message.trim().ifEmpty { "Permintaan ditolak server" }
+    return when (failure.httpStatus) {
+        403 -> "$dasar — kamu belum ditunjuk sebagai petugas opname di cabang ini " +
+            "(atau sesi ini milik cabang lain). Hubungi admin stok."
+        401 -> "Sesi kamu berakhir — masuk lagi. Hasil scan yang sudah tercatat " +
+            "tetap tersimpan di HP dan dikirim otomatis setelah kamu masuk."
+        else -> dasar
+    }
 }
 
 const val INPUT_SCAN = "scan"
@@ -148,7 +290,9 @@ class OpnameRepository @Inject constructor(
     suspend fun list(status: String? = null): AuthResult<List<OpnameSessionDto>> =
         when (val result = call("Gagal memuat daftar opname") { api.listOpname(status) }) {
             is AuthResult.Success -> AuthResult.Success(result.data.items)
-            is AuthResult.Failure -> AuthResult.Failure(result.code, result.message)
+            // `result` diteruskan apa adanya (Failure : AuthResult<Nothing>) supaya
+            // `httpStatus` ikut terbawa — membangun ulang Failure membuangnya.
+            is AuthResult.Failure -> result
         }
 
     suspend fun create(request: CreateOpnameRequest): AuthResult<OpnameDetailDto> =
@@ -160,7 +304,9 @@ class OpnameRepository @Inject constructor(
     suspend fun stockList(id: String): AuthResult<List<OpnameStockItemDto>> =
         when (val result = call("Gagal memuat daftar barang opname") { api.opnameStock(id) }) {
             is AuthResult.Success -> AuthResult.Success(result.data.items)
-            is AuthResult.Failure -> AuthResult.Failure(result.code, result.message)
+            // `result` diteruskan apa adanya (Failure : AuthResult<Nothing>) supaya
+            // `httpStatus` ikut terbawa — membangun ulang Failure membuangnya.
+            is AuthResult.Failure -> result
         }
 
     // ---- Antrian validasi unit ketik-manual (admin-stok) ----
@@ -170,7 +316,9 @@ class OpnameRepository @Inject constructor(
     suspend fun manualUnits(status: String = VALIDASI_PENDING): AuthResult<List<ManualUnitDto>> =
         when (val result = call("Gagal memuat antrian validasi") { api.manualUnits(status) }) {
             is AuthResult.Success -> AuthResult.Success(result.data.items)
-            is AuthResult.Failure -> AuthResult.Failure(result.code, result.message)
+            // `result` diteruskan apa adanya (Failure : AuthResult<Nothing>) supaya
+            // `httpStatus` ikut terbawa — membangun ulang Failure membuangnya.
+            is AuthResult.Failure -> result
         }
 
     suspend fun approveManualUnit(sessionId: String, unitId: String): AuthResult<Unit> =
@@ -178,7 +326,7 @@ class OpnameRepository @Inject constructor(
             api.approveManualUnit(sessionId, unitId)
         }) {
             is AuthResult.Success -> AuthResult.Success(Unit)
-            is AuthResult.Failure -> AuthResult.Failure(r.code, r.message)
+            is AuthResult.Failure -> r
         }
 
     /** [alasan] WAJIB. Ditolak di sini dulu supaya pemutus dapat pesan yang jelas,
@@ -196,7 +344,7 @@ class OpnameRepository @Inject constructor(
             api.rejectManualUnit(sessionId, unitId, RejectUnitBody(bersih))
         }) {
             is AuthResult.Success -> AuthResult.Success(Unit)
-            is AuthResult.Failure -> AuthResult.Failure(r.code, r.message)
+            is AuthResult.Failure -> r
         }
     }
 
@@ -291,7 +439,17 @@ class OpnameRepository @Inject constructor(
                     )
                 }
             }
-            is AuthResult.Failure -> ScanResult.Queued(serial, pushed.message)
+            // Kegagalan seluruh permintaan (bukan penolakan per baris). "Queued"
+            // untuk SEMUANYA adalah bug rilis 2.68 ke bawah: 403 pun dilaporkan
+            // "tersimpan offline, menunggu jaringan", jadi petugas yang tak
+            // ditunjuk terus men-scan sementara barisnya mengendap di Room dan
+            // ikut terhitung di daftar unit + PDF. Barisnya sendiri sudah dibuang
+            // di `pushPendingLocked` untuk status yang memang layak dibuang.
+            is AuthResult.Failure -> when (sifatGagal(pushed.httpStatus)) {
+                SifatGagal.SEMENTARA -> ScanResult.Queued(serial, pushed.message)
+                SifatGagal.PERMANEN, SifatGagal.SESI ->
+                    ScanResult.Rejected(serial, pesanGagalKirim(pushed))
+            }
         }
     }
 
@@ -371,12 +529,16 @@ class OpnameRepository @Inject constructor(
                     ScanResult.Accepted(serial, accepted?.temuan, accepted?.validationStatus)
                 }
             }
+            // Unit manual tak pernah mengantre, jadi tak ada baris yang perlu
+            // dibuang — yang penting alasannya tampil apa adanya, bukan "coba
+            // lagi nanti" untuk penolakan yang tak akan pernah berubah.
             is AuthResult.Failure -> ScanResult.Rejected(
                 serial,
-                if (result.code == "network_error") {
+                if (result.httpStatus == null) {
+                    // Tak pernah sampai server (sinyal hilang / timeout koneksi).
                     "Butuh koneksi untuk mengirim unit manual — coba lagi saat sinyal kembali"
                 } else {
-                    result.message
+                    pesanGagalKirim(result)
                 }
             )
         }
@@ -527,6 +689,18 @@ class OpnameRepository @Inject constructor(
             }
         )
         val result = call("Gagal mengirim hasil scan") { api.createOpnameUnits(sessionId, request) }
+        if (result is AuthResult.Failure && bolehBuangAntrean(result)) {
+            // Seluruh permintaan ditolak dan vonisnya melekat pada isinya (403
+            // petugas tak ditunjuk, 400 validasi, dst). Barisnya TIDAK BOLEH
+            // tetap di antrean: ia tak akan pernah diterima server, tapi terus
+            // dihitung di layar dan di PDF hitung fisik seolah sudah tercatat —
+            // opname yang salah tanpa satu pun error yang terlihat.
+            //
+            // Yang dibuang hanya baris yang BARUSAN dikirim; scan yang menyelinap
+            // masuk selagi permintaan ini terbang belum pernah dicoba, jadi
+            // penolakan ini bukan vonis atasnya.
+            pending.forEach { unitDao.delete(sessionId, it.serialNumber) }
+        }
         if (result is AuthResult.Success) {
             val now = System.currentTimeMillis()
             result.data.accepted.forEach { unitDao.markSynced(sessionId, it.serialNumber, now, it.temuan) }
@@ -556,7 +730,7 @@ class OpnameRepository @Inject constructor(
                     api.deleteOpnameUnit(sessionId, serverId)
                 }
                 if (removed is AuthResult.Failure) {
-                    return AuthResult.Failure(removed.code, removed.message)
+                    return removed
                 }
             }
         }
@@ -581,7 +755,7 @@ class OpnameRepository @Inject constructor(
      */
     suspend fun finalize(sessionId: String): AuthResult<OpnameDetailDto> {
         when (val pushed = pushPending(sessionId)) {
-            is AuthResult.Failure -> return AuthResult.Failure(pushed.code, pushed.message)
+            is AuthResult.Failure -> return pushed
             is AuthResult.Success -> Unit
         }
         val completed = call<OpnameDetailDto>("Gagal menyelesaikan sesi") { api.completeOpname(sessionId) }
@@ -637,7 +811,11 @@ class OpnameRepository @Inject constructor(
         val detail = parsed?.errors?.firstOrNull() ?: parsed?.message
         return AuthResult.Failure(
             parsed?.code ?: "http_${response.code()}",
-            detail ?: "$fallback (${response.code()})"
+            detail ?: "$fallback (${response.code()})",
+            // Status HTTP dibawa terpisah dari `code`: `code` bisa sama untuk
+            // status yang berbeda (`gateway_error` = 404/502/503), dan justru
+            // pembedaan permanen-vs-sementara yang bergantung padanya.
+            httpStatus = response.code()
         )
     }
 }

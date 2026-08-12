@@ -19,7 +19,28 @@ import javax.inject.Singleton
 
 sealed class AuthResult<out T> {
     data class Success<T>(val data: T) : AuthResult<T>()
-    data class Failure(val code: String, val message: String) : AuthResult<Nothing>()
+
+    /**
+     * [code] datang dari BADAN error server (`ErrorBody.code`) dan jatuh ke
+     * `http_<status>` bila badannya tak bisa diurai; [httpStatus] adalah status
+     * HTTP mentahnya, `null` bila permintaannya tak pernah sampai (lempar
+     * IOException) atau kegagalannya dibuat klien sendiri (mis. validasi lokal).
+     *
+     * [httpStatus] ADA karena [code] TIDAK cukup untuk memutuskan sebuah
+     * kegagalan permanen atau sementara: gateway memakai SATU kode
+     * `gateway_error` untuk 502 (upstream mati — sementara), 503 (service
+     * dimatikan — sementara), DAN 404 (rute tak dikenal — permanen), lihat
+     * `GatewayError::{new,not_found,service_unavailable}` di
+     * `gateway/src/lib.rs`. Menebak dari kode saja berarti memilih antara
+     * membuang data saat server sekarat atau menyimpan selamanya data yang
+     * ditolak — dua-duanya salah. Yang mengisinya baru `OpnameRepository`;
+     * pemanggil lain membiarkannya `null` (= sementara, arah aman).
+     */
+    data class Failure(
+        val code: String,
+        val message: String,
+        val httpStatus: Int? = null
+    ) : AuthResult<Nothing>()
 }
 
 @Singleton

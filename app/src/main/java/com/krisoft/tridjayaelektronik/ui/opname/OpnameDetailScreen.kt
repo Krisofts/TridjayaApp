@@ -399,6 +399,25 @@ fun OpnameDetailScreen(
                         }
                     }
 
+                    // Seluruh seksi "Hitung Barang" lenyap saat `canHitung` false —
+                    // dan sejak penunjukan petugas (migrasi 212) itu kondisi yang
+                    // WAJAR bagi karyawan yang tetap boleh MEMBACA sesinya (notif
+                    // `opname_sesi_dibuka` menyapu se-cabang). Tanpa kalimat ini
+                    // ia membuka undangan lalu menemukan layar yang tak bisa
+                    // diapa-apakan, tanpa satu pun penjelasan.
+                    if (!completed && !state.canHitung && detail.status == "draft") {
+                        item(key = "hitung_tertutup") {
+                            Column(modifier = Modifier.padding(top = 12.dp)) {
+                                IzinKurangNote(
+                                    "Kamu bisa melihat sesi ini, tapi belum bisa mencatat unit — " +
+                                        "cabang ini sudah menunjuk petugas opname, atau sesi ini " +
+                                        "milik cabang lain. Hubungi admin stok kalau seharusnya " +
+                                        "kamu ikut menghitung."
+                                )
+                            }
+                        }
+                    }
+
                     if (!completed && state.stock.isNotEmpty()) {
                         item(key = "coverage_header") {
                             Column(modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)) {
@@ -592,7 +611,9 @@ fun OpnameDetailScreen(
             },
             onDelete = { unit -> viewModel.deleteUnit(unit) },
             canPropose = state.canPropose,
-            onUsulkan = { unit -> viewModel.startProposal(unit) }
+            onUsulkan = { unit -> viewModel.startProposal(unit) },
+            canVerifikasiSn = state.canVerifikasiSn,
+            canTetapkanSn = state.canTetapkanSn
         )
     }
 
@@ -723,6 +744,29 @@ private fun sharePdf(context: Context, uri: android.net.Uri) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(chooser)
+}
+
+/**
+ * Kalimat sebab untuk jalur yang tertutup izin penunjukan petugas (migrasi 212).
+ *
+ * Nada sengaja INFORMATIF, bukan merah-error: yang bersangkutan tidak melakukan
+ * kesalahan apa pun, ia cuma belum ditunjuk — dan warna error di layar hitung
+ * fisik membuat orang mengira hasil scan sebelumnya ikut gagal.
+ */
+@Composable
+private fun IzinKurangNote(message: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+        )
+    }
 }
 
 @Composable
@@ -1307,7 +1351,11 @@ private fun ScanUnitSheet(
     onManual: (serial: String, kondisi: String, keterangan: String?) -> Boolean,
     onDelete: (OpnameUnitEntity) -> Unit,
     canPropose: Boolean,
-    onUsulkan: ((OpnameUnitEntity) -> Unit)?
+    onUsulkan: ((OpnameUnitEntity) -> Unit)?,
+    /** Izin `verifikasi_sn` (migrasi 212) — gerbang panel scan. */
+    canVerifikasiSn: Boolean,
+    /** Izin `tetapkan_sn` (migrasi 212) — gerbang alur ketik-manual. */
+    canTetapkanSn: Boolean
 ) {
     var manual by remember { mutableStateOf("") }
     // Kondisi & keterangan BERTAHAN antar scan dalam satu sheet: petugas yang
@@ -1344,12 +1392,21 @@ private fun ScanUnitSheet(
                     value = manual,
                     onValueChange = { manual = it },
                     placeholder = "Ketik serial number...",
+                    enabled = canTetapkanSn,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                BarcodeScanButton(contentDescription = "Scan serial unit") { hasil ->
-                    onScan(hasil, kondisi, keterangan.takeIf { it.isNotBlank() })
+                // Tombol scan hanya untuk yang ditunjuk memverifikasi SN.
+                // Kalimat sebabnya menggantikan tombolnya — bukan ruang kosong.
+                if (canVerifikasiSn) {
+                    BarcodeScanButton(contentDescription = "Scan serial unit") { hasil ->
+                        onScan(hasil, kondisi, keterangan.takeIf { it.isNotBlank() })
+                    }
                 }
+            }
+            if (!canVerifikasiSn) {
+                Spacer(modifier = Modifier.height(8.dp))
+                IzinKurangNote(ALASAN_TAK_BOLEH_SCAN)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -1384,7 +1441,7 @@ private fun ScanUnitSheet(
                     // ditolak, ketikan panjang petugas tak boleh ikut lenyap.
                     if (onManual(manual, kondisi, keterangan.takeIf { it.isNotBlank() })) manual = ""
                 },
-                enabled = !isSaving && manual.isNotBlank(),
+                enabled = !isSaving && manual.isNotBlank() && canTetapkanSn,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isSaving) {
@@ -1399,12 +1456,20 @@ private fun ScanUnitSheet(
                     Text("Simpan Manual + Foto")
                 }
             }
-            Text(
-                text = "Serial yang diketik wajib 2 foto bukti dan menunggu validasi admin stok — pakai tombol scan bila barcode masih terbaca.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            // Tombolnya SENGAJA tetap terlihat (cuma mati) dan sebabnya ditulis
+            // di bawahnya: tombol yang lenyap tanpa penjelasan terbaca sebagai
+            // aplikasi rusak, dan orangnya melapor ke tempat yang salah.
+            if (!canTetapkanSn) {
+                Spacer(modifier = Modifier.height(6.dp))
+                IzinKurangNote(ALASAN_TAK_BOLEH_MANUAL)
+            } else {
+                Text(
+                    text = "Serial yang diketik wajib 2 foto bukti dan menunggu validasi admin stok — pakai tombol scan bila barcode masih terbaca.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
             if (saveError != null) {
                 Spacer(modifier = Modifier.height(8.dp))

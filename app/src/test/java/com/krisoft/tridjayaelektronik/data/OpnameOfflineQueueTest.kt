@@ -33,7 +33,9 @@ import com.krisoft.tridjayaelektronik.ui.opname.temuanLabel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -142,6 +144,16 @@ class OpnameOfflineQueueTest {
         var pushCount = 0
         var lastSent: List<String> = emptyList()
 
+        /**
+         * Status HTTP yang dijawab `POST .../units`. Diperiksa SEBELUM
+         * [response], jadi ia bisa menjawab 403/500 walau responsnya terisi —
+         * itulah bedanya "server menolak" dan "server tak terjangkau".
+         */
+        var errorStatus: Int? = null
+
+        /** Dijalankan SELAGI `POST .../units` "terbang" — meniru scan yang menyelinap. */
+        var saatKirim: (suspend () -> Unit)? = null
+
         /** Isi `GET /opname/{id}/units` — snapshot server, bisa sengaja dibikin basi. */
         var units: List<OpnameUnitDto> = emptyList()
 
@@ -169,6 +181,14 @@ class OpnameOfflineQueueTest {
         ): Response<ApiResponse<CreateOpnameUnitsData>> {
             pushCount += 1
             lastSent = body.items.map { it.serialNumber }
+            saatKirim?.invoke()
+            errorStatus?.let { status ->
+                return Response.error(
+                    status,
+                    """{"code":"forbidden","message":"Akses ditolak","errors":[]}"""
+                        .toResponseBody("application/json".toMediaType())
+                )
+            }
             val data = response ?: throw IOException("tidak ada jaringan")
             return Response.success(ApiResponse("ok", data))
         }
@@ -367,6 +387,117 @@ class OpnameOfflineQueueTest {
         // Kalimat rinci server dipakai apa adanya — ia memuat JAM jendelanya,
         // yang tak bisa diturunkan dari kode penolakannya saja.
         assertTrue((hasil as OpnameRepository.ScanResult.Queued).reason.contains("10/08 08:00"))
+    }
+
+    // ---- 403 BUKAN gangguan jaringan ---------------------------------------------------
+
+    @Test
+    fun `ditolak 403 dilaporkan Rejected dan barisnya dibuang`() = runBlocking {
+        // BLOCKER RILIS yang diperbaiki 2026-08-12: sebelum ini SETIAP kegagalan
+        // — 403 sekalipun — dilaporkan `Queued` alias "tersimpan offline,
+        // menunggu jaringan". Petugas yang izinnya dicabut men-scan seharian
+        // sementara barisnya mengendap di Room dan TETAP terhitung di daftar unit
+        // + PDF hitung fisik. Angka opname salah, nol error terlihat.
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null).apply { errorStatus = 403 }
+
+        val hasil = repo(dao, api).scanUnit(sessionId, "BRG-1", "Kulkas", "sn-001")
+
+        assertTrue("dapat $hasil", hasil is OpnameRepository.ScanResult.Rejected)
+        val alasan = (hasil as OpnameRepository.ScanResult.Rejected).reason
+        assertTrue("harus menyebut jalan keluarnya: $alasan", alasan.contains("admin stok"))
+        assertEquals("baris yang tak akan pernah diterima tak boleh ikut terhitung", 0, dao.rows.size)
+    }
+
+    @Test
+    fun `gagal 500 tetap Queued dan barisnya bertahan`() = runBlocking {
+        // Server sekarat itu SEMENTARA. Membuang antrean di sini persis kesalahan
+        // kebalikannya: hasil hitung fisik hilang justru saat backend bermasalah.
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null).apply { errorStatus = 500 }
+
+        val hasil = repo(dao, api).scanUnit(sessionId, "BRG-1", "Kulkas", "sn-001")
+
+        assertTrue("dapat $hasil", hasil is OpnameRepository.ScanResult.Queued)
+        assertEquals(1, dao.pending(sessionId).size)
+    }
+
+    @Test
+    fun `404 rute belum ter-deploy tak membuang antrean`() = runBlocking {
+        // Rute gateway yang belum terpasang menjawab 404 juga (insiden APK 2.67).
+        // Penolakannya PERMANEN — petugas harus tahu unitnya belum sampai — tapi
+        // barisnya bertahan supaya tak hilang hanya karena backend tertinggal.
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null).apply { errorStatus = 404 }
+
+        val hasil = repo(dao, api).scanUnit(sessionId, "BRG-1", "Kulkas", "sn-001")
+
+        assertTrue("dapat $hasil", hasil is OpnameRepository.ScanResult.Rejected)
+        assertEquals("antrean harus utuh", 1, dao.pending(sessionId).size)
+    }
+
+    @Test
+    fun `sesi berakhir 401 disebut apa adanya dan datanya tak dibuang`() = runBlocking {
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null).apply { errorStatus = 401 }
+
+        val hasil = repo(dao, api).scanUnit(sessionId, "BRG-1", "Kulkas", "sn-001")
+
+        // Permintaannya sah, SESINYA yang mati — sah lagi begitu user masuk lagi.
+        assertTrue("dapat $hasil", hasil is OpnameRepository.ScanResult.Rejected)
+        assertTrue((hasil as OpnameRepository.ScanResult.Rejected).reason.contains("masuk lagi"))
+        assertEquals(1, dao.pending(sessionId).size)
+    }
+
+    @Test
+    fun `403 hanya membuang baris yang sudah dikirim`() = runBlocking {
+        // Scan yang menyelinap masuk selagi permintaan terbang belum pernah
+        // dicoba, jadi penolakan ini bukan vonis atasnya.
+        val dao = FakeUnitDao()
+        val api = FakeApi(response = null)
+        val repository = repo(dao, api)
+        repository.scanUnit(sessionId, "BRG-1", "Kulkas", "sn-001")
+
+        api.errorStatus = 403
+        api.saatKirim = {
+            dao.upsert(
+                OpnameUnitEntity(
+                    sessionId = sessionId,
+                    serialNumber = "SN-BELAKANGAN",
+                    kodeBarang = "BRG-1",
+                    namaBarang = "Kulkas",
+                    kondisi = KONDISI_LAYAK,
+                    keterangan = null,
+                    temuan = null,
+                    updatedAtMillis = System.currentTimeMillis(),
+                    syncedAtMillis = null
+                )
+            )
+        }
+        repository.pushPending(sessionId)
+
+        assertEquals(listOf("SN-BELAKANGAN"), dao.rows.map { it.serialNumber })
+    }
+
+    @Test
+    fun `penolakan izin per baris membuang barisnya dan punya kalimat jelas`() = runBlocking {
+        // Migrasi 212 menolak PER BARIS di dalam respons 200 — satu batch boleh
+        // memuat campuran scan & ketik-manual sementara petugasnya cuma dipercaya
+        // salah satunya.
+        val dao = FakeUnitDao()
+        val api = FakeApi(
+            response = CreateOpnameUnitsData(
+                rejected = listOf(OpnameUnitRejected("SN-001", TOLAK_IZIN_VERIFIKASI_SN))
+            )
+        )
+
+        val hasil = repo(dao, api).scanUnit(sessionId, "BRG-1", "Kulkas", "sn-001")
+
+        assertTrue("dapat $hasil", hasil is OpnameRepository.ScanResult.Rejected)
+        assertTrue(
+            (hasil as OpnameRepository.ScanResult.Rejected).reason.contains("hubungi admin stok")
+        )
+        assertEquals(0, dao.rows.size)
     }
 
     @Test
