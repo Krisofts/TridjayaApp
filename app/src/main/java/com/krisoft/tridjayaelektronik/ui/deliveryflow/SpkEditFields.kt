@@ -16,6 +16,17 @@ import kotlinx.serialization.json.JsonPrimitive
  * `diskon` TIDAK ADA di daftar dan tak boleh ditambahkan: kolom itu hanya
  * berubah lewat pengajuan diskon yang menyimpan siapa memutuskan berapa.
  * `hargaTotal` juga tidak — server menghitungnya dari `hargaOtr` − diskon.
+ *
+ * **`lokasiPembayaran` (2026-08-12, migrasi 213) SENGAJA TIDAK di daftar ini —
+ * jangan "melengkapi"-nya.** `PATCH /inventory/delivery/{id}` memang
+ * menerimanya, TAPI **SUPER-ADMIN SAJA** (setara `kodeDealer`) dan berlaku
+ * SE-SPK, sedangkan [SPK_EDIT_FIELDS] adalah daftar field yang boleh disunting
+ * oleh SIAPA PUN yang lolos [bolehSuntingSpk] — termasuk sales PEMILIK SPK saat
+ * `pending_discount`. Tak satu pun field super-admin ada di sini, dan itu bukan
+ * kelalaian: menambahkannya membuat sales melihat kolom yang servernya jawab
+ * 403, atau lebih buruk, memindahkan uang satu SPK ke kasir cabang lain lewat
+ * layar sunting biasa. Koreksi lokasi pembayaran adalah pekerjaan super-admin
+ * lewat web.
  */
 enum class SpkEditGrup(val label: String) {
     BARANG("Barang (unit ini saja)"),

@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddAPhoto
@@ -23,10 +26,11 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,10 +63,6 @@ import java.io.File
 import kotlinx.coroutines.launch
 
 /**
- * Kartu satu barang SPK multi-unit — tiap barang bawa pembayaran/komisi/order sendiri
- * (mirror kartu item web SalesDeliveryFlowPage). Collapsible utk layar sempit.
- */
-/**
  * Saran serial yang ditampilkan di kartu barang SPK, urut unit sehat dulu.
  *
  * Daftarnya dipotong lima di UI, jadi pengurutan ini yang menentukan APA yang
@@ -80,6 +80,32 @@ internal fun serialUntukDisarankan(
 ): List<SerialRegistryRow> =
     opsi.filter { it.serialNumber != serialTerpilih }.sortedBy { it.bermasalah }
 
+/**
+ * Kartu satu barang SPK multi-unit — tiap barang bawa pembayaran/komisi/order
+ * sendiri (mirror kartu item web SalesDeliveryFlowPage). Collapsible utk layar
+ * sempit.
+ *
+ * **Progressive disclosure (2026-08-12).** Mayoritas SPK = cash, tanpa diskon,
+ * tanpa COD, tanpa KBK. Dulu keempat blok itu selalu terpampang di TIAP kartu
+ * (dikali maksimal [MAX_SPK_BARIS] barang), jadi jalur yang paling sering
+ * dipakai justru jalur dengan paling banyak isian untuk dilewati. Sekarang
+ * kartu terbuka hanya memuat yang selalu perlu — barang, jumlah, serial, harga,
+ * siapa yang PDI — dan empat blok sisanya baru muncul setelah PEMICUNYA
+ * diketuk di baris "Cara bayar & tambahan".
+ *
+ * **Invarian yang membuat penyembunyian ini aman: tak ada field tersembunyi
+ * yang bisa melahirkan pesan di [SpkItemDraft.issues].** Mematikan pemicu
+ * SELALU mengosongkan isian bloknya (kredit → fincoy/PO, COD → metode+DP,
+ * diskon → [SpkItemDraft.tanpaDiskon], KBK → broker), dan blok diskon membuka
+ * dirinya sendiri begitu ada isian ([SpkItemDraft.blokDiskonTerlihat]). Tanpa
+ * itu tombol Simpan bisa mati sambil menyembunyikan justru field yang harus
+ * diperbaiki — kegagalan yang tak memunculkan error apa pun.
+ *
+ * Pemicu COD juga tetap dirender selama [SpkItemDraft.driverTerimaUang] masih
+ * menyala walau metode pengirimannya bukan lagi "driver", supaya keadaan
+ * nyangkut (kalau ada) bisa dimatikan sales, bukan cuma hilang dari layar.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SpkItemCard(
     index: Int,
@@ -108,13 +134,26 @@ fun SpkItemCard(
                     Text("Barang #${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Text(if (item.expanded) item.namaBarang else item.summaryLine(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (item.expanded) Text("${item.kodeBarang} · ${item.kategori} · ${item.merk}" + (item.stokTersedia?.let { " · stok $it" } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Daftar issue hanya dirender saat kartu terbuka, dan cuma
+                    // SATU kartu boleh terbuka sekaligus — jadi tanpa baris ini
+                    // pesan "Ada barang belum lengkap — cek tanda merah di
+                    // kartu" menunjuk tanda merah yang tak ada di layar.
+                    if (!item.expanded && issues.isNotEmpty()) {
+                        Text(
+                            "${issues.size} hal belum lengkap — ketuk untuk memperbaiki",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
                 IconButton(onClick = onRemove) { Icon(Icons.Rounded.Delete, contentDescription = "Hapus barang #${index + 1}", tint = MaterialTheme.colorScheme.error) }
                 Icon(if (item.expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             if (item.expanded) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
+                BlokLabel("Unit yang dijual")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ExpressiveTextField(item.warna, { onUpdate(item.copy(warna = it)) }, label = "Warna", modifier = Modifier.weight(1f))
                     ExpressiveTextField(item.qty, { onUpdate(item.copy(qty = it.filter { c -> c.isDigit() })) }, label = "Qty" + (item.stokTersedia?.let { " (stok $it)" } ?: ""), keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
@@ -178,40 +217,22 @@ fun SpkItemCard(
                     // jadi menariknya cuma memanggil endpoint tanpa pemakai.
                     onSerialFocus()
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
+                BlokLabel("Harga yang dibayar konsumen")
                 MoneyTextField(item.hargaOtr, { onUpdate(item.copy(hargaOtr = it)) }, modifier = Modifier.fillMaxWidth(), label = if (item.isCredit) "Harga OTR *" else "Harga Jual *")
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MoneyTextField(item.diskon, { onUpdate(item.copy(diskon = it)) }, modifier = Modifier.weight(1f), label = "Diskon")
-                    ExpressiveTextField(item.alasanDiskon, { onUpdate(item.copy(alasanDiskon = it)) }, label = if ((item.diskon.toLongOrNull() ?: 0L) > 0) "Alasan diskon *" else "Alasan diskon", modifier = Modifier.weight(1f))
-                }
-                if ((item.diskon.toLongOrNull() ?: 0L) > 0) {
-                    Spacer(Modifier.height(8.dp))
-                    AccDiskonField(
-                        accDiskon = item.accDiskon,
-                        onAccChange = { onUpdate(item.copy(accDiskon = it)) },
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    BuktiAccField(
-                        buktiUrl = item.buktiDiskonUrl,
-                        // Wajib begitu nama pemberi acc disebut — lihat
-                        // `SpkItemDraft.issues()` (cerminan guard server).
-                        wajib = item.accDiskon.isNotBlank(),
-                        onUploaded = { onUpdate(item.copy(buktiDiskonUrl = it)) },
-                        uploadBukti = uploadBuktiAcc,
-                    )
-                }
 
                 // Metode PDI (backend 2026-07-27): TAK ADA opsi melewati PDI. Toggle ini
                 // cuma menentukan SIAPA yang mengerjakan — tim PDI cabang atau sales
                 // sendiri. Checklist + foto wajib di dua-duanya, apa pun metode
                 // pengirimannya. Sales pemilik SPK langsung diarahkan ke form PDI begitu
                 // SPK selesai dibuat kalau memilih PDI Mandiri.
-                Spacer(Modifier.height(10.dp))
-                Text("Metode PDI", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
+                //
+                // Judulnya menyebut KEPUTUSANNYA ("siapa yang mengecek"), bukan istilah
+                // internal "Metode PDI" — dua opsinya sudah lama bukan "PDI vs tanpa PDI".
+                Spacer(Modifier.height(14.dp))
+                BlokLabel("Siapa yang mengecek unit (PDI)")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(true to "PDI (tim PDI)", false to "PDI Mandiri").forEach { (v, l) ->
+                    listOf(true to "Tim PDI cabang", false to "Saya sendiri").forEach { (v, l) ->
                         val sel = item.pdiRequired == v
                         Surface(onClick = { onUpdate(item.copy(pdiRequired = v)) }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
                             Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
@@ -225,34 +246,65 @@ fun SpkItemCard(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.height(12.dp))
-                Text("Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("cash" to "Cash", "credit" to "Kredit").forEach { (k, l) ->
-                        val sel = item.paymentType == k
-                        Surface(
-                            onClick = {
-                                onUpdate(
-                                    if (k == "cash") item.copy(paymentType = k, fincoy = "", fincoyLain = "", preOrderId = "", poPhotoUrl = "")
-                                    else item.copy(paymentType = k, driverTerimaUang = false, codPaymentMode = "", codDpAmount = "")
+
+                // ── Pemicu blok opsional ─────────────────────────────────────
+                // Empat blok di bawah dulu selalu terpampang. Sekarang mereka
+                // menunggu diketuk di sini; keadaan mati = keadaan yang paling
+                // sering benar (cash, tanpa diskon, tanpa COD, order sales).
+                Spacer(Modifier.height(14.dp))
+                BlokLabel("Cara bayar & tambahan")
+                Text(
+                    "Ketuk yang berlaku untuk barang ini. Cash, tanpa diskon, order sales sendiri? Tak perlu diketuk apa pun.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                // COD = uang diambil DRIVER — tak relevan tanpa driver (diambil
+                // sendiri / sales antar sendiri). Pemicunya TETAP dirender selama
+                // benderanya masih menyala: kalau suatu keadaan menyisakannya
+                // menyala tanpa driver, sales masih bisa mematikannya sendiri
+                // alih-alih kehilangan kendalinya dari layar.
+                val codRelevan = item.driverTerimaUang || (!item.isCredit && deliveryMethod == "driver")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PemicuChip("Kredit / leasing", item.isCredit) { aktif ->
+                        onUpdate(
+                            if (aktif) item.copy(paymentType = "credit", driverTerimaUang = false, codPaymentMode = "", codDpAmount = "")
+                            else item.copy(paymentType = "cash", fincoy = "", fincoyLain = "", preOrderId = "", poPhotoUrl = "")
+                        )
+                    }
+                    if (codRelevan) {
+                        PemicuChip("COD (uang ke driver)", item.driverTerimaUang) { aktif ->
+                            onUpdate(
+                                item.copy(
+                                    driverTerimaUang = aktif,
+                                    codPaymentMode = if (aktif) item.codPaymentMode else "",
+                                    codDpAmount = if (aktif) item.codDpAmount else "",
                                 )
-                            },
-                            shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)
-                        ) {
-                            Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                            )
                         }
                     }
+                    PemicuChip("Diskon", item.blokDiskonTerlihat) { aktif ->
+                        onUpdate(if (aktif) item.copy(diskonDibuka = true) else item.tanpaDiskon())
+                    }
+                    PemicuChip("Dari broker KBK", item.isKbk) { aktif ->
+                        onUpdate(
+                            if (aktif) item.copy(orderSource = "kbk")
+                            // Komisi & no. HP ikut dikosongkan. `toItemBody` memang
+                            // tak mengirimnya saat bukan KBK, tapi nilai yang
+                            // tertinggal di balik pemicu mati akan muncul lagi tanpa
+                            // diminta begitu pemicunya dinyalakan lagi.
+                            else item.copy(orderSource = "sales", kbkBrokerKode = "", kbkBrokerNama = "", komisiKbk = "", noHpKbk = "")
+                        )
+                    }
                 }
+
+                // ── 1. Pembiayaan (kredit) ───────────────────────────────────
                 if (item.isCredit) {
-                    // Pre Order ID + foto PO cuma relevan buat kredit (leasing/fincoy
-                    // butuh bukti PO), tetap opsional (koreksi 2026-07-26 — sebelumnya
-                    // tampil unconditional buat cash & kredit).
-                    Spacer(Modifier.height(10.dp))
-                    ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "No PO (opsional)", modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    PoPhotoField(poPhotoUrl = item.poPhotoUrl, onUploaded = { url -> onUpdate(item.copy(poPhotoUrl = url)) }, uploadPoPhoto = uploadPoPhoto)
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(14.dp))
+                    BlokLabel("Kredit — leasing, DP & angsuran")
+                    // Leasing dulu (satu-satunya yang WAJIB di blok ini), baru nominal,
+                    // baru berkas opsional — sales berhenti di baris pertama yang bisa
+                    // menahan SPK-nya, bukan di baris kelima.
                     ItemFincoyDropdown(item.fincoy) { onUpdate(item.copy(fincoy = it)) }
                     if (item.fincoy == FINCOY_LAINNYA) {
                         Spacer(Modifier.height(8.dp))
@@ -268,74 +320,89 @@ fun SpkItemCard(
                         MoneyTextField(item.angsuran, { onUpdate(item.copy(angsuran = it)) }, modifier = Modifier.weight(1f), label = "Angsuran")
                         ExpressiveTextField(item.tenor, { onUpdate(item.copy(tenor = it.filter { c -> c.isDigit() })) }, label = "Tenor (bln)", keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
                     }
+                    // Pre Order ID + foto PO cuma relevan buat kredit (leasing/fincoy
+                    // butuh bukti PO), tetap opsional (koreksi 2026-07-26 — sebelumnya
+                    // tampil unconditional buat cash & kredit).
+                    Spacer(Modifier.height(10.dp))
+                    ExpressiveTextField(item.preOrderId, { onUpdate(item.copy(preOrderId = it)) }, label = "No PO (opsional)", modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    PoPhotoField(poPhotoUrl = item.poPhotoUrl, onUploaded = { url -> onUpdate(item.copy(poPhotoUrl = url)) }, uploadPoPhoto = uploadPoPhoto)
                 }
 
-                // COD Full Payment/DP (2026-07-25, cash-only) — mirror web SalesDeliveryFlowPage.
-                // driverTerimaNominal DIHITUNG backend dari hargaOtr+codPaymentMode+codDpAmount,
-                // bukan lagi input manual (cegah mismatch DP vs sisa).
-                if (!item.isCredit && deliveryMethod == "driver") {
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            val next = !item.driverTerimaUang
-                            onUpdate(item.copy(driverTerimaUang = next, codPaymentMode = if (next) item.codPaymentMode else "", codDpAmount = if (next) item.codDpAmount else ""))
-                        }
-                    ) {
-                        Checkbox(checked = item.driverTerimaUang, onCheckedChange = { checked ->
-                            onUpdate(item.copy(driverTerimaUang = checked, codPaymentMode = if (checked) item.codPaymentMode else "", codDpAmount = if (checked) item.codDpAmount else ""))
-                        })
-                        Text("COD (uang diambil driver saat kirim)", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (item.driverTerimaUang) {
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            listOf("full" to "Full Payment", "dp" to "DP").forEach { (k, l) ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable { onUpdate(item.copy(codPaymentMode = k)) }
-                                ) {
-                                    RadioButton(selected = item.codPaymentMode == k, onClick = { onUpdate(item.copy(codPaymentMode = k)) })
-                                    Text(l, style = MaterialTheme.typography.bodyMedium)
-                                }
+                // ── 2. COD (2026-07-25, cash-only) ───────────────────────────
+                // Mirror web SalesDeliveryFlowPage. driverTerimaNominal DIHITUNG backend
+                // dari hargaOtr+codPaymentMode+codDpAmount, bukan lagi input manual
+                // (cegah mismatch DP vs sisa). Checkbox lamanya digantikan pemicu chip
+                // di atas — dua saklar untuk satu bendera cuma bikin ragu.
+                if (item.driverTerimaUang) {
+                    Spacer(Modifier.height(14.dp))
+                    BlokLabel("COD — uang diambil driver saat kirim")
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        listOf("full" to "Full Payment", "dp" to "DP").forEach { (k, l) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { onUpdate(item.copy(codPaymentMode = k)) }
+                            ) {
+                                RadioButton(selected = item.codPaymentMode == k, onClick = { onUpdate(item.copy(codPaymentMode = k)) })
+                                Text(l, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
-                        if (item.codPaymentMode == "dp") {
-                            Spacer(Modifier.height(6.dp))
-                            MoneyTextField(item.codDpAmount, { onUpdate(item.copy(codDpAmount = it)) }, modifier = Modifier.fillMaxWidth(), label = "Jumlah DP *")
-                            Spacer(Modifier.height(4.dp))
-                            val otr = item.hargaOtr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
-                            val dp = item.codDpAmount.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
-                            Text(
-                                "Sisa diambil driver: ${formatRupiahSimple((otr - dp).coerceAtLeast(0.0))}",
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else if (item.codPaymentMode == "full") {
-                            Spacer(Modifier.height(4.dp))
-                            val otr = item.hargaOtr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
-                            Text(
-                                "Sisa diambil driver: ${formatRupiahSimple(otr)} (penuh)",
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    }
+                    if (item.codPaymentMode == "dp") {
+                        Spacer(Modifier.height(6.dp))
+                        MoneyTextField(item.codDpAmount, { onUpdate(item.copy(codDpAmount = it)) }, modifier = Modifier.fillMaxWidth(), label = "Jumlah DP *")
+                        Spacer(Modifier.height(4.dp))
+                        val otr = item.hargaOtr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+                        val dp = item.codDpAmount.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+                        Text(
+                            "Sisa diambil driver: ${formatRupiahSimple((otr - dp).coerceAtLeast(0.0))}",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (item.codPaymentMode == "full") {
+                        Spacer(Modifier.height(4.dp))
+                        val otr = item.hargaOtr.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+                        Text(
+                            "Sisa diambil driver: ${formatRupiahSimple(otr)} (penuh)",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
-                Text("Sumber Order", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("sales" to "Sales", "kbk" to "KBK").forEach { (k, l) ->
-                        val sel = item.orderSource == k
-                        Surface(onClick = { onUpdate(if (k == "sales") item.copy(orderSource = k, kbkBrokerKode = "", kbkBrokerNama = "") else item.copy(orderSource = k)) }, shape = RoundedCornerShape(50), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.weight(1f)) {
-                            Text(l, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
-                        }
+                // ── 3. Diskon ────────────────────────────────────────────────
+                // Terbuka lewat pemicu, TAPI juga terbuka sendiri selama ada isian
+                // ([SpkItemDraft.blokDiskonTerlihat]) — "Alasan diskon wajib" tak boleh
+                // pernah menunjuk field yang tak ada di layar.
+                if (item.blokDiskonTerlihat) {
+                    Spacer(Modifier.height(14.dp))
+                    BlokLabel("Diskon barang ini")
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MoneyTextField(item.diskon, { onUpdate(item.copy(diskon = it)) }, modifier = Modifier.weight(1f), label = "Diskon")
+                        ExpressiveTextField(item.alasanDiskon, { onUpdate(item.copy(alasanDiskon = it)) }, label = if ((item.diskon.toLongOrNull() ?: 0L) > 0) "Alasan diskon *" else "Alasan diskon", modifier = Modifier.weight(1f))
+                    }
+                    if ((item.diskon.toLongOrNull() ?: 0L) > 0) {
+                        Spacer(Modifier.height(8.dp))
+                        AccDiskonField(
+                            accDiskon = item.accDiskon,
+                            onAccChange = { onUpdate(item.copy(accDiskon = it)) },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        BuktiAccField(
+                            buktiUrl = item.buktiDiskonUrl,
+                            // Wajib begitu nama pemberi acc disebut — lihat
+                            // `SpkItemDraft.issues()` (cerminan guard server).
+                            wajib = item.accDiskon.isNotBlank(),
+                            onUploaded = { onUpdate(item.copy(buktiDiskonUrl = it)) },
+                            uploadBukti = uploadBuktiAcc,
+                        )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+
+                // ── 4. KBK / broker ──────────────────────────────────────────
                 // Isian "Komisi Sales" dibuang 2026-08-03 (permintaan user);
                 // blok ini tinggal milik broker KBK.
                 if (item.isKbk) {
+                    Spacer(Modifier.height(14.dp))
+                    BlokLabel("Broker KBK & komisinya")
                     if (item.kbkBrokerKode.isBlank()) {
                         ExpressiveTextField(brokerSearch, onBrokerSearch, label = "Cari broker KBK (min. 2 karakter) *", modifier = Modifier.fillMaxWidth())
                         if (brokerResults.isNotEmpty()) {
@@ -382,6 +449,45 @@ fun SpkItemCard(
 
 private fun formatRupiahSimple(value: Double): String =
     "Rp" + value.toLong().toString().reversed().chunked(3).joinToString(".").reversed()
+
+/**
+ * Judul kelompok di dalam kartu barang.
+ *
+ * Sengaja SATU composable, bukan `Text(...)` yang ditulis ulang tiap kelompok:
+ * kartunya kini punya enam kelompok dan gaya yang menyimpang di salah satunya
+ * membuat kelompok itu terbaca sebagai jenis isian yang berbeda.
+ */
+@Composable
+private fun BlokLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(bottom = 6.dp),
+    )
+}
+
+/**
+ * Pemicu satu blok opsional (kredit / COD / diskon / KBK).
+ *
+ * [onToggle] menerima keadaan BARU, bukan sekadar "diketuk" — pemanggilnya
+ * selalu punya dua cabang yang berbeda (menyalakan vs mengosongkan isian blok),
+ * dan menyerahkan pembalikan bendera ke pemanggil adalah cara paling mudah
+ * menulis chip yang menyala tapi tak pernah membersihkan apa pun.
+ */
+@Composable
+private fun PemicuChip(label: String, aktif: Boolean, onToggle: (Boolean) -> Unit) {
+    FilterChip(
+        selected = aktif,
+        onClick = { onToggle(!aktif) },
+        label = { Text(label) },
+        shape = CircleShape,
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    )
+}
 
 /** Foto PO per-barang: capture kamera → watermark → upload langsung (bukan
  *  slot review terpisah spt PDI/deliver — pola sama web `uploadDeliveryPhoto`
