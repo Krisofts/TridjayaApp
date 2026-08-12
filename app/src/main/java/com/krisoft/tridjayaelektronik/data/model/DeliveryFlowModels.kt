@@ -176,6 +176,29 @@ data class DeliveryJobDto(
      *  dari `kodeDealer` (cabang stok fisik unit). */
     val salesDealerCode: String? = null,
     val salesDealerName: String? = null,
+    /**
+     * Di cabang mana konsumen membayar (2026-08-12, migrasi 213) — "asal"
+     * (cabang login sales) | "tujuan" (cabang stok) | `null`.
+     *
+     * `null` punya DUA arti yang sama-sama berujung "tujuan": SPK dibuat
+     * sebelum fitur ini ada, ATAU server belum mengenal kolomnya. Jangan
+     * membacanya langsung — pakai [lokasiBayarEfektif]
+     * (`ui/deliveryflow/LokasiPembayaran.kt`).
+     */
+    val lokasiPembayaran: String? = null,
+    /**
+     * Kode dealer cabang tempat bayar EFEKTIF — DIHITUNG SERVER dari
+     * [lokasiPembayaran] + `kodeDealer`/`salesDealerCode`. `null` = server lama.
+     */
+    val bayarDealerCode: String? = null,
+    /**
+     * Nama tampil cabang tempat bayar — **satu-satunya** sumber yang boleh
+     * dipajang untuk "Bayar di: X". JANGAN dihitung ulang di app dari
+     * `kodeDealer`/`salesDealerCode`: aturan turunannya milik server, dan dua
+     * penurunan yang berselisih berarti kasir di HP dan kasir di web memutuskan
+     * uang yang sama secara berbeda tanpa satu pun error.
+     */
+    val bayarDealerName: String? = null,
     /** Nominal DP AKTUAL diterima kasir (2026-07-25, migrasi 105) — beda dari
      *  `codDpAmount` (rencana sales). */
     val kasirDpDiterima: Double? = null,
@@ -804,6 +827,20 @@ data class CreateDeliveryBody(
     /** Metode pengiriman (2026-07-24, opsional): kosong = 'driver' (default) |
      *  'self_pickup' | 'sales_delivery'. Body-level, denormalisasi backend ke semua barang. */
     val deliveryMethod: String? = null,
+    /**
+     * Lokasi pembayaran SPK (2026-08-12, migrasi 213) — "asal" | "tujuan".
+     * **Body-level, BUKAN per barang**: satu SPK dibayar di satu tempat.
+     *
+     * SENGAJA `String?` ber-default `null` DAN SENGAJA selalu diisi eksplisit
+     * di call site ([CreateSpkScreen]). Retrofit `Json` di `NetworkModule`
+     * memakai `encodeDefaults = false`, jadi field yang nilainya sama dengan
+     * default-nya TIDAK IKUT TERKIRIM tanpa error apa pun — memberi default
+     * non-null di sini ("asal") akan membuat pilihan sales lenyap diam-diam
+     * persis pada kasus yang paling sering. Nilai non-null selalu berbeda dari
+     * default `null` sehingga selalu ter-serialize; `null` memang dimaksudkan
+     * absen (server membacanya sbg perilaku lama = "tujuan").
+     */
+    val lokasiPembayaran: String? = null,
     val sosmedTiktok: String? = null,
     val sosmedFacebook: String? = null,
     val sosmedInstagram: String? = null,

@@ -52,6 +52,16 @@ data class SpkItemDraft(
     val codPaymentMode: String = "",
     /** Jumlah DP yang sudah diterima toko — digit mentah, wajib bila codPaymentMode="dp". */
     val codDpAmount: String = "",
+    /**
+     * UI: blok Diskon sengaja dibuka sales (progressive disclosure 2026-08-12).
+     *
+     * Murni tampilan — tak pernah dikirim ke server, sama seperti [expanded].
+     * Kredit/COD/KBK tak butuh bendera semacam ini karena pemicunya sudah data
+     * nyata (`paymentType`, `driverTerimaUang`, `orderSource`); diskon tak
+     * punya, dan menyimpulkannya dari "nominal diskon terisi" saja membuat blok
+     * yang baru dibuka langsung menutup diri lagi sebelum sempat diketik.
+     */
+    val diskonDibuka: Boolean = false,
     /** UI: kartu terbuka/tutup (baru ditambah = terbuka). */
     val expanded: Boolean = true,
 ) {
@@ -61,6 +71,28 @@ data class SpkItemDraft(
     val fincoyResolved: String get() = if (fincoy == FINCOY_LAINNYA) fincoyLain.trim() else fincoy.trim()
     val isCredit: Boolean get() = paymentType == "credit"
     val isKbk: Boolean get() = orderSource == "kbk"
+
+    /**
+     * Blok Diskon WAJIB terlihat.
+     *
+     * Sengaja BUKAN sekadar [diskonDibuka]: begitu salah satu isian diskon
+     * terisi, bloknya harus terlihat apa pun keadaan tombolnya. Kalau tidak,
+     * "Alasan diskon wajib diisi" / "Foto bukti acc wajib…" dari [issues]
+     * mematikan tombol Simpan sambil menyembunyikan justru field yang harus
+     * diperbaiki — kelas kegagalan yang tak memunculkan error apa pun, cuma
+     * tombol yang tak mempan.
+     *
+     * Pasangannya [tanpaDiskon]: menutup blok = mengosongkan isinya, jadi
+     * "tertutup" dan "tak ada isian diskon" selalu berarti hal yang sama.
+     */
+    val blokDiskonTerlihat: Boolean
+        get() = diskonDibuka || diskon.isNotBlank() || alasanDiskon.isNotBlank() ||
+            accDiskon.isNotBlank() || buktiDiskonUrl.isNotBlank()
+
+    /** Menutup blok Diskon: bendera turun DAN seluruh isiannya dikosongkan. */
+    fun tanpaDiskon(): SpkItemDraft = copy(
+        diskonDibuka = false, diskon = "", alasanDiskon = "", accDiskon = "", buktiDiskonUrl = "",
+    )
 
     /** Validasi mirror server `create_delivery` (subset yang relevan input mobile). */
     fun issues(): List<String> {
@@ -112,11 +144,27 @@ data class SpkItemDraft(
         return out
     }
 
-    /** Header kartu saat collapse. */
+    /**
+     * Header kartu saat collapse.
+     *
+     * Ikut menyebut pemicu yang aktif (Diskon/COD/KBK) sejak kartunya
+     * menyembunyikan blok-blok itu secara default: tanpa itu, satu-satunya
+     * tanda bahwa barang ini punya diskon atau COD adalah membuka kartunya
+     * satu per satu.
+     *
+     * "PDI mandiri", BUKAN "Tanpa PDI" — sejak backend 2026-07-27 tak ada lagi
+     * rute melewati PDI; yang berubah cuma SIAPA yang mengerjakannya.
+     */
     fun summaryLine(): String {
         val bayar = if (isCredit) "Kredit" else "Cash"
+        val tambahan = buildList {
+            if ((money(diskon) ?: 0.0) > 0) add("Diskon")
+            if (driverTerimaUang) add("COD")
+            if (isKbk) add("KBK")
+            if (!pdiRequired) add("PDI mandiri")
+        }
         return "${namaBarang} · ${qty}x · $bayar${money(hargaOtr)?.let { " · Rp${it.toLong()}" } ?: ""}" +
-            if (!pdiRequired) " · Tanpa PDI" else ""
+            tambahan.joinToString("") { " · $it" }
     }
 
     fun toItemBody(kodeDealer: String, kodeCabang: String): CreateDeliveryItemBody {
@@ -198,6 +246,38 @@ fun spkSubmitBlocker(
     !itemsValid -> "Ada barang belum lengkap — cek tanda merah di kartu."
     else -> null
 }
+
+/**
+ * Penyebab [spkSubmitBlocker] ada di kartu **"1. Pelanggan"** (bukan
+ * "2. Barang").
+ *
+ * Dipakai untuk MEMBUKA kartu yang tepat saat submit ditolak. Kedua kartu bisa
+ * ditutup sales, dan pesan merah yang menunjuk field di dalam kartu tertutup =
+ * tombol yang tak mempan tanpa satu pun penjelasan yang bisa dilihat — kelas
+ * kegagalan yang sama dengan field tersembunyi ber-issue.
+ *
+ * Ia MEMANGGIL ULANG [spkSubmitBlocker] dengan bagian barang diisi nilai yang
+ * pasti lolos, BUKAN menyalin urutan syaratnya. Salinan urutan itulah yang akan
+ * menyimpang diam-diam begitu syaratnya bertambah, dan menyimpangnya tak
+ * menimbulkan error — cuma kartu yang salah yang terbuka.
+ */
+fun spkBlockerDiPelanggan(
+    pelanggan: String,
+    telepon: String,
+    nik: String,
+    mapUrl: String,
+    deliveryMethod: String,
+): Boolean = spkSubmitBlocker(
+    pelanggan = pelanggan,
+    telepon = telepon,
+    nik = nik,
+    mapUrl = mapUrl,
+    deliveryMethod = deliveryMethod,
+    spkCabang = "PENGISI",
+    itemsCount = 1,
+    itemsValid = true,
+    totalUnits = 1,
+) != null
 
 /**
  * Baris stok yang boleh ditampilkan/ditap untuk `spkCabang` sekarang.

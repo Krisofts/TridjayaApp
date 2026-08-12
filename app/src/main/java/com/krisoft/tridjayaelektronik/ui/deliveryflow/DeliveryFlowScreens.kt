@@ -541,6 +541,26 @@ private fun SpkRingkasCard(
                             fontWeight = FontWeight.Bold, color = Color(0xFF9E4B00),
                         )
                     }
+                    // Lokasi pembayaran (2026-08-12) — HANYA kalau bayarnya
+                    // BUKAN di cabang stok. Di SPK biasa badge ini cuma mengulang
+                    // kolom "Cabang" yang sudah ada di kartu, dan badge yang
+                    // selalu menyala berhenti dibaca. Dinilai atas anchor: lokasi
+                    // bayar milik SPK, bukan milik barang.
+                    badgeBayarDiLuarCabangStok(anchor)?.let { nama ->
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Bayar di $nama", style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            // Badge terpanjang di baris ini (nama cabang, bukan
+                            // kata pendek seperti "COD"). Tanpa `weight` ia
+                            // diukur pada lebar intrinsiknya lalu TERPOTONG di
+                            // tepi Row tanpa elipsis — terbaca sebagai teks
+                            // rusak. `fill = false` menjaga badge pendek tetap
+                            // rapat ke kiri saat ruangnya cukup.
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
                 }
                 // Klaim PDI dinilai se-SPK, sejalan dengan servernya: `claim-pdi`
                 // fan-out mengunci SELURUH unit ke satu petugas. "Milik saya"
@@ -931,6 +951,13 @@ fun DeliveryJobDetailScreen(id: String, onBack: () -> Unit, viewModel: DeliveryF
                             // kartu (ada/tidaknya fincoy, angsuran, tenor), jadi ia
                             // ditebalkan — bukan sekadar salah satu baris.
                             InfoLine("Metode Bayar", job.paymentType?.replaceFirstChar { it.uppercase() })
+                            // "Bayar di", BUKAN "Cabang" — label kedua sudah
+                            // dipakai seksi ekor untuk cabang STOK, dan dua baris
+                            // bernama mirip yang artinya beda adalah persis cara
+                            // uang mendarat di kasir yang salah. Namanya datang
+                            // UTUH dari server (`bayarDealerName`); app tak
+                            // menurunkannya sendiri.
+                            InfoLine("Bayar di", namaCabangBayar(job))
                             InfoLine("No. Transaksi GS", job.noTransaksi)
                             if (job.paymentType == "credit") {
                                 InfoLine("Fincoy", job.fincoy)
@@ -1793,6 +1820,18 @@ private fun KasirConfirmSpkAction(
     val dpLengkap = unitCodDp.all { (dp[it.id]?.toDoubleOrNull() ?: 0.0) > 0.0 }
 
     Text("Konfirmasi SPK (Kasir)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    // Kasir di HP memutuskan uang yang sama dengan kasir di web, jadi ia harus
+    // melihat cabang tempat bayar SEBELUM menekan konfirmasi — bukan cuma di
+    // layar detail. Namanya dari server (`bayarDealerName`), tak diturunkan
+    // ulang di app.
+    namaCabangBayar(job)?.let { nama ->
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Bayar di: $nama",
+            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
     if (multi) {
         Spacer(Modifier.height(4.dp))
         SpkFanOutNote("${units.size} barang dalam SPK ini dikonfirmasi sekaligus — satu nomor transaksi GS untuk semuanya.")
@@ -2096,6 +2135,16 @@ private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
         else "Pembayaran penjualan ini (transfer/tunai di toko).",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    // Cabang tempat bayar (2026-08-12) — kasir cabang lain yang membuka layar
+    // ini perlu tahu uangnya memang bukan miliknya sebelum mencatat setoran.
+    namaCabangBayar(job)?.let { nama ->
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Bayar di: $nama",
+            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
     // Kebalikan dari catatan fan-out di tahap lain, dan justru karena itu
     // WAJIB ada: antrian "Konfirmasi Pembayaran" kini satu baris per SPK
     // (2026-08-06), sedangkan `POST /setoran-kasir` tetap menutup SATU unit.
@@ -2716,6 +2765,12 @@ fun CreateSpkScreen(
     var keterangan by remember { mutableStateOf("") }
     // Metode pengiriman (2026-07-24): driver biasa (default) | self_pickup | sales_delivery.
     var deliveryMethodSel by remember { mutableStateOf("driver") }
+    // Lokasi pembayaran (2026-08-12, migrasi 213). Default form = "asal"
+    // (cabang login sales) atas keputusan user — SENGAJA BEDA dari default
+    // server, yang membaca field ABSEN sbg "tujuan" demi menjaga perilaku SPK
+    // lama. Nilai yang benar-benar dikirim datang dari `lokasiBayarKontrol` di
+    // bawah, BUKAN langsung dari state ini: sebagian keadaan memaksa nilainya.
+    var lokasiBayarSel by remember { mutableStateOf(LOKASI_BAYAR_ASAL) }
     // Barang multi-unit
     var spkCabang by remember { mutableStateOf("") }
     var items by remember { mutableStateOf(listOf<SpkItemDraft>()) }
@@ -2724,6 +2779,11 @@ fun CreateSpkScreen(
     var attemptedSubmit by remember { mutableStateOf(false) }
     var sec1 by remember { mutableStateOf(true) }
     var sec2 by remember { mutableStateOf(true) }
+    // Tiga kolom sosial media disembunyikan sampai diminta (2026-08-12). Ini
+    // HANYA "sudah pernah dibuka" — syarat tampil sebenarnya ikut memeriksa
+    // isian ketiga kolomnya, supaya tak ada nilai yang terkirim dari balik
+    // bagian yang tertutup.
+    var sosmedTerbuka by remember { mutableStateOf(false) }
     var gantiCabangTarget by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(state.deliveryContext) {
@@ -2756,10 +2816,24 @@ fun CreateSpkScreen(
 
     fun applyCabangChange(next: String) {
         spkCabang = next; items = emptyList(); barangSearch = ""
+        // Lokasi pembayaran TERIKAT ke pasangan cabang asal↔tujuan, jadi ia
+        // TIDAK boleh bertahan lintas-cabang: "tujuan" yang dipilih untuk
+        // Soklat akan terbaca sebagai "tujuan" untuk Cikampek tanpa sales
+        // pernah memilihnya lagi. Balik ke default form.
+        lokasiBayarSel = LOKASI_BAYAR_ASAL
         viewModel.searchStok("", next); viewModel.clearSerialCache()
     }
 
     val totalUnits = items.sumOf { it.qtyInt ?: 0 }
+    // Dihitung ulang tiap recomposition: hasilnya bergantung pada cabang yang
+    // dipilih DAN pada isi barang (seluruhnya COD full memaksa "tujuan").
+    val lokasiBayar = lokasiBayarKontrol(
+        pilihanUser = lokasiBayarSel,
+        kodeDealerAsal = state.deliveryContext?.kodeDealer,
+        namaDealerAsal = state.deliveryContext?.dealerName,
+        spkCabang = spkCabang,
+        semuaCodFull = semuaCodFullPayment(items),
+    )
     val itemsValid = items.isNotEmpty() && items.all { it.issues().isEmpty() }
     val mapUrlWajib = deliveryMethodSel == "sales_delivery"
     val mapUrlKurang = mapUrlWajib && mapUrl.isBlank()
@@ -2777,8 +2851,9 @@ fun CreateSpkScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SpkSection("1. Pelanggan", sec1, { sec1 = !sec1 }) {
+            SpkSection("1. Pelanggan & cara kirim", sec1, { sec1 = !sec1 }) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SpkGrupLabel("Siapa yang membeli")
                     // Dirapikan saat FOKUS LEPAS, bukan tiap ketukan tombol:
                     // sales melihat hasil seragamnya sebelum menyimpan (jadi
                     // tak kaget kalau berubah), tapi kursornya tak pernah
@@ -2799,6 +2874,22 @@ fun CreateSpkScreen(
                         },
                     )
                     ExpressiveTextField(alamat, { alamat = it }, label = "Alamat", singleLine = false, modifier = Modifier.fillMaxWidth())
+
+                    // Metode pengiriman naik ke ATAS Link Maps (2026-08-12): dialah
+                    // yang menentukan wajib-tidaknya link itu. Urutan lama menyuruh
+                    // sales mengisi field dulu, baru memberitahu bahwa ia wajib —
+                    // dan bintang "*" pada field yang sudah dilewati tak pernah
+                    // terbaca lagi.
+                    SpkGrupLabel("Cara barang sampai ke konsumen")
+                    DeliveryMethodDropdown(deliveryMethodSel) { next ->
+                        deliveryMethodSel = next
+                        // COD = uang diambil DRIVER — tak relevan tanpa driver (diambil
+                        // sendiri/sales antar sendiri). Clear biar tak nyangkut/ke-submit
+                        // diam-diam (koreksi 2026-07-26).
+                        if (next != "driver") {
+                            items = items.map { it.copy(driverTerimaUang = false, codPaymentMode = "", codDpAmount = "") }
+                        }
+                    }
                     ExpressiveTextField(
                         mapUrl, { mapUrl = it },
                         label = if (mapUrlWajib) "Link Lokasi Maps *" else "Link Lokasi Maps",
@@ -2809,6 +2900,8 @@ fun CreateSpkScreen(
                             "Wajib untuk Sales Antar Sendiri — tanpa ini job masuk antrian Delivery Control, bukan ke kamu."
                         else null
                     )
+
+                    SpkGrupLabel("Data tambahan (boleh dilewati)")
                     // NIK KTP = 16 digit; backend menolak <16 digit (delivery.rs
                     // "NIK konsumen minimal 16 digit angka") — filter + gate di sini
                     // supaya tak mentok 400 saat submit.
@@ -2818,23 +2911,26 @@ fun CreateSpkScreen(
                         isError = nik.isNotEmpty() && nik.length < 16,
                         supportingText = if (nik.isNotEmpty() && nik.length < 16) "NIK harus 16 digit angka (${nik.length}/16)" else null
                     )
-                    ExpressiveTextField(sosTiktok, { sosTiktok = it }, label = "TikTok", modifier = Modifier.fillMaxWidth())
-                    ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
-                    ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
-                    ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
-                    DeliveryMethodDropdown(deliveryMethodSel) { next ->
-                        deliveryMethodSel = next
-                        // COD = uang diambil DRIVER — tak relevan tanpa driver (diambil
-                        // sendiri/sales antar sendiri). Clear biar tak nyangkut/ke-submit
-                        // diam-diam (koreksi 2026-07-26).
-                        if (next != "driver") {
-                            items = items.map { it.copy(driverTerimaUang = false, codPaymentMode = "", codDpAmount = "") }
+                    // Tiga kolom sosial media jarang dipakai tapi selalu memakan
+                    // tiga baris. Syarat bukanya memuat "sudah ada isinya", jadi
+                    // nilai yang pernah diketik TAK PERNAH bisa ikut terkirim dari
+                    // balik bagian yang tertutup.
+                    if (sosmedTerbuka || sosTiktok.isNotBlank() || sosFb.isNotBlank() || sosIg.isNotBlank()) {
+                        ExpressiveTextField(sosTiktok, { sosTiktok = it }, label = "TikTok", modifier = Modifier.fillMaxWidth())
+                        ExpressiveTextField(sosFb, { sosFb = it }, label = "Facebook", modifier = Modifier.fillMaxWidth())
+                        ExpressiveTextField(sosIg, { sosIg = it }, label = "Instagram", modifier = Modifier.fillMaxWidth())
+                    } else {
+                        TextButton(onClick = { sosmedTerbuka = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("+ Akun sosial media pelanggan")
                         }
                     }
+                    ExpressiveTextField(keterangan, { keterangan = it }, label = "Keterangan (opsional)", singleLine = false, modifier = Modifier.fillMaxWidth())
                 }
             }
 
             SpkSection("2. Barang (${items.size} barang · $totalUnits unit)", sec2, { sec2 = !sec2 }) {
+                SpkGrupLabel("Cabang stok & tempat bayar")
+                Spacer(Modifier.height(8.dp))
                 CabangSelector(
                     selected = spkCabang,
                     onSelect = { next ->
@@ -2843,7 +2939,13 @@ fun CreateSpkScreen(
                     }
                 )
                 Spacer(Modifier.height(10.dp))
+                // Merender spasi ekornya sendiri — saat tak ada yang perlu
+                // dikatakan (cabang belum dipilih) ia benar-benar nol tinggi,
+                // bukan celah kosong yang terbaca sebagai kerusakan.
+                LokasiBayarField(lokasiBayar) { lokasiBayarSel = it }
                 if (spkCabang.isNotBlank()) {
+                    SpkGrupLabel("Tambah barang")
+                    Spacer(Modifier.height(8.dp))
                     // Cabang barang dilekatkan saat SUBMIT dari `spkCabang`, bukan dibawa
                     // tiap baris — jadi daftar milik cabang lain WAJIB tak bisa ditap sama
                     // sekali. Respons pencarian cabang sebelumnya bisa mendarat setelah
@@ -2966,7 +3068,9 @@ fun CreateSpkScreen(
                 }
 
                 if (items.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
+                    SpkGrupLabel("Barang di SPK ini (${items.size})")
+                    Spacer(Modifier.height(8.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items.forEachIndexed { idx, item ->
                             val key = "$spkCabang|${item.kodeBarang}"
@@ -3005,7 +3109,23 @@ fun CreateSpkScreen(
             ExpressiveFilledButton(
                 onClick = {
                     attemptedSubmit = true
-                    if (!canSubmit) return@ExpressiveFilledButton
+                    if (!canSubmit) {
+                        // Membuka apa yang harus diperbaiki, bukan cuma
+                        // menampilkan kalimatnya. Dua kartu seksi bisa tertutup
+                        // dan hanya SATU kartu barang boleh terbuka sekaligus,
+                        // jadi pesan merah di bawah tombol bisa menunjuk field
+                        // yang tak ada di layar sama sekali — sales membaca
+                        // "cek tanda merah di kartu" tanpa satu pun tanda merah
+                        // yang bisa dilihat.
+                        if (spkBlockerDiPelanggan(pelanggan, telepon, nik, mapUrl, deliveryMethodSel)) {
+                            sec1 = true
+                        } else {
+                            sec2 = true
+                            val rusak = items.indexOfFirst { it.issues().isNotEmpty() }
+                            if (rusak >= 0) items = items.mapIndexed { i, o -> o.copy(expanded = i == rusak) }
+                        }
+                        return@ExpressiveFilledButton
+                    }
                     val body = CreateDeliveryBody(
                         // Diseragamkan di sini, bukan saat mengetik: mengubah
                         // teks di tengah pengetikan memindahkan kursor dan
@@ -3016,6 +3136,12 @@ fun CreateSpkScreen(
                         customerNik = nik.trim().ifBlank { null },
                         salesNik = null,
                         deliveryMethod = deliveryMethodSel.takeIf { it != "driver" },
+                        // Diisi EKSPLISIT dan selalu non-null: Retrofit Json
+                        // memakai `encodeDefaults = false`, jadi field yang
+                        // dibiarkan default TIDAK ikut terkirim tanpa error apa
+                        // pun. Nilainya dari `lokasiBayarKontrol`, bukan dari
+                        // state tombol — sebagian keadaan memaksanya.
+                        lokasiPembayaran = lokasiBayar.nilai,
                         sosmedTiktok = sosTiktok.trim().ifBlank { null },
                         sosmedFacebook = sosFb.trim().ifBlank { null },
                         sosmedInstagram = sosIg.trim().ifBlank { null },
@@ -3044,9 +3170,24 @@ fun CreateSpkScreen(
     }
 }
 
+/**
+ * Judul kelompok DI DALAM kartu Input SPK ("1. Pelanggan…" / "2. Barang…").
+ *
+ * Menyebut apa yang sedang diputuskan ("Cara barang sampai ke konsumen"),
+ * bukan nama fieldnya — kartu yang isinya sepuluh kolom sederajat memaksa sales
+ * membaca semuanya untuk tahu mana yang relevan buat SPK yang sedang ia buat.
+ *
+ * Warna `primary` supaya jelas ini penanda kelompok, bukan label field ke-sekian
+ * (label field memakai warna teks biasa). Token tema, bukan hex.
+ */
 @Composable
-private fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+private fun SpkGrupLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 /** Kartu section collapsible untuk Input SPK — header tap buka/tutup isi. */
@@ -3147,6 +3288,86 @@ private fun DeliveryMethodDropdown(selected: String, onSelect: (String) -> Unit)
                     DropdownMenuItem(text = { Text(l) }, onClick = { onSelect(k); expanded = false })
                 }
             }
+        }
+    }
+}
+
+/**
+ * Lokasi pembayaran SPK (2026-08-12) — di cabang mana konsumen membayar.
+ *
+ * SENGAJA BUKAN [CabangSelector]: itu daftar 13 cabang, dan di sini sales tak
+ * boleh bisa memilih cabang KETIGA. Hanya dua kemungkinan, dan keduanya sudah
+ * ditentukan oleh SPK-nya sendiri.
+ *
+ * Label tombolnya memakai NAMA CABANG konkret, bukan kata "asal"/"tujuan":
+ * sales tahu "Pagaden" dan "Soklat", bukan istilah kolom database. Subteksnya
+ * yang menjelaskan perannya.
+ *
+ * Merender spasi ekornya sendiri supaya keadaan "tak ada yang perlu dikatakan"
+ * benar-benar nol tinggi — bukan celah kosong yang terbaca sebagai kerusakan.
+ */
+@Composable
+private fun LokasiBayarField(kontrol: LokasiBayarKontrol, onSelect: (String) -> Unit) {
+    if (!kontrol.bolehPilih && kontrol.catatan == null) return
+    Column(Modifier.fillMaxWidth()) {
+        Text("Lokasi Pembayaran", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        if (kontrol.bolehPilih) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LokasiBayarSegment(
+                    judul = kontrol.namaAsal, subteks = "cabang Anda",
+                    terpilih = kontrol.nilai == LOKASI_BAYAR_ASAL,
+                    modifier = Modifier.weight(1f),
+                ) { onSelect(LOKASI_BAYAR_ASAL) }
+                LokasiBayarSegment(
+                    judul = kontrol.namaTujuan, subteks = "cabang stok",
+                    terpilih = kontrol.nilai == LOKASI_BAYAR_TUJUAN,
+                    modifier = Modifier.weight(1f),
+                ) { onSelect(LOKASI_BAYAR_TUJUAN) }
+            }
+        } else {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    kontrol.catatan.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+    }
+}
+
+@Composable
+private fun LokasiBayarSegment(
+    judul: String,
+    subteks: String,
+    terpilih: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = if (terpilih) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (terpilih) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                judul.ifBlank { "-" },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (terpilih) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            Text(subteks, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

@@ -106,7 +106,26 @@ data class OpnameDetailDto(
     /** Boleh MENGELOLA sesi: tutup/batal/hapus (`authorize_owner`). Terpisah
      *  dari [canHitung] — petugas cabang menghitung, tidak menutup. `null`
      *  diperlakukan sama: jatuh balik ke `isOwner`. */
-    val canManage: Boolean? = null
+    val canManage: Boolean? = null,
+    /**
+     * Boleh mencatat unit KETIK MANUAL (`input_method='manual'`) — izin
+     * `tetapkan_sn` penunjukan petugas opname (migrasi 212). Server sudah
+     * meng-AND-kannya dengan [canHitung], jadi `true` tak pernah muncul di sesi
+     * yang aktornya tak boleh sentuh sama sekali.
+     *
+     * `null` = server BELUM mengenal field ini, BUKAN "tidak boleh" — pemanggil
+     * WAJIB jatuh balik ke [canHitung] (aturan pra-212: yang boleh menghitung
+     * boleh keduanya). Pakai `Boolean` non-nullable ber-default `false` dan APK
+     * ini akan mencabut ketik-manual dari SEMUA orang begitu beredar di atas
+     * server lama. Pola sama [canHitung]/[canManage].
+     */
+    val canTetapkanSn: Boolean? = null,
+    /**
+     * Boleh mencatat unit hasil SCAN (`input_method='scan'`) — izin
+     * `verifikasi_sn` penunjukan petugas opname (migrasi 212). `null` = server
+     * lama, jatuh balik ke [canHitung]. Lihat catatan [canTetapkanSn].
+     */
+    val canVerifikasiSn: Boolean? = null
 )
 
 @Serializable
