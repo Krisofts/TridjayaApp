@@ -43,6 +43,14 @@ enum class ActivitySource {
     /** `GET /raport-harian?tanggal=hari-ini&status=pending` — antrian PIC raport.
      *  Angkanya `total` (bukan `items.size`): server memotong `items` ke `limit`. */
     RAPORT_REVIEW_PENDING,
+    /** `GET /home-service` — tiket komplain menunggu triase CS. */
+    HS_TRIASE,
+    /** `GET /home-service?mine=true` — kunjungan yang ditugaskan ke teknisi ini. */
+    HS_TUGAS_TEKNISI,
+    /** `GET /home-service?jenis=tarik_unit` — antrian penarikan unit. */
+    HS_TARIK,
+    /** `GET /home-service?jenis=tarik_unit&mine=true` — unit yang harus driver ambil. */
+    HS_TUGAS_DRIVER,
     SPK_LOCAL_COUNTER,
     DLV_PENDING_PDI,
     DLV_PENDING_SPK,
@@ -114,6 +122,34 @@ internal val RAPORT_INPUT_ROLES = ALL_LOGGED_IN
 internal val RAPORT_REVIEW_ROLES = setOf(
     "admin", "superadmin", "manager", "kepala-cabang", "pic_raport", "pic-raport", "hrd",
 )
+
+/**
+ * Siapa boleh MELAPOR komplain — cerminan `home_service.rs LAPOR_ROLES`, yang
+ * memang sangat luas: keluhan datang ke siapa pun yang kebetulan dihubungi
+ * konsumen, jadi menyempitkannya berarti keluhan tak tercatat.
+ *
+ * `hrd` TIDAK ada di daftar server; jangan ditambahkan "biar rapi" — kartunya
+ * akan tampil lalu semua panggilannya dijawab 403.
+ *
+ * `"cs"` yang ada di daftar server juga SENGAJA tak ditulis: rust-shared
+ * menyatakan sendiri "belum ada role literal `cs` di sistem; sampai ada,
+ * orangnya diberi salah satu role di daftar ini" — jadi ejaan itu tak akan
+ * pernah cocok dengan role siapa pun dan cuma jadi baris yang tampak seperti
+ * jaring pengaman padahal mati (dijaga `ActivityRegistryTest`, alasan yang sama
+ * dengan `"kepala_cabang"` di [CHAT_REVIEW_ROLES]). Petugas CS sungguhan tetap
+ * lolos lewat peta kemampuan server, yang memang sumber utamanya.
+ */
+internal val HS_LAPOR_ROLES = setOf(
+    "sales", "admin-sales", "admin", "superadmin", "manager", "owner", "kepala-cabang",
+    "karyawan", "pdi", "kasir", "admin-stok", "delivery-control", "driver",
+)
+
+/** `homeservice.dispatch` — triase CS (tugaskan teknisi / minta tarik / batalkan).
+ *  `"cs"` dilepas dengan alasan yang sama seperti di [HS_LAPOR_ROLES]. */
+internal val HS_DISPATCH_ROLES = setOf("admin", "superadmin", "manager", "delivery-control")
+
+/** `homeservice.task` — teknisi kunjungan. Cerminan `HOMESERVICE_TASK_ROLES` (= PDI_ROLES). */
+internal val HS_TASK_ROLES = setOf("pdi", "admin", "superadmin")
 
 /**
  * Cerminan `capabilities::OPNAME_HITUNG_ROLES` (rust-shared) — cadangan OFFLINE
@@ -270,6 +306,71 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "inventory-service delivery.rs list_delivery (view=history)",
         source = ActivitySource.NONE,
         navKey = "spk_history",
+    ),
+    ActivityItem(
+        id = "lapor_komplain",
+        label = "Lapor Komplain",
+        subtitle = "Keluhan konsumen purna-jual",
+        kind = ActivityKind.AKSI,
+        // Tak ada kunci `homeservice.lapor` di katalog kemampuan — web pun
+        // memakai `spk.pipeline` untuk menu ini. Kunci karangan akan
+        // menyembunyikan kartunya dari SEMUA orang (peta fail-closed).
+        capability = "spk.pipeline",
+        allowedRoles = HS_LAPOR_ROLES,
+        backendGuard = "kinerja-service home_service.rs LAPOR_ROLES",
+        source = ActivitySource.NONE,
+        navKey = "hs_lapor",
+    ),
+    ActivityItem(
+        id = "komplain_masuk",
+        label = "Komplain Masuk",
+        subtitle = "Tiket menunggu ditriase",
+        kind = ActivityKind.ANTRIAN,
+        capability = "homeservice.dispatch",
+        allowedRoles = HS_DISPATCH_ROLES,
+        backendGuard = "rust-shared capabilities.rs HOMESERVICE_DISPATCH_ROLES",
+        source = ActivitySource.HS_TRIASE,
+        navKey = "hs_triase",
+    ),
+    ActivityItem(
+        id = "tugas_home_service",
+        label = "Tugas Home Service",
+        subtitle = "Kunjungan teknisi yang ditugaskan",
+        kind = ActivityKind.ANTRIAN,
+        capability = "homeservice.task",
+        allowedRoles = HS_TASK_ROLES,
+        backendGuard = "rust-shared capabilities.rs HOMESERVICE_TASK_ROLES",
+        source = ActivitySource.HS_TUGAS_TEKNISI,
+        navKey = "hs_teknisi",
+    ),
+    ActivityItem(
+        id = "tarik_unit",
+        label = "Tarik Unit",
+        subtitle = "Penarikan unit menunggu driver",
+        kind = ActivityKind.ANTRIAN,
+        // `delivery.control` — guard `boleh_atur_tarik` MENGIMPOR
+        // DELIVERY_CONTROL_ROLES, jadi kunci ini sudah disajikan server. Tak ada
+        // kunci `homeservice.tarik` tersendiri.
+        capability = "delivery.control",
+        allowedRoles = DELIVERY_CONTROL_ROLES,
+        backendGuard = "kinerja-service home_service/service.rs boleh_atur_tarik (DELIVERY_CONTROL_ROLES)",
+        source = ActivitySource.HS_TARIK,
+        navKey = "hs_tarik",
+    ),
+    ActivityItem(
+        id = "tugas_tarik_unit",
+        label = "Tugas Tarik Unit",
+        subtitle = "Unit yang harus kamu jemput",
+        kind = ActivityKind.ANTRIAN,
+        // Sama alasannya dengan kartu "Tugas Antar": kepemilikan ditentukan
+        // SERVER (`mine` menyaring `tarik_driver_id`), bukan daftar role — jadi
+        // gate-nya longgar dan angkanya sendiri yang menyembunyikan kartu ini
+        // dari orang yang tak pernah ditugaskan.
+        capability = "spk.pipeline",
+        allowedRoles = SPK_MENU_ROLES,
+        backendGuard = "kinerja-service home_service/service.rs list (mine → tarik_driver_id)",
+        source = ActivitySource.HS_TUGAS_DRIVER,
+        navKey = "hs_driver",
     ),
     ActivityItem(
         // Sisi PIC dari kartu "raport" di atas: karyawan mengisi, PIC menilai.

@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -108,6 +109,20 @@ class ActivityNavHostRouteTest {
         assertNotNull(routeForNavKey("raport"))
         assertNotNull(routeForNavKey("raport_review"))
         assertTrue(routeForNavKey("raport") != routeForNavKey("raport_review"))
+    }
+
+    /**
+     * Lima pintu komplain: satu lapor + empat antrian peran. Route-nya WAJIB
+     * berbeda satu sama lain — empat daftar itu berbagi satu layar
+     * (`HomeServiceListScreen` + `HsMode`), jadi salah salin route berarti CS
+     * membuka antrian driver tanpa satu pun error.
+     */
+    @Test
+    fun `navKey komplain menunjuk route yang berbeda-beda`() {
+        val kunci = listOf("hs_lapor", "hs_triase", "hs_teknisi", "hs_tarik", "hs_driver")
+        val route = kunci.map { routeForNavKey(it) }
+        route.forEachIndexed { i, r -> assertNotNull("navKey '${kunci[i]}' tak punya route", r) }
+        assertEquals(kunci.size, route.toSet().size)
     }
 
     @Test

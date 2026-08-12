@@ -42,6 +42,10 @@ import com.krisoft.tridjayaelektronik.ui.mutasi.MutasiHistoriScreen
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
 import com.krisoft.tridjayaelektronik.ui.priceerp.ErpPriceChangesScreen
+import com.krisoft.tridjayaelektronik.ui.homeservice.HomeServiceDetailScreen
+import com.krisoft.tridjayaelektronik.ui.homeservice.HomeServiceLaporScreen
+import com.krisoft.tridjayaelektronik.ui.homeservice.HomeServiceListScreen
+import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
 import com.krisoft.tridjayaelektronik.ui.raport.RaportReviewScreen
 import com.krisoft.tridjayaelektronik.ui.raport.RaportScreen
 import com.krisoft.tridjayaelektronik.ui.serials.SerialInputScreen
@@ -70,6 +74,17 @@ const val ROUTE_OPNAME_VALIDASI = "home_opname_validasi"
 private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_RAPORT = "home_raport"
 private const val ROUTE_RAPORT_REVIEW = "home_raport_review"
+// Komplain (Home Service). Empat daftar berbagi SATU layar (`HsMode`), tapi
+// route-nya tetap terpisah supaya deep-link notif bisa menunjuk antrian yang
+// tepat dan tombol back tiap peran tak saling menimpa.
+private const val ROUTE_HS_LAPOR = "home_hs_lapor"
+private const val ROUTE_HS_TRIASE = "home_hs_triase"
+private const val ROUTE_HS_TEKNISI = "home_hs_teknisi"
+private const val ROUTE_HS_TARIK = "home_hs_tarik"
+private const val ROUTE_HS_DRIVER = "home_hs_driver"
+private const val ROUTE_HS_DETAIL = "home_hs_detail/{id}"
+
+private fun hsDetailRoute(id: String) = "home_hs_detail/${Uri.encode(id)}"
 private const val ROUTE_BUKTI_CHAT = "home_bukti_chat"
 private const val ROUTE_REVIEW_BUKTI_CHAT = "home_review_bukti_chat"
 private const val ROUTE_GAJI = "home_gaji"
@@ -160,6 +175,12 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     // dua route, sama pasangannya seperti bukti chat di bawah.
     "raport" -> ROUTE_RAPORT
     "raport_review" -> ROUTE_RAPORT_REVIEW
+    // Komplain: satu pintu lapor + tiga antrian peran.
+    "hs_lapor" -> ROUTE_HS_LAPOR
+    "hs_triase" -> ROUTE_HS_TRIASE
+    "hs_teknisi" -> ROUTE_HS_TEKNISI
+    "hs_tarik" -> ROUTE_HS_TARIK
+    "hs_driver" -> ROUTE_HS_DRIVER
     // Bukti chat harian: layar karyawan (kirim) vs antrian kepala cabang (periksa).
     "bukti_chat" -> ROUTE_BUKTI_CHAT
     "review_bukti_chat" -> ROUTE_REVIEW_BUKTI_CHAT
@@ -359,6 +380,36 @@ fun ActivityNavHost(
         }
         composable(ROUTE_RAPORT_REVIEW) {
             RaportReviewScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_HS_LAPOR) {
+            HomeServiceLaporScreen(
+                onBack = { navController.popBackStack() },
+                onLihatTiket = { id ->
+                    navController.navigate(hsDetailRoute(id)) { launchSingleTop = true }
+                },
+            )
+        }
+        listOf(
+            ROUTE_HS_TRIASE to HsMode.TRIASE,
+            ROUTE_HS_TEKNISI to HsMode.TEKNISI,
+            ROUTE_HS_TARIK to HsMode.TARIK,
+            ROUTE_HS_DRIVER to HsMode.DRIVER,
+        ).forEach { (route, mode) ->
+            composable(route) {
+                HomeServiceListScreen(
+                    mode = mode,
+                    onBack = { navController.popBackStack() },
+                    onOpen = { id ->
+                        navController.navigate(hsDetailRoute(id)) { launchSingleTop = true }
+                    },
+                )
+            }
+        }
+        composable(
+            route = ROUTE_HS_DETAIL,
+            arguments = listOf(navArgument("id") { type = NavType.StringType })
+        ) {
+            HomeServiceDetailScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_BUKTI_CHAT) {
             ChatActivityScreen(onBack = { navController.popBackStack() })
