@@ -3,6 +3,9 @@ package com.krisoft.tridjayaelektronik.data
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.JobdeskPositionDto
 import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+import com.krisoft.tridjayaelektronik.data.model.RaportListData
+import com.krisoft.tridjayaelektronik.data.model.ReviewRaportBody
+import com.krisoft.tridjayaelektronik.data.model.ReviewRaportResult
 import com.krisoft.tridjayaelektronik.data.model.SubmitRaportBody
 import com.krisoft.tridjayaelektronik.data.model.SubmitRaportItem
 import com.krisoft.tridjayaelektronik.data.model.SubmitRaportResult
@@ -52,6 +55,60 @@ class RaportRepository @Inject constructor(
             else data.items.filter { it.employeeId.isBlank() || it.employeeId == karyawanId }
             AuthResult.Success(items)
         } else parseError(response, "Gagal memuat laporan hari ini")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Antrian PIC: SELURUH karyawan pada [tanggal], bukan cuma milik sendiri.
+     *
+     * Sengaja TIDAK memakai [raportOfDay]: fungsi itu menyaring ulang ke satu
+     * `karyawanId`, yang untuk PIC berarti daftar kosong. Yang dikembalikan
+     * seluruh `RaportListData` (bukan `items` saja) karena badge antrian harus
+     * memakai `total` — `items` dipotong server ke `limit`.
+     */
+    suspend fun antrianReview(
+        tanggal: String,
+        status: String = "pending",
+        cari: String? = null,
+        limit: Int = 200,
+    ): AuthResult<RaportListData> = try {
+        val response = api.list(
+            tanggal = tanggal,
+            karyawanId = null,
+            limit = limit,
+            status = status,
+            q = cari?.trim()?.takeIf { it.isNotBlank() },
+        )
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal memuat antrian penilaian")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Putusan PIC atas satu baris. [skor] boleh `null` — server mengisi sendiri
+     * (`rejected` → 0, selainnya 100). Tolak WAJIB ber-[komentar]: itu satu-
+     * satunya cara karyawan tahu apa yang harus diperbaiki.
+     */
+    suspend fun review(
+        id: String,
+        status: String,
+        skor: Int? = null,
+        komentar: String? = null,
+    ): AuthResult<ReviewRaportResult> = try {
+        val response = api.review(
+            id = id,
+            body = ReviewRaportBody(
+                status = status,
+                score = skor,
+                comment = komentar?.trim()?.takeIf { it.isNotBlank() },
+            ),
+        )
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal menyimpan penilaian")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }

@@ -32,7 +32,12 @@ data class RaportItemDto(
     val id: String = "",
     /** Pemilik baris — dipakai klien menyaring ulang, lihat `RaportRepository`. */
     val employeeId: String = "",
+    /** Diisi server dari profil karyawan; kolom PIC memakai ini sebagai judul baris. */
+    val employeeName: String = "",
+    val cabang: String = "",
+    val divisiName: String = "",
     val tanggal: String = "",
+    val submittedAt: String? = null,
     val jobdeskIndex: Int = 0,
     val jobdeskText: String = "",
     val mode: String = "none",
@@ -41,12 +46,43 @@ data class RaportItemDto(
     val reviewStatus: String = "pending",
     val score: Int? = null,
     val reviewerComment: String? = null,
+    val reviewedAt: String? = null,
 )
 
 @Serializable
 data class RaportListData(
     val items: List<RaportItemDto> = emptyList(),
+    /**
+     * Jumlah SELURUH baris yang cocok filter, bukan panjang [items] — server
+     * memotong `items` ke `limit` (default 100, maks 2000), jadi badge antrian
+     * harus memakai angka ini (pola `DISCOUNT_PENDING`/`CHAT_REVIEW_PENDING`).
+     */
     val total: Int = 0,
+    val page: Int = 1,
+    val limit: Int = 100,
+    val totalPages: Int = 1,
+)
+
+/**
+ * Putusan PIC atas satu baris raport. Struct server (`ReviewRaportPayload`)
+ * SENGAJA tanpa `rename_all`, jadi ketiga nama ini apa adanya.
+ *
+ * `score` boleh `null`: server mengisinya sendiri (`rejected` → 0, selain itu
+ * `score ?: 100`, di-clamp 0..100) — lihat `skorReview` yang mencerminkannya
+ * supaya angka yang tampil di app sama dengan yang tersimpan.
+ */
+@Serializable
+data class ReviewRaportBody(
+    val status: String,
+    val score: Int? = null,
+    val comment: String? = null,
+)
+
+@Serializable
+data class ReviewRaportResult(
+    val id: String = "",
+    val status: String = "",
+    val score: Int? = null,
 )
 
 @Serializable

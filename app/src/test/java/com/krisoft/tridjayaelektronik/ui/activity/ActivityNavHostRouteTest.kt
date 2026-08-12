@@ -97,6 +97,19 @@ class ActivityNavHostRouteTest {
         )
     }
 
+    /**
+     * Dua layar laporan aktivitas: karyawan mengisi, PIC menilai. Route-nya
+     * WAJIB berbeda — satu salah salin di `routeForNavKey` akan membawa PIC ke
+     * layar pengisian miliknya sendiri (yang untuk role non-`karyawan` malah
+     * dijawab 403 saat mengirim), tanpa satu pun error.
+     */
+    @Test
+    fun `navKey raport dan antrian penilaiannya menunjuk route berbeda`() {
+        assertNotNull(routeForNavKey("raport"))
+        assertNotNull(routeForNavKey("raport_review"))
+        assertTrue(routeForNavKey("raport") != routeForNavKey("raport_review"))
+    }
+
     @Test
     fun `navKey yang tak dikenal tetap null`() {
         assertNull(routeForNavKey("panduan"))

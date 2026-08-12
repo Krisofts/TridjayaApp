@@ -1,0 +1,119 @@
+package com.krisoft.tridjayaelektronik.ui.raport
+
+import com.krisoft.tridjayaelektronik.BuildConfig
+import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+
+/**
+ * Bagian murni layar Nilai Aktivitas (PIC raport) — tanpa Android/Compose,
+ * supaya bisa diuji JUnit biasa. Pola sama [RaportPlan.kt].
+ */
+
+/** Skor cepat yang ditawarkan tombol setuju — sama dengan preset web
+ *  (`PicEvidenceReviewControls.tsx`). 100 = default kalau PIC tak memilih. */
+internal val PRESET_SKOR = listOf(70, 85, 100)
+
+data class ReviewGate(val ok: Boolean, val alasan: String? = null)
+
+/**
+ * Putusan boleh dikirim atau tidak. Tolak WAJIB berkomentar: server menyimpan
+ * skor 0 untuk baris yang ditolak, dan tanpa komentar karyawan cuma melihat
+ * nilai nol tanpa tahu apa yang harus diperbaiki.
+ */
+internal fun bolehSimpanReview(status: String, komentar: String?): ReviewGate = when {
+    status !in setOf("approved", "rejected") -> ReviewGate(false, "Status penilaian tidak dikenal.")
+    status == "rejected" && komentar.isNullOrBlank() -> ReviewGate(false, "Alasan penolakan wajib diisi.")
+    else -> ReviewGate(true)
+}
+
+/**
+ * Skor yang AKAN tersimpan di server, dicerminkan di sini supaya angka yang
+ * app tampilkan setelah menekan tombol sama dengan isi basis data.
+ *
+ * Aturan server (`raport/service.rs`): `rejected` → 0 (apa pun yang dikirim),
+ * `pending` → tanpa skor, selainnya `score ?: 100` di-clamp 0..100.
+ */
+internal fun skorReview(status: String, diminta: Int?): Int? = when (status) {
+    "pending" -> null
+    "rejected" -> 0
+    else -> (diminta ?: 100).coerceIn(0, 100)
+}
+
+/**
+ * `evidenceUrl` bisa berisi SATU url atau string JSON array (baris lama web
+ * multi-bukti) — web mem-parsingnya (`parseEvidenceUrls` di `picRaportStore.ts`)
+ * dan app harus sama, kalau tidak bukti multi-foto tampil sebagai satu teks
+ * `["/uploads/…"]` yang tak bisa dimuat.
+ *
+ * Sengaja TANPA parser JSON sungguhan: isinya selalu array string datar, dan
+ * memanggil kotlinx.serialization di sini berarti melempar `SerializationException`
+ * untuk nilai lama yang bukan JSON sama sekali (mayoritas baris).
+ */
+internal fun parseEvidenceUrls(raw: String?): List<String> {
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty()) return emptyList()
+    if (!trimmed.startsWith("[")) return listOf(trimmed)
+    return trimmed.removePrefix("[").removeSuffix("]")
+        .split(',')
+        .map { it.trim().trim('"').trim() }
+        .filter { it.isNotEmpty() }
+}
+
+/**
+ * URL bukti yang bisa dimuat Coil. Bukti raport di-serve TERAUTENTIKASI (upload
+ * privat, lihat `utils/protectedMedia.ts` di web) — nilai mentahnya
+ * `/uploads/raport/<berkas>` bukan alamat yang bisa diambil langsung.
+ *
+ * Dipetakan ke `api/raport-harian/evidence/{berkas}` dan BUKAN ke alias gateway
+ * `api/raport-files/{berkas}` yang dipakai web: alias itu menolak role `hrd`
+ * (`RAPORT_FILE_ROLES`), padahal `hrd` termasuk penilai — lewat jalur ini ia
+ * ikut lolos (`LIST_ROLES`). Pemanggil tetap wajib menyertakan header
+ * `Authorization` (lihat `AuthedImage` di layar).
+ */
+internal fun evidenceImageUrl(
+    raw: String?,
+    baseUrl: String = BuildConfig.API_BASE_URL,
+): String? {
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
+    val berkas = trimmed.substringAfterLast('/')
+    if (berkas.isBlank()) return null
+    return baseUrl.trimEnd('/') + "/api/raport-harian/evidence/" + berkas
+}
+
+/** `true` = buktinya video, jadi tak boleh dirender sebagai gambar. */
+internal fun buktiVideo(item: RaportItemDto): Boolean =
+    item.mode.equals("video", ignoreCase = true)
+
+/**
+ * Baris dikelompokkan per karyawan supaya PIC menilai satu orang sekaligus —
+ * urutan karyawan mengikuti kemunculan pertamanya dari server (sudah terurut
+ * waktu kirim), dan jobdesk di dalam tiap grup naik menurut `jobdeskIndex`.
+ */
+internal fun grupPerKaryawan(items: List<RaportItemDto>): List<GrupRaport> =
+    items.groupBy { it.employeeId }
+        .map { (id, baris) ->
+            GrupRaport(
+                employeeId = id,
+                nama = baris.firstOrNull { it.employeeName.isNotBlank() }?.employeeName
+                    ?: "(tanpa nama)",
+                divisi = baris.firstOrNull { it.divisiName.isNotBlank() }?.divisiName.orEmpty(),
+                cabang = baris.firstOrNull { it.cabang.isNotBlank() }?.cabang.orEmpty(),
+                baris = baris.sortedBy { it.jobdeskIndex },
+            )
+        }
+
+data class GrupRaport(
+    val employeeId: String,
+    val nama: String,
+    val divisi: String,
+    val cabang: String,
+    val baris: List<RaportItemDto>,
+)
+
+/** Label status untuk chip di kartu — sama istilah dengan layar karyawan. */
+internal fun labelStatusReview(status: String): String = when (status) {
+    "approved" -> "Disetujui"
+    "rejected" -> "Ditolak"
+    else -> "Menunggu"
+}

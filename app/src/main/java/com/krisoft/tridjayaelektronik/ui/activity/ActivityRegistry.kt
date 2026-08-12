@@ -40,6 +40,9 @@ enum class ActivitySource {
     CHAT_REVIEW_PENDING,
     LEADS_CACHE,
     RAPORT_TODAY,
+    /** `GET /raport-harian?tanggal=hari-ini&status=pending` — antrian PIC raport.
+     *  Angkanya `total` (bukan `items.size`): server memotong `items` ke `limit`. */
+    RAPORT_REVIEW_PENDING,
     SPK_LOCAL_COUNTER,
     DLV_PENDING_PDI,
     DLV_PENDING_SPK,
@@ -85,13 +88,32 @@ data class ActivityItem(
 )
 
 /**
- * `upsert_raport` (kinerja-service `raport.rs` `KARYAWAN_ROLES`) — role
- * `karyawan` SAJA yang boleh mengirim raport; role lain 403 walau bisa membaca
- * (`LIST_ROLES` lebih luas). Belum ada kunci di `GET /api/me/capabilities`
- * untuk hak ini, jadi item raport satu-satunya yang ber-`capability = null`
- * (dijaga `ActivityRegistryTest`).
+ * Kartu "Input aktivitas" DIBUKA UNTUK SEMUA yang login (permintaan user
+ * 2026-08-12), karena itu [ALL_LOGGED_IN] — bukan cerminan guard backend.
+ *
+ * PERINGATAN yang sengaja ditulis di sini: `upsert_raport` (kinerja-service
+ * `raport.rs` `KARYAWAN_ROLES`) tetap hanya menerima role `karyawan`. Pemilik
+ * role lain sekarang bisa MEMBUKA layarnya (dan `list_raport` `LIST_ROLES`
+ * memang lebih longgar), tapi tombol kirimnya akan dijawab 403 oleh server.
+ * Kalau suatu saat semua orang benar-benar harus bisa MENGIRIM, yang diubah
+ * `KARYAWAN_ROLES` di backend — jangan mencoba menambalnya dari sisi app.
+ *
+ * Belum ada kunci di `GET /api/me/capabilities` untuk hak kirim, jadi item
+ * raport satu-satunya yang ber-`capability = null` (dijaga `ActivityRegistryTest`).
  */
-internal val RAPORT_INPUT_ROLES = setOf("karyawan")
+internal val RAPORT_INPUT_ROLES = ALL_LOGGED_IN
+
+/**
+ * Cerminan `capabilities::RAPORT_REVIEW_ROLES` (rust-shared) — cadangan OFFLINE
+ * saja; sumber utamanya kunci `raport.review` dari `GET /api/me/capabilities`.
+ *
+ * `owner` SENGAJA tak ada: ia boleh MEMBACA raport (`RAPORT_VIEW_ALL_ROLES`)
+ * tapi ditolak `review_raport`. Dua ejaan `pic_raport`/`pic-raport` sama-sama
+ * ditulis karena backend memang mengenali keduanya (`auth.rs`).
+ */
+internal val RAPORT_REVIEW_ROLES = setOf(
+    "admin", "superadmin", "manager", "kepala-cabang", "pic_raport", "pic-raport", "hrd",
+)
 
 /**
  * Cerminan `capabilities::OPNAME_HITUNG_ROLES` (rust-shared) — cadangan OFFLINE
@@ -248,6 +270,18 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "inventory-service delivery.rs list_delivery (view=history)",
         source = ActivitySource.NONE,
         navKey = "spk_history",
+    ),
+    ActivityItem(
+        // Sisi PIC dari kartu "raport" di atas: karyawan mengisi, PIC menilai.
+        id = "raport_review",
+        label = "Nilai Aktivitas",
+        subtitle = "Laporan karyawan menunggu dinilai",
+        kind = ActivityKind.ANTRIAN,
+        capability = "raport.review",
+        allowedRoles = RAPORT_REVIEW_ROLES,
+        backendGuard = "kinerja-service raport.rs REVIEW_ROLES (capabilities::RAPORT_REVIEW_ROLES)",
+        source = ActivitySource.RAPORT_REVIEW_PENDING,
+        navKey = "raport_review",
     ),
     ActivityItem(
         id = "review_bukti_chat",
@@ -415,11 +449,12 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
  * Item yang HANYA tampil untuk akun uji, bukan karyawan nyata — dipakai saat
  * sebuah fitur masih diuji di produksi.
  *
- * `raport` (Input Aktivitas, BETA) masuk sini 2026-07-31 atas permintaan user.
- * Ini gate TAMPILAN saja: `POST /raport-harian` sengaja TIDAK ditutup, supaya
- * raport yang sudah berjalan dan auto-feed KPI `LAPORAN AKTIVITAS` tak putus.
+ * `raport` (Input Aktivitas, BETA) pernah masuk sini 2026-07-31, lalu DIBUKA
+ * untuk semua karyawan 2026-08-12 atas permintaan user (masa uji selesai) —
+ * set ini sekarang kosong tapi mekanismenya dipertahankan untuk fitur BETA
+ * berikutnya. Gate ini gate TAMPILAN saja: endpoint POST-nya tidak ikut ditutup.
  */
-private val ITEM_KHUSUS_AKUN_UJI = setOf("raport")
+private val ITEM_KHUSUS_AKUN_UJI = emptySet<String>()
 
 /**
  * Apakah akun ini akun UJI (bukan karyawan nyata).
