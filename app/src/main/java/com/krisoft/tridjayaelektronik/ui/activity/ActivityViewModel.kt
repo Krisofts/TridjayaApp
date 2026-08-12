@@ -9,6 +9,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.CrmRepository
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
+import com.krisoft.tridjayaelektronik.data.HomeServiceRepository
 import com.krisoft.tridjayaelektronik.data.OpnameRepository
 import com.krisoft.tridjayaelektronik.data.RaportRepository
 import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
@@ -17,6 +18,8 @@ import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
 import com.krisoft.tridjayaelektronik.domain.indent.ListIndentUseCase
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
+import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
+import com.krisoft.tridjayaelektronik.ui.homeservice.saringStatus
 import com.krisoft.tridjayaelektronik.ui.raport.matchJobdeskPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
@@ -57,6 +60,7 @@ class ActivityViewModel @Inject constructor(
     private val deliveryRepository: DeliveryFlowRepository,
     private val crmRepository: CrmRepository,
     private val raportRepository: RaportRepository,
+    private val homeServiceRepository: HomeServiceRepository,
     private val aktivitasChatRepository: AktivitasChatRepository,
     private val listIndentUseCase: ListIndentUseCase,
     private val opnameRepository: OpnameRepository,
@@ -237,6 +241,26 @@ class ActivityViewModel @Inject constructor(
                     is AuthResult.Failure -> failed += ActivitySource.DISCOUNT_PENDING
                 }
             }
+
+            // Komplain. Angkanya dihitung dari `items` yang disaring KLIEN (bukan
+            // `total`): server hanya menerima satu nilai `status` per permintaan
+            // sementara tiap antrian butuh beberapa, jadi `total` di sini berarti
+            // "semua tiket yang terambil", bukan "yang menunggu kamu".
+            fun antrianKomplain(source: ActivitySource, mode: HsMode) {
+                if (source in sources) jobs += async {
+                    when (
+                        val r = homeServiceRepository.list(jenis = mode.jenis, mine = mode.mine)
+                    ) {
+                        is AuthResult.Success ->
+                            counts[source] = saringStatus(r.data.items, mode.statusAktif).size
+                        is AuthResult.Failure -> failed += source
+                    }
+                }
+            }
+            antrianKomplain(ActivitySource.HS_TRIASE, HsMode.TRIASE)
+            antrianKomplain(ActivitySource.HS_TUGAS_TEKNISI, HsMode.TEKNISI)
+            antrianKomplain(ActivitySource.HS_TARIK, HsMode.TARIK)
+            antrianKomplain(ActivitySource.HS_TUGAS_DRIVER, HsMode.DRIVER)
 
             // Antrian PIC. `.total` (bukan `items.size`) — server memotong `items`
             // ke `limit`, badge tak boleh ikut terpotong (pola CHAT_REVIEW_PENDING).

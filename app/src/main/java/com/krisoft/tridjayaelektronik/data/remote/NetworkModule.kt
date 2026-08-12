@@ -133,6 +133,9 @@ object NetworkModule {
     fun createRaportApi(tokenStore: TokenStore): RaportApi =
         authenticatedRetrofit(tokenStore).create(RaportApi::class.java)
 
+    fun createHomeServiceApi(tokenStore: TokenStore): HomeServiceApi =
+        authenticatedRetrofit(tokenStore).create(HomeServiceApi::class.java)
+
     fun createDeviceApi(tokenStore: TokenStore): DeviceApi =
         authenticatedRetrofit(tokenStore).create(DeviceApi::class.java)
 

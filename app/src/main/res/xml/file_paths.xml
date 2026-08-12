@@ -17,4 +17,7 @@
          dikompres & diunggah. Tanpa entri ini `FileProvider.getUriForFile` melempar
          IllegalArgumentException dan tombol Kamera mati total di lapangan. -->
     <cache-path name="event" path="event/" />
+    <!-- Foto komplain (kwitansi, bukti kerja teknisi, bukti bayar, unit ditarik) —
+         alasan sama dengan `event` di atas: tanpa entri ini kamera mati total. -->
+    <cache-path name="home_service" path="home-service/" />
 </paths>

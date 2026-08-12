@@ -325,6 +325,25 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /**
+     * Teknisi PDI untuk dropdown penugasan Home Service (`GET /api/users?role=pdi`).
+     *
+     * Berbagi endpoint dengan [drivers] tapi TIDAK berbagi kelonggaran gate-nya:
+     * gateway hanya melonggarkan `GET /api/users` untuk query PERSIS `role=driver`
+     * (`is_users_driver_filter`), jadi permintaan ini dijaga `USERS_READ_ROLES`
+     * yang TIDAK memuat `cs` — padahal `cs` justru yang berhak menugaskan.
+     * Kegagalan 403 di sini normal untuk akun CS murni; pemanggil menampilkannya
+     * sebagai keterangan, bukan menganggap tak ada teknisi (web melakukan hal sama).
+     */
+    suspend fun teknisiPdi(): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DriverDto>> = try {
+        val response = api.users("pdi")
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data.items)
+        else parseError(response, "Gagal memuat daftar teknisi")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     /** Riwayat diskon satu baris SPK (timeline detail). `data` = array langsung. */
     suspend fun discountHistory(
         spkBatchKode: String,

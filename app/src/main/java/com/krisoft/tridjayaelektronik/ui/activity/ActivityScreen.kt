@@ -310,6 +310,11 @@ private fun activityVisual(id: String): Pair<ImageVector, Color> = when (id) {
     "penjadwalan" -> Icons.Rounded.CalendarToday to Color(0xFF1565C0)
     "tugas_antar" -> Icons.Rounded.LocalShipping to Color(0xFF12B76A)
     "approval_diskon" -> Icons.Rounded.Discount to Color(0xFFB5670C)
+    // Komplain: melapor & menriase sewarna (satu alur, dua sisi); tugas lapangan
+    // ikut warna perannya — teknisi ungu seperti PDI, penarikan hijau seperti antar.
+    "lapor_komplain", "komplain_masuk" -> Icons.Rounded.Build to Color(0xFFD92D20)
+    "tugas_home_service" -> Icons.Rounded.Build to Color(0xFF6941C6)
+    "tarik_unit", "tugas_tarik_unit" -> Icons.Rounded.LocalShipping to Color(0xFF12B76A)
     else -> Icons.Rounded.Bolt to MaterialTheme.colorScheme.primary
 }
 

@@ -113,6 +113,62 @@ class ActivityRegistryTest {
         assertFalse("raport_review" in visibleActivityItems(setOf("owner"), null).map { it.id })
     }
 
+    // ── Komplain / Home Service ──────────────────────────────────────────────
+
+    @Test
+    fun `lapor komplain terbuka lebar, triase tidak`() {
+        // LAPOR_ROLES sengaja luas: keluhan datang ke siapa pun yang dihubungi
+        // konsumen. Yang sempit justru keputusannya.
+        val caps = mapOf(
+            "spk.pipeline" to true, "homeservice.dispatch" to false,
+            "homeservice.task" to false, "delivery.control" to false,
+        )
+        val sales = visibleActivityItems(setOf("sales"), caps).map { it.id }
+        assertTrue("lapor_komplain" in sales)
+        assertFalse("komplain_masuk" in sales)
+        assertFalse("tugas_home_service" in sales)
+    }
+
+    @Test
+    fun `petugas triase melihat antrian komplain, pdi melihat tugas teknisi`() {
+        val capsTriase = mapOf("homeservice.dispatch" to true, "homeservice.task" to false, "spk.pipeline" to true)
+        assertTrue(
+            "komplain_masuk" in visibleActivityItems(setOf("delivery-control"), capsTriase).map { it.id }
+        )
+
+        val capsPdi = mapOf("homeservice.dispatch" to false, "homeservice.task" to true, "spk.pipeline" to true)
+        val pdi = visibleActivityItems(setOf("pdi"), capsPdi).map { it.id }
+        assertTrue("tugas_home_service" in pdi)
+        assertFalse("komplain_masuk" in pdi)
+    }
+
+    @Test
+    fun `owner ikut daftar pelapor, hrd tidak`() {
+        // Cadangan offline harus mencerminkan LAPOR_ROLES server: `owner` ADA di
+        // sana, `hrd` TIDAK. Salah satu arah = kartu yang 403 atau menu hilang.
+        val kartu = ACTIVITY_ITEMS.first { it.id == "lapor_komplain" }
+        assertTrue("owner" in kartu.allowedRoles)
+        assertFalse("hrd" in kartu.allowedRoles)
+    }
+
+    @Test
+    fun `role cs tak ditulis di cadangan offline komplain`() {
+        // rust-shared: "belum ada role literal `cs` di sistem; sampai ada,
+        // orangnya diberi salah satu role di daftar ini". Menulisnya di sini =
+        // baris yang tak akan pernah cocok — persis yang dijaga test
+        // `tidak ada role salah ketik`. CS sungguhan lolos lewat peta kemampuan.
+        ACTIVITY_ITEMS.filter { it.id.startsWith("lapor_komplain") || it.id == "komplain_masuk" }
+            .forEach { assertFalse("Item '${it.id}' menulis role hantu 'cs'", "cs" in it.allowedRoles) }
+    }
+
+    @Test
+    fun `tarik unit memakai kunci delivery control`() {
+        // `boleh_atur_tarik` MENGIMPOR DELIVERY_CONTROL_ROLES — tak ada kunci
+        // `homeservice.tarik` tersendiri, dan kunci karangan akan menyembunyikan
+        // kartunya dari semua orang (peta fail-closed).
+        assertEquals("delivery.control", ACTIVITY_ITEMS.first { it.id == "tarik_unit" }.capability)
+    }
+
     @Test
     fun `peta kemampuan server menang atas daftar role lokal`() {
         val caps = mapOf("raport.review" to false)

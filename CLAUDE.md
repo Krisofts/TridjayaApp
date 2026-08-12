@@ -656,6 +656,33 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   jadi pemilik role lain bisa membuka layarnya tapi kiriman mereka dijawab 403. Kalau semua
   orang harus benar-benar bisa mengirim, yang diubah `KARYAWAN_ROLES` di backend — jangan
   menambalnya dari app.
+- **Komplain / Home Service** (`ui/homeservice/`, `data/HomeServiceRepository.kt`) — alur purna-jual
+  penuh di mobile: lapor → triase CS → kunjungan teknisi → penarikan unit. Lima kartu di Activity
+  (`lapor_komplain`, `komplain_masuk`, `tugas_home_service`, `tarik_unit`, `tugas_tarik_unit`),
+  route `home_hs_*`. Yang mengikat:
+  * **`status` server cuma menerima SATU nilai** (`"baru,ditugaskan"` → 400), sementara tiap antrian
+    butuh beberapa — jadi daftar dimuat TANPA filter status lalu disaring klien (`saringStatus` +
+    `HsMode`, cerminan cara web). Angka badge Activity juga dihitung dari hasil saringan itu, BUKAN
+    `total` (yang berarti "semua tiket terambil", bukan "yang menunggu kamu").
+  * **`mine=true` memilih KOLOM berdasarkan `jenis`**: `tarik_unit` → `tarik_driver_id`, selain itu
+    `assigned_teknisi_id`. Layar driver yang lupa mengirim `jenis=tarik_unit` selalu kosong TANPA
+    error — dijaga `HomeServicePlanTest`.
+  * **`jadwalAt` hanya `YYYY-MM-DD` / `YYYY-MM-DD HH:MM:SS`** (ISO8601 ber-`Z` → 400), dan jamnya
+    **WIB apa adanya** — server menyimpan yang dikirim tanpa konversi zona. Disaring
+    `jadwalUntukServer` sebelum dialog tertutup.
+  * **Foto di-serve terautentikasi** (`api/home-service/photo/{berkas}` + bearer) — `/uploads/…`
+    mentah selalu gagal (`fotoHsUrl`).
+  * `umurJam`/`melewatiSla` dipakai APA ADANYA dari server. Jangan hitung ulang: `created_at`
+    ditulis WIB tapi dibandingkan dengan `Utc::now()`, jadi angkanya sudah punya bias ~7 jam yang
+    diketahui — menghitung sendiri cuma menghasilkan angka KEDUA yang beda dari yang dilihat CS.
+  * **Role `cs` SENGAJA tak ditulis** di `HS_LAPOR_ROLES`/`HS_DISPATCH_ROLES` walau ada di daftar
+    server: rust-shared menyatakan sendiri role literal `cs` belum ada di sistem, jadi ejaan itu tak
+    akan pernah cocok (baris mati). CS sungguhan lolos lewat `homeservice.dispatch`.
+  * **Belum ada di app** (sengaja): sparepart berbiaya saat menutup kunjungan (nominal + bukti bayar
+    + setoran kasir — alur uang yang belum diuji lewat HP), dan tak ada endpoint edit/komentar tiket
+    sama sekali di backend (salah input = batalkan lalu buat ulang).
+  * Dropdown teknisi memakai `GET /api/users?role=pdi`, yang gate-nya (`USERS_READ_ROLES`) TIDAK
+    memuat `cs` — kegagalannya ditampilkan sebagai keterangan "tugaskan lewat web", sama seperti web.
 - **Nilai Aktivitas (PIC raport)** — `ui/raport/RaportReviewScreen.kt` + `RaportReviewViewModel`
   + logika murni `RaportReviewPlan.kt`, kartu ANTRIAN `raport_review` di Activity (route
   `home_raport_review`). Memuat `GET /api/raport-harian?tanggal=…&status=pending` (SELURUH
