@@ -292,7 +292,8 @@ private fun activityVisual(id: String): Pair<ImageVector, Color> = when (id) {
     // Kirim bukti & antrian pemeriksanya sengaja SEWARNA: dua sisi tugas yang sama.
     "bukti_chat", "review_bukti_chat" -> Icons.Rounded.Chat to Color(0xFF12B76A)
     "prospek" -> Icons.Rounded.Groups to MaterialTheme.colorScheme.tertiary
-    "raport" -> Icons.Rounded.Assignment to Color(0xFF667085)
+    // Mengisi & menilai sengaja SEWARNA: dua sisi tugas yang sama (pola bukti chat).
+    "raport", "raport_review" -> Icons.Rounded.Assignment to Color(0xFF667085)
     "buat_spk" -> Icons.Rounded.Description to Color(0xFF1E63E9)
     // Warna & ikon sama dgn entri "Riwayat SPK" di SpkHubScreen — layar tujuannya sama.
     "daftar_spk" -> Icons.Rounded.History to Color(0xFF667085)

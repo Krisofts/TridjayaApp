@@ -42,6 +42,7 @@ import com.krisoft.tridjayaelektronik.ui.mutasi.MutasiHistoriScreen
 import com.krisoft.tridjayaelektronik.ui.notifications.NotificationCenterScreen
 import com.krisoft.tridjayaelektronik.ui.payroll.PayrollScreen
 import com.krisoft.tridjayaelektronik.ui.priceerp.ErpPriceChangesScreen
+import com.krisoft.tridjayaelektronik.ui.raport.RaportReviewScreen
 import com.krisoft.tridjayaelektronik.ui.raport.RaportScreen
 import com.krisoft.tridjayaelektronik.ui.serials.SerialInputScreen
 // Berikut masih tinggal di package ui.home (hanya HomeNavHost yang pindah ke
@@ -68,6 +69,7 @@ private const val ROUTE_OPNAME = "home_opname"
 const val ROUTE_OPNAME_VALIDASI = "home_opname_validasi"
 private const val ROUTE_ABSEN = "home_absen"
 private const val ROUTE_RAPORT = "home_raport"
+private const val ROUTE_RAPORT_REVIEW = "home_raport_review"
 private const val ROUTE_BUKTI_CHAT = "home_bukti_chat"
 private const val ROUTE_REVIEW_BUKTI_CHAT = "home_review_bukti_chat"
 private const val ROUTE_GAJI = "home_gaji"
@@ -154,7 +156,10 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     // Bukan item registri (tombol kecil di baris "PINTASAN"), tapi tetap lewat
     // peta ini supaya kontraknya diuji sama seperti navKey lain.
     "panduan_alur" -> ROUTE_PANDUAN_ALUR
+    // Laporan aktivitas: layar karyawan (mengisi) vs antrian PIC (menilai) —
+    // dua route, sama pasangannya seperti bukti chat di bawah.
     "raport" -> ROUTE_RAPORT
+    "raport_review" -> ROUTE_RAPORT_REVIEW
     // Bukti chat harian: layar karyawan (kirim) vs antrian kepala cabang (periksa).
     "bukti_chat" -> ROUTE_BUKTI_CHAT
     "review_bukti_chat" -> ROUTE_REVIEW_BUKTI_CHAT
@@ -351,6 +356,9 @@ fun ActivityNavHost(
         }
         composable(ROUTE_RAPORT) {
             RaportScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_RAPORT_REVIEW) {
+            RaportReviewScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_BUKTI_CHAT) {
             ChatActivityScreen(onBack = { navController.popBackStack() })

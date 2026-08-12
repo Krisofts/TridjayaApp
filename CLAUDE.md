@@ -645,11 +645,36 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   posisi pertama saat tak cocok, itu bikin orang dinilai atas jobdesk divisi lain), kirim per
   baris ke `POST /api/raport-harian`. Bukti = foto kamera ber-watermark (`PhotoWatermark`,
   sama dengan absensi/PDI) atau `mode=none` + alasan ≥10 karakter. **Belum ada** video &
-  unggah dari galeri (masih lewat web). Guard: `POST` cuma role `karyawan` (`KARYAWAN_ROLES`
-  di kinerja-service `raport.rs`) — dicerminkan `RAPORT_INPUT_ROLES` di `ActivityRegistry.kt`.
+  unggah dari galeri (masih lewat web).
   Jendela jam pelaporan (default 08:00–18:00) & larangan hari Minggu ditegakkan server;
   pesan detailnya ada di `errors[0]`, bukan `message` — `RaportRepository.parseError`
   sengaja mengutamakan `errors[0]` (repository lain di app ini belum).
+  **Gate tampilan DIBUKA 2026-08-12** atas permintaan user: gate akun-uji dicabut
+  (`ITEM_KHUSUS_AKUN_UJI` kini kosong — mekanismenya sengaja dipertahankan untuk fitur
+  BETA berikutnya) dan `RAPORT_INPUT_ROLES` = `ALL_LOGGED_IN`. **Perhatikan mismatch yang
+  disengaja:** `POST /raport-harian` di server TETAP `KARYAWAN_ROLES` (role `karyawan` saja),
+  jadi pemilik role lain bisa membuka layarnya tapi kiriman mereka dijawab 403. Kalau semua
+  orang harus benar-benar bisa mengirim, yang diubah `KARYAWAN_ROLES` di backend — jangan
+  menambalnya dari app.
+- **Nilai Aktivitas (PIC raport)** — `ui/raport/RaportReviewScreen.kt` + `RaportReviewViewModel`
+  + logika murni `RaportReviewPlan.kt`, kartu ANTRIAN `raport_review` di Activity (route
+  `home_raport_review`). Memuat `GET /api/raport-harian?tanggal=…&status=pending` (SELURUH
+  karyawan — `antrianReview`, bukan `raportOfDay` yang menyaring ke diri sendiri) dan memutus
+  lewat `PATCH /api/raport-harian/{id}/review` `{status, score, comment}`. Yang perlu diketahui:
+  * Gate `raport.review` / `RAPORT_REVIEW_ROLES` — **`owner` tidak termasuk** (ia boleh membaca
+    lewat `RAPORT_VIEW_ALL_ROLES`, tapi ditolak `review_raport`).
+  * Skor ditentukan SERVER: `rejected` → 0, `approved` → `score ?: 100` di-clamp 0..100.
+    `skorReview` mencerminkannya supaya angka di layar sama dengan yang tersimpan; tolak wajib
+    berkomentar (`bolehSimpanReview`, dijaga di ViewModel juga, bukan cuma di tombol).
+  * Bukti TIDAK bisa dirender dari `/uploads/raport/…` mentah (upload privat, S-02 web) —
+    `evidenceImageUrl` memetakannya ke `api/raport-harian/evidence/{berkas}` + header
+    `Authorization` (pola `AuthedImage`). Sengaja BUKAN alias gateway `api/raport-files/*`
+    yang dipakai web: alias itu menolak role `hrd`, padahal `hrd` termasuk penilai.
+    `evidenceUrl` bisa berupa string JSON array (baris lama multi-bukti) → `parseEvidenceUrls`.
+  * `mode=video` tak diputar di app (alasan sama dengan `ChatReviewScreen`) — barisnya diberi
+    penanda dan pemeriksaannya diserahkan ke web.
+  * Server TIDAK men-scope penilai↔karyawan sama sekali (`service.review()` tak menerima
+    identity): siapa pun yang lolos role boleh menilai baris cabang mana pun.
 - All three tabs' data is Room-cached with a uniform 5-hour TTL and survives tab switches
 
 ## Official Android/Material guideline compliance

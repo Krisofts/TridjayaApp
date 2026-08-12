@@ -238,6 +238,15 @@ class ActivityViewModel @Inject constructor(
                 }
             }
 
+            // Antrian PIC. `.total` (bukan `items.size`) — server memotong `items`
+            // ke `limit`, badge tak boleh ikut terpotong (pola CHAT_REVIEW_PENDING).
+            if (ActivitySource.RAPORT_REVIEW_PENDING in sources) jobs += async {
+                when (val r = raportRepository.antrianReview(tanggal = todayIso)) {
+                    is AuthResult.Success -> counts[ActivitySource.RAPORT_REVIEW_PENDING] = r.data.total
+                    is AuthResult.Failure -> failed += ActivitySource.RAPORT_REVIEW_PENDING
+                }
+            }
+
             if (ActivitySource.RAPORT_TODAY in sources) {
                 jobs += async {
                     when (val r = raportRepository.raportOfDay(todayIso, user?.id)) {
