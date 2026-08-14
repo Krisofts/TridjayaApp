@@ -87,6 +87,7 @@ import com.krisoft.tridjayaelektronik.data.model.ExecutiveKpiDto
 import com.krisoft.tridjayaelektronik.data.model.LeaderboardBranchItemDto
 import com.krisoft.tridjayaelektronik.data.model.LeaderboardSalesItemDto
 import com.krisoft.tridjayaelektronik.data.model.MonthlyTargetDto
+import com.krisoft.tridjayaelektronik.ui.activity.akunUji
 import com.krisoft.tridjayaelektronik.ui.event.EventCarousel
 import com.krisoft.tridjayaelektronik.ui.event.EventViewModel
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
@@ -264,6 +265,13 @@ private fun LazyListScope.homeSection(
                 QuickAccessRow(
                     effectiveRoles = effectiveRoles(state.user),
                     capabilities = state.capabilities,
+                    // Vonis akun uji dihitung dari profil yang SAMA dengan yang
+                    // memasok `effectiveRoles` di atas (`state.user`), jadi
+                    // keduanya tak bisa saling mendahului: profil belum termuat
+                    // = `null` = role kosong DAN bukan akun uji. Predikatnya
+                    // `akunUji` dari `ActivityRegistry.kt` — DIPAKAI ULANG, bukan
+                    // ditulis tandingannya (2026-08-15, jalan masuk KPI).
+                    akunUji = akunUji(state.user?.name, state.user?.nik),
                     onInventory = onQuickAccessInventory,
                     onCariSemua = onQuickAccessSearch,
                     onLeads = onQuickAccessLeads,
@@ -285,7 +293,27 @@ private fun LazyListScope.homeSection(
             // Angkanya dihitung dari cache lead lokal, yang diisi `GET /crm/leads`.
             // Role tanpa akses CRM tak pernah punya isi cache itu → kartu selalu
             // nol dan menyesatkan. Sembunyikan, sejalan dgn tile CRM di atas.
-            if (visibleQuickAccessMenus(effectiveRoles(state.user), state.capabilities).any { it.id == "crm" }) {
+            //
+            // AWAS — syarat ini sekarang SELALU `false`: tak ada lagi entri
+            // ber-`id = "crm"` di [QUICK_ACCESS_MENUS]. CRM dilepas dari grid
+            // 2026-07-28 saat ia naik jadi kartu di layar Activity (lihat
+            // komentar di atas `QUICK_ACCESS_MENUS`), dan syarat ini ikut mati
+            // diam-diam bersamanya, jadi seksi "Ringkasan CRM" tak pernah
+            // dirender walau masih terdaftar di `HomeLayout.DEFAULT_ORDER`.
+            // Itu keadaan yang SUDAH ADA sebelum perubahan akun-uji 2026-08-15
+            // dan sengaja tidak diperbaiki di sini — "apakah Ringkasan CRM masih
+            // diinginkan?" itu keputusan produk, bukan rapi-rapi kode.
+            // `akunUji` tetap dioper supaya kedua pemanggil
+            // `visibleQuickAccessMenus` di berkas ini menilai dengan masukan yang
+            // sama; hari ini efeknya nol, karena `"crm"` juga tak ada di
+            // [MENU_TAMBAHAN_AKUN_UJI].
+            if (
+                visibleQuickAccessMenus(
+                    effectiveRoles(state.user),
+                    state.capabilities,
+                    akunUji(state.user?.name, state.user?.nik),
+                ).any { it.id == "crm" }
+            ) {
                 item { SectionHeader(title = "Ringkasan CRM", icon = Icons.Rounded.Groups) }
                 item { CrmCard(summary = state.crmSummary) }
             }
@@ -508,6 +536,14 @@ internal fun canAccessCrm(effectiveRoles: Set<String>): Boolean =
 private fun QuickAccessRow(
     effectiveRoles: Set<String>,
     capabilities: Map<String, Boolean>?,
+    /** Tanpa nilai default — SENGAJA, dan sengaja BERBEDA dari
+     *  `visibleQuickAccessMenus` yang default-nya `false`. Di sana default itu
+     *  melindungi pemanggil luar yang tak tahu-menahu soal akun uji; di sini
+     *  hanya ada satu pemanggil dan ia memegang `state.user`, jadi default
+     *  hanya akan menyembunyikan kelalaian: menu [MENU_TAMBAHAN_AKUN_UJI] tak
+     *  pernah muncul untuk akun uji, tanpa error, tanpa test yang berteriak.
+     *  Biarkan kompiler yang menagih. */
+    akunUji: Boolean,
     onInventory: () -> Unit,
     onCariSemua: () -> Unit,
     onLeads: () -> Unit,
@@ -526,7 +562,7 @@ private fun QuickAccessRow(
     // Tile dirender dari REGISTRI (`QuickAccessMenus.kt`) — hak akses tiap menu
     // dinyatakan di sana, sekali, di sebelah guard backend yang dicerminkannya.
     // Menambah tile langsung di sini (tanpa entri registri) tidak akan tampil.
-    val menus = visibleQuickAccessMenus(effectiveRoles, capabilities)
+    val menus = visibleQuickAccessMenus(effectiveRoles, capabilities, akunUji)
     LazyHorizontalGrid(
         rows = GridCells.Fixed(2),
         modifier = Modifier.fillMaxWidth().height(224.dp),

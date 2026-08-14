@@ -202,9 +202,109 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
     ),
 )
 
-/** Menu yang boleh tampil untuk pemilik [effectiveRoles]. Fail-closed: role
- *  kosong (profil belum termuat) = tak ada menu ber-gate yang muncul. */
+/**
+ * Menu yang DITAMBAHKAN untuk akun uji, di luar daftar role-nya.
+ *
+ * Ditambahkan 2026-08-15 atas permintaan user: "KPI jangan dulu ditampilkan ke
+ * semua karyawan KECUALI akun uji." Gate 2026-08-02 (manager/superadmin/admin)
+ * TETAP BERDIRI apa adanya — yang berubah cuma ada satu pintu tambahan supaya
+ * fitur KPI bisa diuji dari HP tanpa memberi role manager ke akun uji.
+ *
+ * **JANGAN tertukar dengan `ITEM_KHUSUS_AKUN_UJI` di `ActivityRegistry.kt`** —
+ * namanya mirip, arahnya berlawanan:
+ *
+ * | Konstanta (per id) | Arah | Akibat untuk non-akun-uji |
+ * |---|---|---|
+ * | `ITEM_KHUSUS_AKUN_UJI` → `raport` | MEMBATASI ke akun uji, TANPA jalan tembus | item HILANG walau role/kemampuan mengizinkan (`allowedRoles` = `ALL_LOGGED_IN`) |
+ * | `ITEM_KHUSUS_AKUN_UJI` → `opname_cabang` | MEMBATASI, ada jalan tembus role | hilang untuk karyawan biasa; **TETAP TAMPIL** untuk keempat role `OPNAME_PELAKSANA_NYATA` — semuanya memang ada di `OPNAME_HITUNG_MENU_ROLES` |
+ * | `ITEM_KHUSUS_AKUN_UJI` → `opname_validasi` | MEMBATASI, jalan tembusnya SEBAGIAN PERCUMA | hilang untuk karyawan biasa; dari keempat role `TEMBUS_AKUN_UJI` hanya **`admin-stok`** yang benar-benar melihatnya — `allowedRoles` = `SERIAL_INPUT_MENU_ROLES` = `{admin-stok}` dan kemampuan `serial.input` juga `admin-stok` saja, jadi `gateAllows` menyaring tiga sisanya SESUDAH jalan tembus |
+ * | [MENU_TAMBAHAN_AKUN_UJI] (di sini) | MENAMBAH akun uji | tak ada yang hilang; role lama utuh |
+ *
+ * **`TEMBUS_AKUN_UJI` itu ADA dan sedang menopang pekerjaan nyata.** Ia
+ * ditambahkan 2026-08-14 — SEHARI sebelum berkas ini disentuh — karena
+ * admin-stok sudah memakai opname di produksi hari itu juga. Jangan
+ * mencabutnya saat "menyeragamkan" kedua berkas dengan alasan tak ada
+ * padanannya di sini: yang tak punya padanan itu KEBUTUHANNYA (`kpi` memang
+ * tak perlu jalan tembus), bukan konstantanya.
+ *
+ * Yang membedakan keduanya BUKAN urutan evaluasi melainkan BENTUK ungkapannya.
+ * Di sana vonis akun-uji dirangkai sebagai PENGURANG: `id in set && !akunUji`
+ * membuka satu blok yang `return@filter false` KECUALI `effectiveRoles`
+ * memuat role di `TEMBUS_AKUN_UJI[id]` (kutipan utuhnya di
+ * `visibleActivityItems`, `ActivityRegistry.kt` — baca di sana, jangan
+ * mengandalkan ringkasan ini). Jalan tembus itu MEMPERSEMPIT siapa yang
+ * dipotong, tapi tidak membalik arahnya: bentuk itu tetap bisa membatalkan
+ * gate yang sudah meluluskan. Di sini vonisnya dirangkai sebagai ATAU
+ * (`gateAllows(...) || jalanAkunUji`) sehingga ia hanya bisa menambah. Kalau
+ * bentuk ActivityRegistry disalin apa adanya ke sini,
+ * `manager`/`superadmin`/`admin` yang BUKAN akun uji akan kehilangan menu KPI
+ * yang sudah mereka pegang sejak 2026-08-02 — dan tak ada entri tembus untuk
+ * `kpi` yang akan menahannya. Itulah kekeliruan yang paling mudah terjadi saat
+ * "menyeragamkan" dua berkas ini.
+ *
+ * (Urutannya memang ikut berbeda — di sana saringan akun-uji berjalan SEBELUM
+ * `gateAllows`, di sini SESUDAH — tapi itu akibat dari bentuknya, bukan
+ * sebabnya. Menukar urutan saja di sini tidak mencabut hak siapa pun.)
+ *
+ * **Alternatif yang SENGAJA tidak dipilih:** menambahkan role akun uji ke
+ * `allowedRoles` entri `kpi`. Diperiksa di produksi 2026-08-15 (`auth_users`,
+ * baca-saja): ada **11** akun yang cocok predikat akun uji — **10 ber-`role`
+ * `karyawan`**, satu (`test pic`) ber-`role` `owner`. Variasi "UJI
+ * Sales/PDI/Kasir/Driver" ada di kolom `divisi` (`sales`, `pdi`, `kasir`,
+ * `driver`, `admin-stok`, …) yang di-fold jadi role efektif oleh
+ * [effectiveRoles], BUKAN di kolom `role`. Artinya satu-satunya role yang
+ * mencakup hampir seluruh keluarga akun uji adalah `karyawan` — yang dipegang
+ * pula oleh seluruh karyawan nyata, persis yang diminta user ditutup.
+ * Menyebut divisinya satu per satu juga tak menolong: divisi itu dipakai
+ * karyawan sungguhan juga (hitungan hari itu: `sales` 45, `pdi` 17, `driver`
+ * 13, `kasir` 8 akun non-uji).
+ *
+ * Ini gate MENU saja, tak ada backend yang perlu ikut diubah: `GET /kpi/me`
+ * (kinerja-service `kpi/handlers.rs` `get_me`) hanya memanggil
+ * `identity_from_headers` lalu men-scope ke `identity.user_id` — TANPA
+ * `ensure_role`, berbeda dari `get_karyawan_list`/`get_karyawan_detail` di
+ * berkas yang sama yang memakai `ensure_role(&identity, VIEW_ALL_ROLES)`.
+ *
+ * Cerminan web mendarat lebih dulu di commit `ce67e13b` (Tridjaya-Web,
+ * 2026-08-15): param ketiga `akunUji` (ber-default `false`) pada
+ * `canAccessDashboardPath` (`utils/dashboardAccess.ts`), injeksi menu sidebar
+ * `DashboardLayout.tsx`, prop `allowAkunUji` pada RoleGuard route
+ * `/dashboard/kpi` (`App.tsx`), dan kartu KPI beranda `KaryawanDashboard.tsx`.
+ * Bentuknya di sana juga ATAU (`akunUji || normalizeAccessRole(role) ===
+ * 'manager'`) — sengaja sama. Predikatnya sendiri, `isAkunUji`
+ * (`utils/akunUji.ts`), BUKAN bagian commit itu: ia lahir jauh lebih awal di
+ * `de7f7be8` (2026-07-31, gate akun-uji untuk Input Aktivitas), dan
+ * `ce67e13b` hanya mengimpornya.
+ */
+internal val MENU_TAMBAHAN_AKUN_UJI: Set<String> = setOf("kpi")
+
+/**
+ * Menu yang boleh tampil untuk pemilik [effectiveRoles]. Fail-closed: role
+ * kosong (profil belum termuat) = tak ada menu ber-gate yang muncul.
+ *
+ * [akunUji] default `false` DISENGAJA — kontrak yang sama dengan
+ * `visibleActivityItems` (`ActivityRegistry.kt`) dan `canAccessDashboardPath`
+ * (web): pemanggil yang lupa mengopernya MENYEMBUNYIKAN, tak pernah
+ * membocorkan. Di sini akibatnya menu [MENU_TAMBAHAN_AKUN_UJI] tak muncul untuk
+ * akun uji — kerugiannya cuma "fitur tak bisa diuji", dan itu ketahuan pada
+ * pemakaian pertama; kebalikannya (default `true`) membocorkan skor KPI ke
+ * karyawan nyata dan tak ketahuan sama sekali. Nilai default ini ikut dijaga
+ * test `jalan tembus akun uji hanya untuk kpi…`.
+ */
 internal fun visibleQuickAccessMenus(
     effectiveRoles: Set<String>,
     capabilities: Map<String, Boolean>? = null,
-): List<QuickAccessMenu> = QUICK_ACCESS_MENUS.filter { it.visibleFor(effectiveRoles, capabilities) }
+    akunUji: Boolean = false,
+): List<QuickAccessMenu> = QUICK_ACCESS_MENUS.filter { menu ->
+    // Gate role/kemampuan dinilai lebih dulu dan berdiri SENDIRI: klausa akun-uji
+    // di bawah hanya bisa menambah `true`, tak pernah membatalkan `true` ini.
+    if (menu.visibleFor(effectiveRoles, capabilities)) return@filter true
+    // Jalan kedua khusus akun uji.
+    //
+    // `effectiveRoles.isNotEmpty()` ikut diperiksa supaya aturan fail-closed
+    // `gateAllows` ("role kosong = profil belum termuat = jangan menebak") tidak
+    // bisa dilangkahi lewat pintu ini. Sisi web melakukan hal setara di
+    // `canAccessDashboardPath`, yang `return false` saat `!role` SEBELUM cabang
+    // akun-uji dinilai.
+    akunUji && effectiveRoles.isNotEmpty() && menu.id in MENU_TAMBAHAN_AKUN_UJI
+}
