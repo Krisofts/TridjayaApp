@@ -53,29 +53,37 @@ class ActivityRegistryTest {
     // ── Item khusus akun uji ─────────────────────────────────────────────────
 
     @Test
-    fun `Input Aktivitas tampil untuk semua karyawan, bukan cuma akun uji`() {
-        // 2026-08-12, permintaan user: masa uji BETA selesai — raport dibuka
-        // untuk karyawan nyata. Gate akun-uji harus TIDAK lagi memangkasnya.
+    fun `Input Aktivitas hanya untuk akun uji, bukan karyawan nyata`() {
+        // 2026-08-14, permintaan user: kartunya DISEMBUNYIKAN LAGI dari orang
+        // nyata (sempat dibuka 2026-08-12). Cerminan web `raportInputVisible`.
         val karyawan = visibleActivityItems(setOf("karyawan"), null, akunUji = false).map { it.id }
-        assertTrue("raport" in karyawan)
-        // Akun uji melihat himpunan yang sama — set khusus akun uji kini kosong.
+        assertFalse("karyawan nyata tak boleh melihat kartu Input Aktivitas", "raport" in karyawan)
+
         val uji = visibleActivityItems(setOf("karyawan"), null, akunUji = true).map { it.id }
-        assertEquals(uji, karyawan)
+        assertTrue("akun uji harus tetap melihatnya", "raport" in uji)
+
+        // Yang dipangkas HANYA kartu itu — gate akun-uji tak boleh menyeret
+        // kartu lain ikut hilang dari karyawan nyata.
+        assertEquals(uji.filterNot { it == "raport" }, karyawan)
     }
 
     @Test
-    fun `Input Aktivitas terbuka untuk role apa pun yang login`() {
-        // Permintaan user 2026-08-12 "buka untuk semua orang". Peta kemampuan
-        // TIDAK memengaruhinya (item ini ber-capability null), jadi kartunya
-        // tetap ada walau server mengirim peta lengkap.
-        listOf("karyawan", "manager", "owner", "kasir", "driver", "hrd").forEach { role ->
+    fun `akun uji melihatnya dengan role apa pun, orang nyata tidak`() {
+        // Keluarga akun uji ber-role macam-macam (UJI Sales/PDI/Kasir/Driver),
+        // BUKAN `karyawan` — kalau gate-nya dikunci ke satu role, justru akun
+        // uji yang kehilangan kartunya dan fiturnya tak bisa diuji sama sekali.
+        listOf("karyawan", "manager", "owner", "kasir", "driver", "hrd", "sales").forEach { role ->
             assertTrue(
-                "role '$role' kehilangan kartu Input Aktivitas",
-                "raport" in visibleActivityItems(setOf(role), emptyMap()).map { it.id },
+                "akun uji ber-role '$role' kehilangan kartu Input Aktivitas",
+                "raport" in visibleActivityItems(setOf(role), emptyMap(), akunUji = true).map { it.id },
+            )
+            assertFalse(
+                "orang nyata ber-role '$role' tak boleh melihat kartu Input Aktivitas",
+                "raport" in visibleActivityItems(setOf(role), emptyMap(), akunUji = false).map { it.id },
             )
         }
         // Batasnya tetap: profil belum termuat (role kosong) → jangan menebak.
-        assertFalse("raport" in visibleActivityItems(emptySet(), null).map { it.id })
+        assertFalse("raport" in visibleActivityItems(emptySet(), null, akunUji = true).map { it.id })
     }
 
     // ── Antrian PIC raport ───────────────────────────────────────────────────
@@ -98,8 +106,18 @@ class ActivityRegistryTest {
     fun `PIC melihat antrian penilaian, karyawan biasa tidak`() {
         val pic = visibleActivityItems(setOf("pic_raport"), null).map { it.id }
         assertTrue("raport_review" in pic)
-        // Dan ia tetap punya kartu pengisiannya juga — keduanya hidup bersama.
-        assertTrue("raport" in pic)
+        // Kartu PENGISIAN tidak lagi ikut (disembunyikan 2026-08-14, akun uji
+        // saja) — tapi kartu PENILAIAN wajib tetap ada. Ini yang paling mudah
+        // rusak tanpa terlihat: menyembunyikan `raport` sambil tak sengaja ikut
+        // menyeret `raport_review` berarti reviewer nyata kehilangan antriannya
+        // dan raport orang menumpuk tanpa satu pun error.
+        assertFalse("raport" in pic)
+        assertTrue(
+            "akun uji PIC harus melihat KEDUANYA",
+            visibleActivityItems(setOf("pic_raport"), null, akunUji = true)
+                .map { it.id }
+                .containsAll(listOf("raport", "raport_review")),
+        )
 
         val karyawan = visibleActivityItems(setOf("karyawan"), null).map { it.id }
         assertFalse("raport_review" in karyawan)

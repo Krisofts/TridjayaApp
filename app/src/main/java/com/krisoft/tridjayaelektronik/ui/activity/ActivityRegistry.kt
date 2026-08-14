@@ -96,15 +96,18 @@ data class ActivityItem(
 )
 
 /**
- * Kartu "Input aktivitas" DIBUKA UNTUK SEMUA yang login (permintaan user
- * 2026-08-12), karena itu [ALL_LOGGED_IN] — bukan cerminan guard backend.
+ * Gerbang ROLE kartu "Input aktivitas" — [ALL_LOGGED_IN], dan itu kini benar
+ * mencerminkan backend: `upsert_raport` (kinerja-service `raport/handlers.rs`)
+ * LOGIN-ONLY sejak 2026-08-14, karena endpoint-nya self-scoped (payload tak
+ * membawa id karyawan; service memasangnya dari identity). Peringatan lama
+ * "tombol kirim akan dijawab 403" sudah TIDAK berlaku.
  *
- * PERINGATAN yang sengaja ditulis di sini: `upsert_raport` (kinerja-service
- * `raport.rs` `KARYAWAN_ROLES`) tetap hanya menerima role `karyawan`. Pemilik
- * role lain sekarang bisa MEMBUKA layarnya (dan `list_raport` `LIST_ROLES`
- * memang lebih longgar), tapi tombol kirimnya akan dijawab 403 oleh server.
- * Kalau suatu saat semua orang benar-benar harus bisa MENGIRIM, yang diubah
- * `KARYAWAN_ROLES` di backend — jangan mencoba menambalnya dari sisi app.
+ * Yang membatasi siapa yang MELIHAT kartunya bukan baris ini melainkan
+ * [ITEM_KHUSUS_AKUN_UJI] — sengaja dipisah: role menjawab "boleh mengirim?",
+ * set akun-uji menjawab "fiturnya sudah dilepas ke orang nyata?". Menyatukan
+ * keduanya (mis. mengunci ulang ke role `karyawan`) akan MENGHILANGKAN kartu
+ * dari akun uji sendiri — UJI Sales/PDI/Kasir/Driver ber-role macam-macam,
+ * bukan `karyawan`.
  *
  * Belum ada kunci di `GET /api/me/capabilities` untuk hak kirim, jadi item
  * raport satu-satunya yang ber-`capability = null` (dijaga `ActivityRegistryTest`).
@@ -550,12 +553,20 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
  * Item yang HANYA tampil untuk akun uji, bukan karyawan nyata — dipakai saat
  * sebuah fitur masih diuji di produksi.
  *
- * `raport` (Input Aktivitas, BETA) pernah masuk sini 2026-07-31, lalu DIBUKA
- * untuk semua karyawan 2026-08-12 atas permintaan user (masa uji selesai) —
- * set ini sekarang kosong tapi mekanismenya dipertahankan untuk fitur BETA
- * berikutnya. Gate ini gate TAMPILAN saja: endpoint POST-nya tidak ikut ditutup.
+ * `raport` (Input Aktivitas, BETA) masuk sini 2026-07-31, sempat DIBUKA untuk
+ * semua karyawan 2026-08-12, lalu DISEMBUNYIKAN LAGI 2026-08-14 atas permintaan
+ * user — jadi ia kembali ke sini.
+ *
+ * Gate ini gate TAMPILAN saja: `POST /raport-harian` sengaja TIDAK ikut ditutup,
+ * supaya baris raport yang sudah berjalan + auto-feed KPI `LAPORAN AKTIVITAS`
+ * tak putus. Menutup endpoint-nya bersamaan akan mematikan indikator KPI orang
+ * yang datanya sudah masuk — kerugian yang tak terlihat sampai gajian.
+ *
+ * Cerminan web: `raportInputVisible` di `DashboardLayout.tsx` (`isAkunUji`).
+ * Keduanya harus sepakat, kalau tidak menu hilang di satu sisi saja dan orang
+ * mengira app-nya rusak.
  */
-private val ITEM_KHUSUS_AKUN_UJI = emptySet<String>()
+private val ITEM_KHUSUS_AKUN_UJI = setOf("raport")
 
 /**
  * Apakah akun ini akun UJI (bukan karyawan nyata).
