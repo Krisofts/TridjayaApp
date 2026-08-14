@@ -649,13 +649,19 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   Jendela jam pelaporan (default 08:00–18:00) & larangan hari Minggu ditegakkan server;
   pesan detailnya ada di `errors[0]`, bukan `message` — `RaportRepository.parseError`
   sengaja mengutamakan `errors[0]` (repository lain di app ini belum).
-  **Gate tampilan DIBUKA 2026-08-12** atas permintaan user: gate akun-uji dicabut
-  (`ITEM_KHUSUS_AKUN_UJI` kini kosong — mekanismenya sengaja dipertahankan untuk fitur
-  BETA berikutnya) dan `RAPORT_INPUT_ROLES` = `ALL_LOGGED_IN`. **Perhatikan mismatch yang
-  disengaja:** `POST /raport-harian` di server TETAP `KARYAWAN_ROLES` (role `karyawan` saja),
-  jadi pemilik role lain bisa membuka layarnya tapi kiriman mereka dijawab 403. Kalau semua
-  orang harus benar-benar bisa mengirim, yang diubah `KARYAWAN_ROLES` di backend — jangan
-  menambalnya dari app.
+  **Gate tampilan: AKUN UJI SAJA** (`ITEM_KHUSUS_AKUN_UJI = setOf("raport")`). Riwayatnya
+  bolak-balik dan itu sengaja dicatat: ditutup 2026-07-31 → DIBUKA untuk semua 2026-08-12 →
+  DITUTUP LAGI 2026-08-14, semuanya atas permintaan user. Cerminan web-nya
+  `raportInputVisible` (`DashboardLayout.tsx`, `isAkunUji`) — keduanya harus sepakat.
+  **`RAPORT_INPUT_ROLES` TETAP `ALL_LOGGED_IN`, jangan dikunci ulang ke `setOf("karyawan")`:**
+  keluarga akun uji ber-role macam-macam (UJI Sales/PDI/Kasir/Driver), jadi mengunci role
+  justru menghilangkan kartu dari akun uji sendiri dan fiturnya tak bisa diuji sama sekali.
+  Yang menyembunyikan = set akun-uji, bukan gate role.
+  Sisi server: `POST /raport-harian` + `/raport-harian/upload` **LOGIN-ONLY sejak 2026-08-14**
+  (`KARYAWAN_ROLES` dibuang; endpoint-nya self-scoped — payload tak membawa id karyawan).
+  Mismatch lama "role lain dijawab 403" sudah TIDAK ada. Gate ini murni TAMPILAN: endpoint
+  sengaja dibiarkan terbuka supaya baris raport berjalan + auto-feed KPI `LAPORAN AKTIVITAS`
+  tak putus.
 - **Komplain / Home Service** (`ui/homeservice/`, `data/HomeServiceRepository.kt`) — alur purna-jual
   penuh di mobile: lapor → triase CS → kunjungan teknisi → penarikan unit. Lima kartu di Activity
   (`lapor_komplain`, `komplain_masuk`, `tugas_home_service`, `tarik_unit`, `tugas_tarik_unit`),
