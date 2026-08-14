@@ -586,26 +586,24 @@ class ActivityOpnameCabangTest {
     }
 
     @Test
-    fun `kedua kartu opname disembunyikan dari orang nyata, bukan salah satu`() {
-        // Permintaan user 2026-08-14: alur opname per-SN belum boleh terlihat
-        // karyawan. KEDUANYA — menutup `opname_cabang` saja meninggalkan
-        // antrian validasi terbuka untuk admin-stok, yaitu sisi lain dari alur
-        // yang sama.
+    fun `kedua kartu opname disembunyikan dari karyawan biasa, bukan salah satu`() {
+        // Permintaan user 2026-08-14 pagi: alur opname per-SN belum boleh
+        // terlihat karyawan. KEDUANYA — menutup `opname_cabang` saja
+        // meninggalkan antrian validasi terbuka, yaitu sisi lain alur yang sama.
         //
-        // Peta kemampuan sengaja diisi `true` di sini: itulah yang server
-        // BENAR-BENAR kirim (`opname.hitung` memuat `karyawan`,
-        // `serial.input` memuat `admin-stok`). Tes ini karena itu menahan
+        // Peta kemampuan sengaja diisi `true`: itulah yang server BENAR-BENAR
+        // kirim (`opname.hitung` memuat `karyawan`). Tes ini karena itu menahan
         // urutan di `visibleActivityItems` — saringan akun-uji HARUS berjalan
         // sebelum `gateAllows`, kalau dibalik kartunya muncul lagi.
         val caps = mapOf("opname.hitung" to true, "serial.input" to true)
-        listOf("karyawan", "admin-stok", "kepala-cabang", "admin", "superadmin").forEach { role ->
+        listOf("karyawan", "manager", "owner", "sales", "driver", "kasir").forEach { role ->
             val nyata = visibleActivityItems(setOf(role), caps, akunUji = false).map { it.id }
             assertFalse(
-                "orang nyata ber-role '$role' masih melihat kartu Opname Cabang",
+                "orang biasa ber-role '$role' masih melihat kartu Opname Cabang",
                 "opname_cabang" in nyata,
             )
             assertFalse(
-                "orang nyata ber-role '$role' masih melihat kartu Validasi Opname",
+                "orang biasa ber-role '$role' masih melihat kartu Validasi Opname",
                 "opname_validasi" in nyata,
             )
         }
@@ -616,12 +614,52 @@ class ActivityOpnameCabangTest {
     }
 
     @Test
+    fun `pelaksana nyata tetap melihat kartu opname walau bukan akun uji`() {
+        // Ditambahkan 2026-08-14 SORE setelah gate pagi harinya terbukti terlalu
+        // lebar: admin-stok sudah memakai opname di produksi hari itu juga
+        // (sesi OPN-20260814-0001, scan SN 17:46), dan hanya merekalah yang
+        // boleh mendaftarkan SN (`SERIAL_INPUT_ROLES = ["admin-stok"]`).
+        // Menyembunyikan kartunya = mencabut alat kerja yang sedang dipakai.
+        val caps = mapOf("opname.hitung" to true, "serial.input" to true)
+        OPNAME_PELAKSANA_NYATA.forEach { role ->
+            val nyata = visibleActivityItems(setOf(role), caps, akunUji = false).map { it.id }
+            assertTrue(
+                "pelaksana nyata ber-role '$role' kehilangan kartu Opname Cabang",
+                "opname_cabang" in nyata,
+            )
+        }
+        // Kasus SIDIK yang sebenarnya: role utamanya `karyawan`, `admin-stok`
+        // datang dari `extra_roles`. Menilai dari role utama saja akan menolaknya.
+        val sidik = visibleActivityItems(setOf("karyawan", "admin-stok"), caps, akunUji = false).map { it.id }
+        assertTrue("opname_cabang" in sidik)
+        assertTrue("opname_validasi" in sidik)
+    }
+
+    @Test
+    fun `jalan tembus itu KHUSUS opname — raport tetap akun uji murni`() {
+        // Kalau daftar tembus suatu hari dipukul rata ke seluruh
+        // ITEM_KHUSUS_AKUN_UJI, Input Aktivitas ikut bocor ke admin-stok tanpa
+        // ada yang meminta. Riwayat kartu itu sudah tiga kali dibuka-tutup.
+        val caps = mapOf("opname.hitung" to true, "serial.input" to true)
+        OPNAME_PELAKSANA_NYATA.forEach { role ->
+            assertFalse(
+                "raport bocor ke pelaksana nyata ber-role '$role'",
+                "raport" in visibleActivityItems(setOf(role), caps, akunUji = false).map { it.id },
+            )
+        }
+    }
+
+    @Test
     fun `gate akun uji tidak menyeret kartu lain ikut hilang`() {
         // Kegagalan senyap yang paling mungkin: menambah id ke ITEM_KHUSUS_AKUN_UJI
         // salah ketik / kelebihan, lalu antrian orang lain ikut lenyap tanpa error.
+        // Role sengaja `karyawan`, BUKAN `admin-stok`: sejak 2026-08-14 sore
+        // pelaksana nyata menembus gate opname, jadi memakai admin-stok di sini
+        // membuat selisihnya tinggal `raport` dan tes ini berhenti menjaga
+        // kelebihan id di ITEM_KHUSUS_AKUN_UJI — yang justru inti tesnya.
         val caps = mapOf("opname.hitung" to true, "serial.input" to true, "indent.approve" to true)
-        val nyata = visibleActivityItems(setOf("admin-stok"), caps, akunUji = false).map { it.id }
-        val uji = visibleActivityItems(setOf("admin-stok"), caps, akunUji = true).map { it.id }
+        val nyata = visibleActivityItems(setOf("karyawan"), caps, akunUji = false).map { it.id }
+        val uji = visibleActivityItems(setOf("karyawan"), caps, akunUji = true).map { it.id }
         assertEquals(uji.filterNot { it in setOf("raport", "opname_cabang", "opname_validasi") }, nyata)
     }
 

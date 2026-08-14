@@ -602,6 +602,44 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
 private val ITEM_KHUSUS_AKUN_UJI = setOf("raport", "opname_cabang", "opname_validasi")
 
 /**
+ * Role yang TETAP melihat kartu opname walau item-nya ber-gate akun-uji.
+ *
+ * Ditambahkan 2026-08-14 sore setelah kenyataan lapangan membantah asumsi gate
+ * itu. Gate akun-uji dipasang pagi harinya karena `opname.hitung` mencakup role
+ * `karyawan`, jadi kartunya mendarat di HP hampir seluruh pegawai — itu memang
+ * yang tak diinginkan user. Tapi vonis "belum boleh dipakai orang nyata"
+ * ternyata terlalu lebar: **admin-stok sudah memakainya di produksi hari itu
+ * juga** (sesi `OPN-20260814-0001`, scan SN 17:46), dan merekalah satu-satunya
+ * role yang boleh MENDAFTARKAN SN (`SERIAL_INPUT_ROLES = ["admin-stok"]`).
+ * Menutup kartunya dari mereka mencabut alat kerja yang sedang dipakai.
+ *
+ * Jadi saringannya dipersempit, BUKAN dicabut: pelaksana nyata tembus, karyawan
+ * biasa tetap tidak melihat apa pun — permintaan asli user utuh.
+ *
+ * **`raport` SENGAJA tidak ikut** dan tak boleh diberi daftar tembus: ia BETA
+ * penuh, tak punya pelaksana-nyata yang setara, dan riwayatnya sudah tiga kali
+ * dibuka-tutup atas permintaan user.
+ *
+ * **Jangan ganti mekanismenya jadi mencabut `karyawan` dari
+ * [OPNAME_HITUNG_MENU_ROLES]** — keluarga akun uji ber-role macam-macam
+ * (UJI Sales/PDI/Kasir/Driver), jadi menyempitkan role justru menghilangkan
+ * kartu dari akun uji sendiri; itu jebakan yang sama persis dengan
+ * `RAPORT_INPUT_ROLES`. Dua saringan ini memang menjawab dua pertanyaan
+ * berbeda: role = "boleh mengerjakan?", set ini = "sudah dilepas ke siapa?".
+ */
+internal val OPNAME_PELAKSANA_NYATA =
+    setOf("admin-stok", "admin", "superadmin", "kepala-cabang")
+
+/**
+ * Item ber-gate akun-uji yang punya jalan tembus role. Subset dari
+ * [ITEM_KHUSUS_AKUN_UJI] — item yang tak tercantum di sini tetap akun-uji murni.
+ */
+private val TEMBUS_AKUN_UJI: Map<String, Set<String>> = mapOf(
+    "opname_cabang" to OPNAME_PELAKSANA_NYATA,
+    "opname_validasi" to OPNAME_PELAKSANA_NYATA,
+)
+
+/**
  * Apakah akun ini akun UJI (bukan karyawan nyata).
  *
  * Cerminan `birthday::akun_uji` di kinerja-service. PREFIKS, bukan `contains` —
@@ -625,7 +663,12 @@ internal fun visibleActivityItems(
     akunUji: Boolean = false,
 ): List<ActivityItem> = ACTIVITY_ITEMS.filter {
     if (it.hiddenFromActivity) return@filter false
-    if (it.id in ITEM_KHUSUS_AKUN_UJI && !akunUji) return@filter false
+    if (it.id in ITEM_KHUSUS_AKUN_UJI && !akunUji) {
+        // Pelaksana nyata (admin-stok dst) menembus; karyawan biasa tidak.
+        // Lihat [OPNAME_PELAKSANA_NYATA] untuk alasannya.
+        val tembus = TEMBUS_AKUN_UJI[it.id].orEmpty()
+        if (effectiveRoles.none { role -> role in tembus }) return@filter false
+    }
     gateAllows(it.capability, it.allowedRoles, effectiveRoles, capabilities)
 }
 
