@@ -61,7 +61,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.krisoft.tridjayaelektronik.ui.security.SecurityBlockScreen
 import com.krisoft.tridjayaelektronik.ui.security.SecurityGuard
 import com.krisoft.tridjayaelektronik.ui.security.Threat
-import androidx.compose.runtime.produceState
 import androidx.compose.material3.CircularProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -169,10 +168,22 @@ private fun SecurityGate(content: @Composable () -> Unit) {
     var recheckKey by remember { mutableStateOf(0) }
 
     // Deteksi (scan semua paket + cek root berbasis file) dijalankan di Dispatchers.IO — sebelumnya
-    // sinkron di main thread saat start & tiap resume → risiko ANR/jank. produceState menahan hasil
-    // lama saat re-cek sehingga tak berkedip; hanya run pertama menampilkan status "memeriksa".
-    val threats by produceState<List<Threat>?>(initialValue = null, recheckKey) {
-        value = withContext(Dispatchers.IO) { SecurityGuard.detect(context) }
+    // sinkron di main thread saat start & tiap resume → risiko ANR/jank. Nilai lama DITAHAN saat
+    // re-cek sehingga layar tak berkedip; hanya run pertama menampilkan status "memeriksa".
+    //
+    // Dulu ini `produceState(initialValue = null, recheckKey) { value = ... }` dan bentuk itu
+    // memicu error lint ProduceStateDoesNotAssignValue — FALSE POSITIVE di compose-runtime 1.7.5
+    // (BOM 2024.10.01). Pemicunya BUKAN bentuk penugasannya melainkan ADANYA argumen key:
+    // dibuktikan dengan menjalankan lint atas tujuh varian sekaligus — `produceState<T?>(null) {
+    // value = f() }` LOLOS, sedangkan keenam varian ber-key gagal semua, termasuk
+    // `this.value = h` eksplisit dan versi dua langkah `val h = ...; value = h`. Jadi detektornya
+    // memang tak pernah menemukan lambda `producer` begitu ada key di antara argumen.
+    // remember + LaunchedEffect memberi semantik yang sama persis (key berubah → producer lama
+    // dibatalkan, producer baru jalan, nilai lama tetap terpasang sampai hasil baru datang) tanpa
+    // menekan error apa pun. Kalau nanti Compose naik versi, silakan uji ulang produceState.
+    var threats by remember { mutableStateOf<List<Threat>?>(null) }
+    LaunchedEffect(recheckKey) {
+        threats = withContext(Dispatchers.IO) { SecurityGuard.detect(context) }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current

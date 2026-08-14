@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Absen: verifikasi lokasi (geofence toko) saat check-in/out. Selfie pakai app kamera via
@@ -10,8 +11,18 @@
     <!-- Push notifikasi approval izin/absen (FCM). Runtime request di Android 13+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Integritas absen: memindai aplikasi mock location (GPS palsu) agar bisa diblok. App
-         enterprise side-load, bukan rilis Play Store, sehingga QUERY_ALL_PACKAGES diperbolehkan. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+         enterprise side-load, bukan rilis Play Store, sehingga QUERY_ALL_PACKAGES diperbolehkan.
+
+         `tools:ignore` DISENGAJA, bukan jalan pintas menyenangkan lint. Lint menyarankan
+         <queries> sebagai gantinya, tapi <queries> hanya bisa menyebut paket yang SUDAH
+         diketahui namanya — sedangkan SecurityGuard.detect() justru mengenumerasi seluruh
+         paket terpasang untuk menemukan yang menyatakan ACCESS_MOCK_LOCATION, termasuk aplikasi
+         fake-GPS yang belum pernah kita lihat. Mencabut izin ini menyisakan daftar 15 spoofer
+         hardcoded saja, yaitu MELEMAHKAN gerbang anti-pemalsuan titik absen demi memuaskan
+         pemeriksa kebijakan Play Store yang tidak berlaku untuk distribusi ini. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <!-- Update wajib/opsional: install APK yang diunduh in-app (UpdateManager.promptInstall).
          Android tetap menampilkan prompt "izinkan instal dari app ini" sendiri kalau belum
          diizinkan — permission ini cuma syarat supaya app BOLEH memicu installer sama sekali. -->

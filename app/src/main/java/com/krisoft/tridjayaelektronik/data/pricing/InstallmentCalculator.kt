@@ -168,7 +168,11 @@ class InstallmentCalculator @Inject constructor(@ApplicationContext private val 
         runCatching {
             context.assets.open(assetPath).bufferedReader().useLines { lines ->
                 lines.drop(1).forEach { rawLine ->
-                    val line = rawLine.removePrefix("﻿").trim()
+                    // BOM ditulis sebagai escape, BUKAN karakter mentah: BOM di
+                    // tengah berkas sumber bikin lint gagal (ByteOrderMark) dan
+                    // tak terlihat di diff/review. CSV aset memang ber-BOM
+                    // (ekspor Excel), jadi pemangkasannya tetap wajib.
+                    val line = rawLine.removePrefix("\uFEFF").trim()
                     if (line.isEmpty()) return@forEach
                     val cols = line.split(",")
                     if (cols.size < 5) return@forEach

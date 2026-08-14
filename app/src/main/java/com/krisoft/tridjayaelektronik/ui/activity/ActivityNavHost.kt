@@ -577,11 +577,14 @@ fun ActivityNavHost(
                 onLeadClick = { id -> navController.navigate("home_leads_detail/$id") { launchSingleTop = true } }
             )
         }
-        composable(ROUTE_LEADS_ADD) {
+        composable(ROUTE_LEADS_ADD) { entry ->
             // ViewModel MILIK layar daftar, bukan instance baru — refresh() di bawah harus
             // menyegarkan cache yang sama yang ditampilkan daftar, kalau tidak lead baru
             // tak pernah muncul sampai layar daftar di-restart sendiri.
-            val listEntry = remember { navController.getBackStackEntry(ROUTE_LEADS_LIST) }
+            // Kunci `entry` wajib: `remember {}` tanpa kunci membuat lint (dan Navigation)
+            // menganggap entry-nya bisa basi lintas recomposition. Runtime-nya sama —
+            // `entry` konstan selama lambda ini hidup — tapi invariannya jadi tertulis.
+            val listEntry = remember(entry) { navController.getBackStackEntry(ROUTE_LEADS_LIST) }
             val listViewModel: LeadsListViewModel = hiltViewModel(listEntry)
             AddLeadScreen(
                 onBack = { navController.popBackStack() },
