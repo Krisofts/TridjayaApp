@@ -134,17 +134,17 @@ class ActivityRegistryTest {
     // ── Komplain / Home Service ──────────────────────────────────────────────
 
     @Test
-    fun `lapor komplain terbuka lebar, triase tidak`() {
-        // LAPOR_ROLES sengaja luas: keluhan datang ke siapa pun yang dihubungi
-        // konsumen. Yang sempit justru keputusannya.
+    fun `lapor komplain disembunyikan dari Activity, triase tetap terpisah`() {
         val caps = mapOf(
             "spk.pipeline" to true, "homeservice.dispatch" to false,
             "homeservice.task" to false, "delivery.control" to false,
         )
         val sales = visibleActivityItems(setOf("sales"), caps).map { it.id }
-        assertTrue("lapor_komplain" in sales)
+        assertFalse("lapor_komplain" in sales)
         assertFalse("komplain_masuk" in sales)
         assertFalse("tugas_home_service" in sales)
+
+        assertTrue(ACTIVITY_ITEMS.first { it.id == "lapor_komplain" }.hiddenFromActivity)
     }
 
     @Test
