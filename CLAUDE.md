@@ -86,6 +86,21 @@ senyap selamanya**, sementara `catch (e: Exception)` tidak menangkapnya sama sek
 tanggal ke-sekian: `parseIsoUtcMillis` (`data/model/NotificationModels.kt`) untuk parse ISO,
 `KlasemenStandings.todayIso()`/`shiftDays()` (`domain/sales/`) untuk `yyyy-MM-dd` + geser hari.
 
+**Tiap subdirektori `cacheDir`/`filesDir` WAJIB punya entri di
+`res/xml/file_paths.xml`.** Kalau tidak, `FileProvider.getUriForFile` melempar
+`IllegalArgumentException: Failed to find configured root that contains …`.
+Kompilasi hijau, lint hijau, nol test menyentuhnya — pecahnya di HP petugas.
+Sudah menggigit **tiga kali**: `event` (foto KTP), `home_service` (foto komplain),
+dan `serial` (usulan pendaftaran SN, ditemukan 2026-08-14). Yang ketiga paling
+mahal karena `getUriForFile`-nya ada DI DALAM `remember` di `OpnameDetailScreen`
+— melempar saat KOMPOSISI, jadi app tutup begitu panel usulan dirender, bukan
+saat tombol kamera ditekan. Akibatnya `serial_registration_requests` di produksi
+**nol baris sejak fitur itu mendarat 29 Juli**: tak seorang pun pernah berhasil
+mengusulkan, dan server tak pernah mencatat error karena request-nya memang tak
+pernah terkirim. Sekarang dijaga `FileProviderPathsTest` — ia memindai seluruh
+`app/src/main` dan menuntut tiap subdirektori punya deklarasinya. Menambah satu
+baris XML ongkosnya nol; melewatkannya ongkosnya fitur mati senyap.
+
 **Region-aware product identity.** The ERP's `kode` (product code) collides across regions —
 the same code can be a *different physical product* in a different branch region. Product
 identity is always the composite key `kode + kodeCabang`, never `kode` alone. This shows up in
@@ -587,9 +602,21 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   vonis basi di layar yang justru dipakai memverifikasi. Konsekuensinya kartu itu kosong saat
   offline — itu jujur, pembandingnya memang tak terbaca. `refreshValidationStatuses` karena
   itu MENGEMBALIKAN daftar unit versi server, bukan cuma menulis ke Room.
-  **Gate tampilan kartu Activity: AKUN UJI SAJA sejak 2026-08-14.**
-  `ITEM_KHUSUS_AKUN_UJI` memuat `opname_cabang` DAN `opname_validasi` —
-  permintaan user: alur opname per-SN belum boleh terlihat karyawan. Sebabnya
+  **Gate tampilan kartu Activity: akun uji + PELAKSANA NYATA (2026-08-14, dua
+  babak — baca keduanya).** Pagi harinya gate dipasang AKUN UJI SAJA; sorenya
+  dipersempit karena terbukti terlalu lebar. Keadaan sekarang:
+  `ITEM_KHUSUS_AKUN_UJI` tetap memuat `opname_cabang` + `opname_validasi`, TAPI
+  `TEMBUS_AKUN_UJI` memberi jalan tembus untuk `OPNAME_PELAKSANA_NYATA`
+  (`admin-stok`, `admin`, `superadmin`, `kepala-cabang`). Jadi karyawan biasa
+  tetap tak melihat apa pun; pelaksana yang memang menjalankan opname melihatnya.
+  **Sebabnya konkret:** admin-stok sudah memakai opname di produksi pada hari
+  yang sama (sesi `OPN-20260814-0001`, scan SN 17:46), dan hanya merekalah yang
+  boleh mendaftarkan SN (`SERIAL_INPUT_ROLES = ["admin-stok"]`) — gate versi pagi
+  mencabut alat kerja yang sedang dipakai. `raport` SENGAJA tidak diberi jalan
+  tembus. Dijaga `ActivityRegistryTest` (tiga tes: karyawan biasa tertutup,
+  pelaksana nyata tembus termasuk kasus role utama `karyawan` + `extra_roles`
+  `admin-stok`, dan raport tak ikut bocor).
+  Latar aslinya tetap berlaku: sebabnya
   `opname.hitung` memuat role `karyawan` (sengaja, lihat paragraf berikut), dan
   sejak migrasi 144 itu berarti hampir seluruh pegawai; kartunya mendarat di HP
   semua orang begitu 2.69 terpasang. **Yang menyembunyikan adalah URUTAN di

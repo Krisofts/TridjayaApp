@@ -20,4 +20,14 @@
     <!-- Foto komplain (kwitansi, bukti kerja teknisi, bukti bayar, unit ditarik) —
          alasan sama dengan `event` di atas: tanpa entri ini kamera mati total. -->
     <cache-path name="home_service" path="home-service/" />
+    <!-- Foto usulan pendaftaran SN dari lapangan (foto SN + foto barang), ditulis
+         `OpnameDetailScreen.kt` ke `cacheDir/serial/`. KETIGA KALINYA jebakan yang
+         sama menggigit setelah `event` dan `home_service` — dan yang ini paling
+         parah gejalanya: `getUriForFile` di sana dipanggil DI DALAM `remember`,
+         jadi ia melempar saat KOMPOSISI, bukan saat tombol kamera ditekan. App
+         tutup begitu panel usulan dirender, sebelum petugas sempat menyentuh
+         apa pun. Terbukti di produksi: `serial_registration_requests` NOL BARIS
+         sejak fiturnya mendarat 2026-07-29 — tak seorang pun pernah berhasil
+         mengusulkan. Dijaga `FileProviderPathsTest`. -->
+    <cache-path name="serial" path="serial/" />
 </paths>
