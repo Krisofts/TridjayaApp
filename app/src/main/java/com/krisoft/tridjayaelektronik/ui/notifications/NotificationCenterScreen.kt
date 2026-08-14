@@ -82,6 +82,15 @@ fun deliveryNotifRouteKey(type: String): String? = when (type) {
     else -> null
 }
 
+/** Notifikasi CRM yang tap-nya membuka layar prospek. Fungsi tersendiri (bukan
+ *  perbandingan `==` di dalam lambda tap) karena daftarnya bertambah: sejak
+ *  backend 2026-08-15 penugasan TUGAS follow-up juga mengirim notifikasi
+ *  (`crm_task_assigned`, crm-service `service.rs`), dan tipe yang tak dikenal
+ *  di sini mendarat sebagai baris yang cuma bisa ditandai dibaca — persis
+ *  keluhan yang perbaikan itu tutup. */
+fun crmNotifBukaProspek(type: String): Boolean =
+    type == "crm_lead_assigned" || type == "crm_task_assigned"
+
 /** Pusat Notifikasi — daftar penuh (judul, pesan, waktu relatif, dot unread).
  *  Tap → tandai dibaca + LOMPAT ke halaman terkait (notif delivery → menu hub
  *  SPK yang tepat, notif CRM → tab Leads; lainnya cuma mark-read). */
@@ -158,7 +167,7 @@ fun NotificationCenterScreen(
                                 val dlvKey = deliveryNotifRouteKey(notif.type)
                                 when {
                                     dlvKey != null -> onOpenDelivery(dlvKey)
-                                    notif.type == "crm_lead_assigned" -> onOpenLeads()
+                                    crmNotifBukaProspek(notif.type) -> onOpenLeads()
                                 }
                             })
                         }
