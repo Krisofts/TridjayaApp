@@ -1,8 +1,5 @@
 package com.krisoft.tridjayaelektronik.ui.chatactivity
 
-import android.content.ContentResolver
-import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -56,6 +53,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
+import com.krisoft.tridjayaelektronik.util.bacaInfoBerkas
 import kotlinx.coroutines.delay
 
 private val HIJAU = Color(0xFF12B76A)
@@ -369,24 +367,3 @@ private fun Banner(
 
 internal fun kategoriLabel(targetKategori: String): String =
     if (targetKategori == "sales") "Sales" else "Non-Sales"
-
-/**
- * Nama + ukuran berkas terpilih. Kolom `SIZE` boleh null pada sebagian ContentProvider →
- * dikirim sebagai 0 dan server yang memutuskan; memblokir karyawan hanya karena ukurannya
- * tak terbaca akan mengunci dia dari fitur ini tanpa jalan keluar.
- */
-private fun bacaInfoBerkas(resolver: ContentResolver, uri: Uri): Pair<String, Long> {
-    val kolom = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
-    runCatching {
-        resolver.query(uri, kolom, null, null, null)?.use { kursor ->
-            if (kursor.moveToFirst()) {
-                val iNama = kursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                val iUkuran = kursor.getColumnIndex(OpenableColumns.SIZE)
-                val nama = if (iNama >= 0 && !kursor.isNull(iNama)) kursor.getString(iNama).orEmpty() else ""
-                val ukuran = if (iUkuran >= 0 && !kursor.isNull(iUkuran)) kursor.getLong(iUkuran) else 0L
-                return nama to ukuran
-            }
-        }
-    }
-    return "" to 0L
-}

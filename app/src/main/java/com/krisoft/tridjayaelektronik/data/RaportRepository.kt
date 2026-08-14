@@ -1,5 +1,7 @@
 package com.krisoft.tridjayaelektronik.data
 
+import android.content.ContentResolver
+import android.net.Uri
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.JobdeskPositionDto
 import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
@@ -10,8 +12,10 @@ import com.krisoft.tridjayaelektronik.data.model.SubmitRaportBody
 import com.krisoft.tridjayaelektronik.data.model.SubmitRaportItem
 import com.krisoft.tridjayaelektronik.data.model.SubmitRaportResult
 import com.krisoft.tridjayaelektronik.data.remote.RaportApi
+import com.krisoft.tridjayaelektronik.data.remote.RaportUploadApi
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
@@ -25,7 +29,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class RaportRepository @Inject constructor(
-    private val api: RaportApi
+    private val api: RaportApi,
+    private val uploadApi: RaportUploadApi,
 ) {
     private val errorJson = Json { ignoreUnknownKeys = true }
 
@@ -113,15 +118,55 @@ class RaportRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
-    /** Upload bukti (JPEG) → URL relatif untuk dikirim di [submitItem]. */
+    /**
+     * Upload bukti GAMBAR → URL relatif untuk dikirim di [submitItem].
+     *
+     * Selalu `image/jpeg`: keluaran `PhotoWatermark.prepareWatermarkedJpeg`
+     * memang selalu JPEG apa pun format sumbernya, termasuk PNG/WEBP yang
+     * dipilih dari galeri. Server memvalidasi ekstensi × MIME × magic bytes
+     * serentak, jadi [filename] wajib berakhiran `.jpg`.
+     */
     suspend fun uploadEvidence(bytes: ByteArray, filename: String): AuthResult<String> = try {
         val part = MultipartBody.Part.createFormData(
             "file", filename, bytes.toRequestBody("image/jpeg".toMediaType())
         )
-        val response = api.uploadEvidence(part)
+        val response = uploadApi.uploadEvidence(part)
         val data = response.body()?.data
         if (response.isSuccessful && data != null && data.url.isNotBlank()) AuthResult.Success(data.url)
         else parseError(response, "Gagal mengunggah bukti")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Upload bukti VIDEO → URL relatif.
+     *
+     * STREAMING dari [ContentResolver] lewat [UriRequestBody], tidak pernah
+     * lewat `ByteArray`: batas server 30 MB sedangkan heap HP lapangan bisa
+     * <128 MB, jadi `readBytes()` di sini = `OutOfMemoryError` di HP yang
+     * justru paling sering dipakai.
+     *
+     * [mimeType] dan ekstensi pada [namaFile] WAJIB sepasang — server memeriksa
+     * keduanya bersama magic bytes, dan pasangan yang meleset ditolak 400
+     * SETELAH seluruh berkas terkirim. Pakai `ekstensiVideo`/`mimeVideo`
+     * (`ui/raport/RaportBuktiPlan.kt`), jangan menebak sendiri.
+     *
+     * [ukuranBytes] hanya untuk header `Content-Length`; `0` = biarkan OkHttp
+     * mengirim chunked (kolom `SIZE` tak selalu terbaca dari penyedia galeri).
+     */
+    suspend fun uploadEvidenceVideo(
+        resolver: ContentResolver,
+        uri: Uri,
+        namaFile: String,
+        mimeType: String,
+        ukuranBytes: Long = 0L,
+    ): AuthResult<String> = try {
+        val body = UriRequestBody(resolver, uri, mimeType.toMediaTypeOrNull(), ukuranBytes)
+        val part = MultipartBody.Part.createFormData("file", namaFile, body)
+        val response = uploadApi.uploadEvidence(part)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null && data.url.isNotBlank()) AuthResult.Success(data.url)
+        else parseError(response, "Gagal mengunggah video bukti")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }

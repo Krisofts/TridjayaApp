@@ -133,6 +133,32 @@ object NetworkModule {
     fun createRaportApi(tokenStore: TokenStore): RaportApi =
         authenticatedRetrofit(tokenStore).create(RaportApi::class.java)
 
+    /**
+     * Client khusus unggah bukti raport — alasan timeout-nya sama persis dengan
+     * [createAktivitasChatUploadApi]: badan sampai 30 MB tak akan selesai dalam
+     * 20 detik milik client bersama.
+     *
+     * `HttpLoggingInterceptor` DIBUANG di sini (hanya untuk client ini, bukan
+     * untuk client chat): pada level `BODY` — yang aktif di build debug — ia
+     * memanggil `requestBody.writeTo(Buffer())` untuk memeriksa isinya, jadi
+     * seluruh video masuk heap dulu HANYA supaya bisa dicetak sebagai "binary
+     * body omitted". Itu membatalkan seluruh gunanya [UriRequestBody] justru
+     * di build yang dipakai menguji fitur ini di HP.
+     */
+    fun createRaportUploadApi(tokenStore: TokenStore): RaportUploadApi {
+        val base = authenticatedRetrofit(tokenStore)
+        val uploadClient = (base.callFactory() as OkHttpClient).newBuilder()
+            .writeTimeout(300, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .apply { interceptors().removeAll { it is HttpLoggingInterceptor } }
+            .build()
+        return base.newBuilder()
+            .client(uploadClient)
+            .build()
+            .create(RaportUploadApi::class.java)
+    }
+
     fun createHomeServiceApi(tokenStore: TokenStore): HomeServiceApi =
         authenticatedRetrofit(tokenStore).create(HomeServiceApi::class.java)
 

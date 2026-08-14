@@ -14,12 +14,8 @@ import com.krisoft.tridjayaelektronik.data.remote.AktivitasChatUploadApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
-import okhttp3.RequestBody
-import okio.BufferedSink
-import okio.source
 import retrofit2.Response
 import java.io.File
 import javax.inject.Inject
@@ -145,29 +141,5 @@ class AktivitasChatRepository @Inject constructor(
             parsed?.code ?: "http_${response.code()}",
             parsed?.message ?: "$fallback (${response.code()})"
         )
-    }
-}
-
-/**
- * ponytail: STREAMING dari `ContentResolver`, bukan `ByteArray` seperti
- * [AbsensiRepository.uploadPhoto]. Selfie JPEG beberapa ratus KB aman dimuat penuh ke memori;
- * video bukti bisa 20MB sedangkan heap HP low-end di lapangan bisa <128MB — memuatnya utuh
- * (ditambah salinan yang dibuat OkHttp saat menulis) = OutOfMemoryError, bukan sekadar lambat.
- * OkHttp menyalin per-blok dari `openInputStream`, jadi puncak memori tetap kecil apa pun
- * ukuran videonya.
- */
-private class UriRequestBody(
-    private val resolver: ContentResolver,
-    private val uri: Uri,
-    private val mediaType: MediaType?,
-    private val panjang: Long,
-) : RequestBody() {
-    override fun contentType() = mediaType
-
-    override fun contentLength() = if (panjang > 0) panjang else -1L
-
-    override fun writeTo(sink: BufferedSink) {
-        resolver.openInputStream(uri)?.use { input -> sink.writeAll(input.source()) }
-            ?: throw java.io.IOException("Video tidak bisa dibaca")
     }
 }
