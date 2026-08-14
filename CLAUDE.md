@@ -436,11 +436,27 @@ Done in a dedicated "is this ready to ship?" pass; don't regress these:
   `ic_launcher_round.xml` adaptive icon for v26+ and `android:roundIcon` in the manifest. The PNGs
   were rasterized with a one-off Pillow script (no Android Studio Image Asset tool in this env) —
   if the icon design changes, regenerate all 10 PNGs, don't hand-edit them.
-- **Encrypted prefs excluded from backup/transfer.** `res/xml/backup_rules.xml` (`fullBackupContent`,
-  API<31) and `res/xml/data_extraction_rules.xml` (`dataExtractionRules`, API 31+) both `<exclude>`
-  the `tridjaya_secure_prefs` sharedpref. Reason: its AES key lives in the Android Keystore, which
-  is never backed up — restoring the encrypted blob onto a new device would be undecryptable and
-  can crash on first read. User just re-logs in. Keep this exclusion if you add more secure prefs.
+- **Backup/transfer disaring isinya, `allowBackup` tetap `true`.** `res/xml/backup_rules.xml`
+  (`fullBackupContent`, API<31) dan `res/xml/data_extraction_rules.xml` (`dataExtractionRules`,
+  API 31+) memuat daftar `<exclude>` yang **harus sejajar**, dan di berkas kedua daftar itu wajib
+  ditulis DUA KALI — `<cloud-backup>` dan `<device-transfer>` adalah jalur terpisah, mengecualikan
+  di satu blok saja meninggalkan yang lain terbuka. Dua alasan berbeda hidup di daftar yang sama:
+  * **Tak bisa dipulihkan** — `tridjaya_secure_prefs` + `datastore/tridjaya_session.pb`: kunci AES-nya
+    ada di Android Keystore yang tak pernah ikut backup, jadi blob yang dipulihkan tak bisa
+    didekripsi dan bisa crash saat baca pertama. User tinggal login ulang.
+  * **Tak boleh keluar dari perangkat** (ditambahkan 2026-08-14, temuan audit #8) — Room
+    **`tridjaya.db`** beserta `-wal`/`-shm`/`-journal`, plus sharedpref `search_history`. Isinya
+    PII pelanggan: tabel `leads` menyimpan nama/phone/lokasi/catatan calon pembeli, `dashboard_cache`
+    menyimpan direktori petugas, dan riwayat pencarian global memuat nama prospek yang diketik.
+    minSdk 24 berarti di Android 7–11 `adb backup` menariknya **tanpa root**. Semuanya cache yang
+    bisa di-fetch ulang sesudah login, jadi tak ada yang hilang permanen — kecuali baris
+    `pendingSync`/`opname_units` yang belum tersinkron, yang sengaja tidak ikut pindah perangkat.
+  * `filesDir/update/` (APK pembaruan in-app) juga dikecualikan — bukan privasi melainkan **kuota**:
+    Auto Backup cuma 25 MB per app, satu APK puluhan MB di situ menggagalkan seluruh backup senyap.
+  * Direktori cache (`getCacheDir()`, `code_cache`, `no_backup`) sudah dikecualikan Android sendiri
+    — selfie absen, foto bukti, dan cache gambar Coil tidak perlu disebut.
+  * `allowBackup="false"` SENGAJA tidak dipilih: app ini side-load enterprise dan perpindahan
+    perangkat karyawan masih diinginkan. Yang disaring isinya, bukan mekanismenya.
 - **Dev artifacts removed from the release surface.** The stale LAN IP `10.132.14.53` was dropped
   from `network_security_config.xml` (only emulator loopback `10.0.2.2`/`localhost` keep cleartext;
   prod is HTTPS-only), and the root `serve.log` was deleted.
