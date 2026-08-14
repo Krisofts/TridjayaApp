@@ -643,9 +643,47 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   daftar jobdesk posisi karyawan dari `GET /api/jobdesk-divisions` (dicocokkan ke `divisi`
   profil lewat `matchJobdeskPosition`, port 1:1 `getPositionMatch` web — **tak boleh** jatuh ke
   posisi pertama saat tak cocok, itu bikin orang dinilai atas jobdesk divisi lain), kirim per
-  baris ke `POST /api/raport-harian`. Bukti = foto kamera ber-watermark (`PhotoWatermark`,
-  sama dengan absensi/PDI) atau `mode=none` + alasan ≥10 karakter. **Belum ada** video &
-  unggah dari galeri (masih lewat web).
+  baris ke `POST /api/raport-harian`. Bukti = foto kamera, **sampai 6 gambar dari galeri**,
+  **satu video**, atau `mode=none` + alasan ≥10 karakter.
+  **Unggah galeri + video ditambahkan 2026-08-14** (sebelumnya kamera saja). Aturannya
+  di `ui/raport/RaportBuktiPlan.kt` (fungsi murni, diuji `RaportBuktiPlanTest`):
+  * **Bentuk `evidenceUrl`: 1 gambar → string POLOS, ≥2 → JSON array; video selalu polos.**
+    Ini BUKAN gaya penulisan — server menyajikan bukti lewat guard yang mencocokkan
+    `WHERE bukti_url = '/uploads/raport/<berkas>'` **PERSIS**
+    (`kinerja-service/src/raport/mysql.rs` `karyawan_id_for_evidence`). Baris yang menyimpan
+    JSON array tak pernah cocok → **404** untuk karyawan yang membuka buktinya SENDIRI dan
+    untuk `kepala-cabang` (peninjau berbatas cabang); `pic_raport`/`hrd`/`admin`/`owner`/
+    `manager` aman karena lewat jalur lihat-semua. Web SELALU membungkus array, jadi baris
+    multi-gambar dari web **sudah lama** terkena. Kalau app ikut membungkus SEMUA kasus,
+    jalur paling ramai (satu foto kamera) ikut rusak dan gejalanya "bukti saya hilang
+    setelah update aplikasi" tanpa satu pun error server. Membalik aturan ini baru aman
+    setelah `karyawan_id_for_evidence` diperbaiki (JSON_CONTAINS/LIKE/tabel anak) — itu
+    pekerjaan di repo backend, belum dikerjakan.
+  * **Foto galeri tetap di-watermark** tapi judulnya `TRIDJAYA · AKTIVITAS (GALERI)`,
+    berbeda dari kamera — stempel jam di bar watermark itu jam PROSES, bukan jam foto
+    diambil, jadi tanpa label ini foto tahun lalu terlihat seperti foto hari ini.
+  * **Alur pilih → staging → tombol "Kirim bukti"**, bukan auto-kirim seperti versi
+    kamera-saja: server upsert dan MENIMPA `bukti_url` seluruhnya, jadi menambah satu foto
+    berarti mengirim ULANG daftar lengkapnya. Bukti lama di-seed ke staging saat baris
+    disentuh (`pilihanUntuk`) — tanpa itu menambah foto = menghapus bukti lama tanpa error.
+  * **Unggah gambar bisa dilanjutkan**: URL disimpan per berkas, jadi gagal di gambar ke-4
+    dari 6 tak mengulang tiga yang sudah naik. `POST /raport-harian/upload` memanggil
+    `ensure_window_open()` di SETIAP request, jadi jendela jam yang tertutup di tengah loop
+    itu skenario nyata. `send()` tak pernah dipanggil dengan daftar parsial.
+  * **Video ditolak lokal** kalau >30 MB (`MAX_EVIDENCE_BYTES` server) — tanpa transcoding.
+    Ekstensi ditentukan `when` Kotlin murni (mp4/webm/mov), **bukan `MimeTypeMap`**: kelas
+    itu melempar `RuntimeException("Stub!")` di unit test JVM dan tabelnya milik ROM. Nama
+    berkas didahulukan atas MIME karena penyedia galeri kadang menjawab `video/mp4` untuk
+    berkas `.mov`, dan server memvalidasi ekstensi × MIME × magic bytes SERENTAK — pasangan
+    yang meleset ditolak 400 SETELAH 30 MB terkirim.
+  * Unggahnya lewat `RaportUploadApi` + client sendiri (write 300s/read 120s, tanpa
+    `HttpLoggingInterceptor`) — client bersama timeout-nya 20 detik dan level `BODY` di debug
+    mem-buffer seluruh video ke heap. Video streaming lewat `UriRequestBody` (dipakai bersama
+    bukti chat), **tidak pernah** `readBytes()`.
+  * Picker = Photo Picker (`PickMultipleVisualMedia`/`PickVisualMedia`), **tanpa izin apa
+    pun**; di bawah Android 11/13 ia turun sendiri ke SAF — jangan ditambal `READ_MEDIA_*`.
+  * Bukti yang SUDAH terkirim dirender sebagai kotak "Terkirim", **bukan** `AsyncImage` ke
+    server: baris multi-gambar akan menjawab 404 ke pemiliknya sendiri (lihat butir pertama).
   Jendela jam pelaporan (default 08:00–18:00) & larangan hari Minggu ditegakkan server;
   pesan detailnya ada di `errors[0]`, bukan `message` — `RaportRepository.parseError`
   sengaja mengutamakan `errors[0]` (repository lain di app ini belum).

@@ -1,8 +1,10 @@
 package com.krisoft.tridjayaelektronik.ui.raport
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,29 +17,41 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Assignment
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
@@ -45,20 +59,31 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveInlineError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
+import com.krisoft.tridjayaelektronik.util.bacaInfoBerkas
 import java.io.File
 
 /**
  * Input Aktivitas (raport harian) — BETA.
  *
- * Satu baris per jobdesk posisi karyawan; buktinya foto kamera ber-watermark
- * atau "tanpa bukti + alasan". Kirim per baris (server upsert per baris), jadi
- * sinyal putus di tengah tak membatalkan yang sudah masuk. Video & unggah dari
- * galeri belum ada di sini — masih lewat web.
+ * Satu baris per jobdesk posisi karyawan. Buktinya: foto kamera, sampai
+ * [MAX_GAMBAR] gambar dari galeri, satu video, atau "tanpa bukti + alasan".
+ * Kirim per baris (server upsert per baris), jadi sinyal putus di tengah tak
+ * membatalkan baris yang sudah masuk.
+ *
+ * Berkas dipilih dulu ke staging lalu dikirim lewat satu tombol — BUKAN
+ * auto-kirim seperti versi kamera-saja: server menimpa `bukti_url` seluruhnya,
+ * jadi menambah satu foto berarti mengirim ulang daftar lengkapnya.
+ *
+ * Picker-nya `PickVisualMedia`/`PickMultipleVisualMedia` (Photo Picker) dan
+ * **tidak butuh izin apa pun**. Di bawah Android 11/13 ia turun sendiri ke SAF —
+ * itu perilaku yang benar, JANGAN ditambal dengan `READ_MEDIA_*` /
+ * `READ_EXTERNAL_STORAGE`.
  */
 @Composable
 fun RaportScreen(
@@ -67,15 +92,56 @@ fun RaportScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val resolver = context.contentResolver
 
-    // Kamera: satu launcher dipakai semua baris — index+file yang sedang
-    // dijepret dipegang di sini karena callback-nya baru jalan setelah kembali
-    // dari app kamera.
+    // Satu launcher dipakai semua baris — index yang sedang diisi dipegang di
+    // sini karena callback-nya baru jalan setelah kembali dari app lain.
     var pending by remember { mutableStateOf<Pair<Int, File>?>(null) }
+    var indexAktif by remember { mutableStateOf<Int?>(null) }
+    var slot by remember { mutableIntStateOf(0) }
+
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        pending?.let { (index, file) -> if (ok) viewModel.submitWithPhoto(index, file) }
+        pending?.let { (index, file) -> if (ok) viewModel.tambahFotoKamera(index, file) }
         pending = null
     }
+
+    // Gambar disalin ke cache SEKARANG JUGA, bukan saat Kirim: grant Uri dari
+    // picker tidak persistable dan hilang begitu proses mati.
+    val galeri = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_GAMBAR)
+    ) { uris ->
+        val index = indexAktif ?: return@rememberLauncherForActivityResult
+        indexAktif = null
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        var gagal = 0
+        val files = uris.mapNotNull { uri ->
+            val (_, ukuran) = bacaInfoBerkas(resolver, uri)
+            // Hanya yang TERBUKTI kebesaran dibuang; ukuran 0 = tak terbaca.
+            if (ukuran > MAX_GAMBAR_INPUT_BYTES) {
+                gagal++
+                return@mapNotNull null
+            }
+            val target = File(context.cacheDir, "raport/jobdesk_${index}_g${slot++}.jpg")
+                .apply { parentFile?.mkdirs() }
+            runCatching {
+                resolver.openInputStream(uri)?.use { inp ->
+                    target.outputStream().use { out -> inp.copyTo(out) }
+                } ?: error("stream null")
+            }.fold(onSuccess = { target }, onFailure = { gagal++; null })
+        }
+        viewModel.tambahFotoGaleri(index, files, diabaikan = gagal)
+    }
+
+    val videoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val index = indexAktif ?: return@rememberLauncherForActivityResult
+        indexAktif = null
+        if (uri == null) return@rememberLauncherForActivityResult
+        val (nama, ukuran) = bacaInfoBerkas(resolver, uri)
+        viewModel.pilihVideo(index, uri, nama, ukuran)
+    }
+
     var alasanUntukIndex by remember { mutableStateOf<Int?>(null) }
 
     TridjayaCollapsibleHeader(title = "Input Aktivitas", onBack = onBack) { contentModifier ->
@@ -134,10 +200,14 @@ fun RaportScreen(
                             nomor = index + 1,
                             jobdesk = jobdesk,
                             terkirim = state.submitted[index],
-                            busy = state.busyIndex == index,
+                            pilihan = state.pilihan[index],
+                            progres = state.kirim?.takeIf { it.index == index },
                             enabled = state.busyIndex == null,
-                            onFoto = {
-                                val file = File(context.cacheDir, "raport/jobdesk_$index.jpg")
+                            onKamera = {
+                                // Nama ber-slot: satu baris kini boleh punya beberapa
+                                // jepretan, dan nama tetap membuat jepretan kedua
+                                // menimpa yang pertama tanpa tanda apa pun di layar.
+                                val file = File(context.cacheDir, "raport/jobdesk_${index}_k${slot++}.jpg")
                                     .apply { parentFile?.mkdirs() }
                                 pending = index to file
                                 camera.launch(
@@ -146,6 +216,21 @@ fun RaportScreen(
                                     )
                                 )
                             },
+                            onGaleri = {
+                                indexAktif = index
+                                galeri.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            onVideo = {
+                                indexAktif = index
+                                videoPicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                )
+                            },
+                            onHapusGambar = { posisi -> viewModel.hapusGambar(index, posisi) },
+                            onHapusVideo = { viewModel.hapusVideo(index) },
+                            onKirim = { viewModel.kirimBukti(index, resolver) },
                             onTanpaBukti = { alasanUntukIndex = index },
                         )
                     }
@@ -188,7 +273,7 @@ private fun Ringkasan(state: RaportUiState) {
         }
         Text(
             text = "${state.terkirim}/${state.jobdesks.size} jobdesk terkirim hari ini · " +
-                "bukti foto diambil langsung dari kamera",
+                "bukti: foto kamera/galeri (maks $MAX_GAMBAR) atau satu video",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -200,12 +285,23 @@ private fun JobdeskRow(
     nomor: Int,
     jobdesk: String,
     terkirim: RaportItemDto?,
-    busy: Boolean,
+    pilihan: PilihanBukti?,
+    progres: KirimProgres?,
     enabled: Boolean,
-    onFoto: () -> Unit,
+    onKamera: () -> Unit,
+    onGaleri: () -> Unit,
+    onVideo: () -> Unit,
+    onHapusGambar: (Int) -> Unit,
+    onHapusVideo: () -> Unit,
+    onKirim: () -> Unit,
     onTanpaBukti: () -> Unit,
 ) {
     val status = rowStatus(terkirim)
+    val gambar = pilihan?.gambar.orEmpty()
+    val video = pilihan?.video
+    val adaStaging = gambar.isNotEmpty() || video != null
+    val gate = gateKirimBukti(gambar.size, video != null, video?.ukuranBytes ?: 0L)
+
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(
@@ -216,31 +312,217 @@ private fun JobdeskRow(
             Spacer(Modifier.size(6.dp))
             StatusChip(status, terkirim)
             Spacer(Modifier.size(10.dp))
-            if (busy) {
+
+            if (progres != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.size(10.dp))
-                    Text("Mengirim…", style = MaterialTheme.typography.labelMedium)
+                    Column {
+                        Text(progres.label, style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            "Jangan tutup layar ini",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                return@Column
+            }
+
+            // Baris 1 — sumber bukti. Tombol lawan DINONAKTIFKAN, bukan
+            // disembunyikan: tombol yang hilang-muncul lebih membingungkan
+            // daripada tombol mati yang jelas alasannya.
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ExpressiveFilledButton(
+                    onClick = onKamera,
+                    enabled = enabled && video == null && gambar.size < MAX_GAMBAR,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Rounded.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Kamera")
+                }
+                ExpressiveOutlinedButton(
+                    onClick = onGaleri,
+                    enabled = enabled && video == null && gambar.size < MAX_GAMBAR,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Galeri")
+                }
+                ExpressiveOutlinedButton(
+                    onClick = onVideo,
+                    enabled = enabled && gambar.isEmpty(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Rounded.Videocam, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Video")
+                }
+            }
+
+            if (adaStaging) {
+                Spacer(Modifier.size(10.dp))
+                if (video != null) {
+                    VideoTerpilih(video, enabled, onHapusVideo)
+                } else {
+                    PratinjauGambar(gambar, enabled, onHapusGambar)
+                }
+            }
+
+            Spacer(Modifier.size(10.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ExpressiveTextButton(onClick = onTanpaBukti, enabled = enabled) { Text("Tanpa bukti") }
+                Spacer(Modifier.weight(1f))
+                if (adaStaging) {
                     ExpressiveFilledButton(
-                        onClick = onFoto,
-                        enabled = enabled,
+                        onClick = onKirim,
+                        enabled = enabled && gate.ok,
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     ) {
-                        Icon(Icons.Rounded.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(6.dp))
-                        Text(if (terkirim == null) "Foto bukti" else "Ganti foto")
+                        Text(if (video != null) "Kirim video" else "Kirim bukti (${gambar.size})")
                     }
-                    ExpressiveOutlinedButton(
-                        onClick = onTanpaBukti,
-                        enabled = enabled,
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                    ) { Text("Tanpa bukti") }
+                }
+            }
+            if (adaStaging && !gate.ok) {
+                Text(
+                    gate.alasan.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Pratinjau gambar staging. Bukti LAMA (`file == null`) SENGAJA tidak dirender
+ * lewat jaringan: guard kepemilikan server mencocokkan `bukti_url` persis, jadi
+ * baris multi-gambar menjawab 404 untuk karyawan pemiliknya sendiri (lihat KDoc
+ * `RaportBuktiPlan.kt`). Kotak berlabel "Terkirim" jujur; gambar rusak tidak.
+ */
+@Composable
+private fun PratinjauGambar(
+    gambar: List<GambarBukti>,
+    enabled: Boolean,
+    onHapus: (Int) -> Unit,
+) {
+    Column {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            itemsIndexed(gambar) { i, item ->
+                Box {
+                    if (item.file != null) {
+                        AsyncImage(
+                            model = item.file,
+                            contentDescription = "Bukti ${i + 1}",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(MaterialTheme.shapes.small),
+                        )
+                    } else {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.size(64.dp),
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.CloudDone,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    "Terkirim",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(2.dp),
+                    ) {
+                        IconButton(
+                            onClick = { onHapus(i) },
+                            enabled = enabled,
+                            modifier = Modifier.size(22.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = "Hapus bukti ${i + 1}",
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
+        Text(
+            "${gambar.size} gambar · maks $MAX_GAMBAR",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
+/**
+ * Video terpilih. Tanpa thumbnail — app ini sengaja tak memuat pustaka pemutar
+ * video, dan layar penilaian PIC pun tak memutarnya. Karyawan diberi tahu itu
+ * supaya tak mengira penilaiannya macet.
+ */
+@Composable
+private fun VideoTerpilih(video: VideoBukti, enabled: Boolean, onHapus: () -> Unit) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Rounded.Movie,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.size(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    video.nama.ifBlank { "Video bukti" },
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    formatUkuranBerkas(video.ukuranBytes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onHapus, enabled = enabled, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Rounded.Close, contentDescription = "Hapus video", modifier = Modifier.size(16.dp))
+            }
+        }
+        Text(
+            "Bukti video hanya bisa dinilai lewat web, jadi penilaiannya bisa lebih lambat.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
     }
 }
 
@@ -292,7 +574,7 @@ private fun AlasanDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
         text = {
             Column {
                 Text(
-                    "Jobdesk tanpa bukti foto biasanya dinilai 0 oleh PIC. Jelaskan alasannya.",
+                    "Jobdesk tanpa bukti biasanya dinilai 0 oleh PIC. Jelaskan alasannya.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
