@@ -571,6 +571,25 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   vonis basi di layar yang justru dipakai memverifikasi. Konsekuensinya kartu itu kosong saat
   offline — itu jujur, pembandingnya memang tak terbaca. `refreshValidationStatuses` karena
   itu MENGEMBALIKAN daftar unit versi server, bukan cuma menulis ke Room.
+  **Gate tampilan kartu Activity: AKUN UJI SAJA sejak 2026-08-14.**
+  `ITEM_KHUSUS_AKUN_UJI` memuat `opname_cabang` DAN `opname_validasi` —
+  permintaan user: alur opname per-SN belum boleh terlihat karyawan. Sebabnya
+  `opname.hitung` memuat role `karyawan` (sengaja, lihat paragraf berikut), dan
+  sejak migrasi 144 itu berarti hampir seluruh pegawai; kartunya mendarat di HP
+  semua orang begitu 2.69 terpasang. **Yang menyembunyikan adalah URUTAN di
+  `visibleActivityItems` — saringan akun-uji berjalan SEBELUM `gateAllows`,
+  jadi ia menang atas peta kemampuan server yang tetap menjawab `true`.** Jangan
+  perbaiki dengan mencabut `karyawan` dari `OPNAME_HITUNG_ROLES` di rust-shared:
+  itu mematikan izin MENGHITUNG untuk akun uji juga, sehingga fiturnya tak bisa
+  diuji sama sekali. **TIDAK ikut ditutup** (keputusan user yang sama): tile
+  "Opname" (`opname.view`) + "Input SN" (`serial.input`) di Akses Cepat, jadi
+  layar sesi opname MASIH terjangkau pemegang `opname.view` — itu memang yang
+  diminta. Tak ada cerminan web yang perlu disamakan: nav web memakai
+  `opname.view` (`navCatalog.ts`), yang tak pernah memuat `karyawan`.
+  **Sisa celah yang diketahui:** deep-link notifikasi (`opname_sesi_dibuka`,
+  `opname_manual_submitted`) masih mendarat di layar opname — `routeForNavKey`
+  sengaja tak disentuh supaya akun uji tetap bisa menembusnya.
+
   **Multi-petugas + kartu "Opname Cabang" (2026-08-09)**: server memisahkan izin
   MENGHITUNG (`opname.hitung`, dikunci ke cabang akun) dari izin MEMILIKI SESI,
   jadi petugas cabang kini bisa ikut scan di sesi yang dibuat orang lain. Kartu

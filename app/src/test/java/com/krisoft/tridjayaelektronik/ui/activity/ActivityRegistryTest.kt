@@ -62,9 +62,13 @@ class ActivityRegistryTest {
         val uji = visibleActivityItems(setOf("karyawan"), null, akunUji = true).map { it.id }
         assertTrue("akun uji harus tetap melihatnya", "raport" in uji)
 
-        // Yang dipangkas HANYA kartu itu — gate akun-uji tak boleh menyeret
-        // kartu lain ikut hilang dari karyawan nyata.
-        assertEquals(uji.filterNot { it == "raport" }, karyawan)
+        // Yang dipangkas HANYA kartu-kartu akun-uji — gate ini tak boleh
+        // menyeret kartu lain ikut hilang dari karyawan nyata. Kedua kartu
+        // opname ikut sejak 2026-08-14 (lihat `ActivityOpnameCabangTest`).
+        assertEquals(
+            uji.filterNot { it in setOf("raport", "opname_cabang", "opname_validasi") },
+            karyawan,
+        )
     }
 
     @Test
@@ -368,6 +372,9 @@ class ActivityRegistryTest {
         // Kepala cabang yang MENGUSULKAN unitnya sengaja ditolak memvalidasi
         // inputnya sendiri, dan `opname.view` (manager/owner read-only) TIDAK
         // boleh dipakai di sini.
+        //
+        // `ids()` memakai `akunUji = true`, jadi tes ini mengunci gerbang ROLE-nya
+        // saja — lapisan akun-uji di atasnya diuji terpisah (`ActivityOpnameCabangTest`).
         assertTrue("opname_validasi" in ids("admin-stok", caps = mapOf("serial.input" to true)))
         // Admin-stok nyata di produksi umumnya role `karyawan` + divisi admin-stok.
         assertTrue("opname_validasi" in ids("karyawan", "admin-stok", caps = null))
@@ -568,19 +575,64 @@ class ActivityOpnameCabangTest {
     }
 
     @Test
-    fun `karyawan biasa melihat Opname Cabang tapi bukan antrian validasi`() {
+    fun `akun uji melihat Opname Cabang tapi bukan antrian validasi`() {
         // Dua kartu opname, dua audiens: petugas menghitung, admin-stok memutus
-        // unit ketik-manual.
-        val karyawan = visibleActivityItems(setOf("karyawan"), null, akunUji = false).map { it.id }
-        assertTrue("opname_cabang" in karyawan)
-        assertFalse("opname_validasi" in karyawan)
+        // unit ketik-manual. Dinilai atas AKUN UJI karena orang nyata tak lagi
+        // melihat keduanya (lihat tes berikutnya) — tanpa itu tes ini cuma
+        // mengukur gate akun-uji dua kali dan gerbang role-nya tak terjaga.
+        val uji = visibleActivityItems(setOf("karyawan"), null, akunUji = true).map { it.id }
+        assertTrue("opname_cabang" in uji)
+        assertFalse("opname_validasi" in uji)
     }
 
     @Test
-    fun `manager tidak melihat kartu ini`() {
+    fun `kedua kartu opname disembunyikan dari orang nyata, bukan salah satu`() {
+        // Permintaan user 2026-08-14: alur opname per-SN belum boleh terlihat
+        // karyawan. KEDUANYA — menutup `opname_cabang` saja meninggalkan
+        // antrian validasi terbuka untuk admin-stok, yaitu sisi lain dari alur
+        // yang sama.
+        //
+        // Peta kemampuan sengaja diisi `true` di sini: itulah yang server
+        // BENAR-BENAR kirim (`opname.hitung` memuat `karyawan`,
+        // `serial.input` memuat `admin-stok`). Tes ini karena itu menahan
+        // urutan di `visibleActivityItems` — saringan akun-uji HARUS berjalan
+        // sebelum `gateAllows`, kalau dibalik kartunya muncul lagi.
+        val caps = mapOf("opname.hitung" to true, "serial.input" to true)
+        listOf("karyawan", "admin-stok", "kepala-cabang", "admin", "superadmin").forEach { role ->
+            val nyata = visibleActivityItems(setOf(role), caps, akunUji = false).map { it.id }
+            assertFalse(
+                "orang nyata ber-role '$role' masih melihat kartu Opname Cabang",
+                "opname_cabang" in nyata,
+            )
+            assertFalse(
+                "orang nyata ber-role '$role' masih melihat kartu Validasi Opname",
+                "opname_validasi" in nyata,
+            )
+        }
+        // Akun uji tetap melihat keduanya — kalau tidak, fiturnya tak bisa diuji
+        // sama sekali di produksi.
+        val uji = visibleActivityItems(setOf("admin-stok"), caps, akunUji = true).map { it.id }
+        assertTrue(uji.containsAll(listOf("opname_cabang", "opname_validasi")))
+    }
+
+    @Test
+    fun `gate akun uji tidak menyeret kartu lain ikut hilang`() {
+        // Kegagalan senyap yang paling mungkin: menambah id ke ITEM_KHUSUS_AKUN_UJI
+        // salah ketik / kelebihan, lalu antrian orang lain ikut lenyap tanpa error.
+        val caps = mapOf("opname.hitung" to true, "serial.input" to true, "indent.approve" to true)
+        val nyata = visibleActivityItems(setOf("admin-stok"), caps, akunUji = false).map { it.id }
+        val uji = visibleActivityItems(setOf("admin-stok"), caps, akunUji = true).map { it.id }
+        assertEquals(uji.filterNot { it in setOf("raport", "opname_cabang", "opname_validasi") }, nyata)
+    }
+
+    @Test
+    fun `manager tidak melihat kartu ini bahkan sebagai akun uji`() {
         // Manager/owner pemantau lintas cabang — `authorize_hitung` menolaknya,
         // jadi kartunya tak boleh ada (menu mati = keluhan CRM 2026-07-27).
-        val manager = visibleActivityItems(setOf("manager"), null, akunUji = false).map { it.id }
+        // Dinilai dengan `akunUji = true` supaya yang diuji benar-benar gerbang
+        // ROLE-nya: dengan `false` tes ini akan hijau walau daftar role-nya
+        // dirusak, karena gate akun-uji sudah memangkasnya lebih dulu.
+        val manager = visibleActivityItems(setOf("manager"), null, akunUji = true).map { it.id }
         assertFalse("opname_cabang" in manager)
     }
 

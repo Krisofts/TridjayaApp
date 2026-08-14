@@ -529,6 +529,11 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         // pengelola — persis kebalikan dari maksudnya. Kunci karangan juga tak
         // boleh: peta kemampuan fail-closed, kunci tak dikenal menyembunyikan
         // kartunya dari SEMUA orang tanpa error.
+        //
+        // TAPI kunci ini TIDAK menentukan siapa yang melihat kartunya sekarang:
+        // sejak 2026-08-14 id-nya ada di [ITEM_KHUSUS_AKUN_UJI], jadi orang
+        // nyata tak melihatnya walau server menjawab `opname.hitung = true`.
+        // Baca alasannya di sana sebelum menyimpulkan gate ini rusak.
         capability = "opname.hitung",
         allowedRoles = OPNAME_HITUNG_MENU_ROLES,
         backendGuard = "inventory-service opname.rs authorize_hitung (capabilities::OPNAME_HITUNG_ROLES)",
@@ -544,6 +549,11 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         // SERIAL_INPUT_ROLES dari katalog rust-shared, jadi kunci ini sudah
         // disajikan server. Kunci karangan = peta fail-closed menyembunyikan
         // kartunya dari SEMUA orang, tanpa error.
+        //
+        // Ikut [ITEM_KHUSUS_AKUN_UJI] sejak 2026-08-14 — sisi lain dari alur
+        // yang sama dengan `opname_cabang`. Tile "Input SN" (Akses Cepat,
+        // kunci `serial.input` yang SAMA) sengaja TIDAK ikut: ia pekerjaan
+        // admin-stok yang berdiri sendiri, bukan bagian alur opname per-SN.
         capability = "serial.input",
         allowedRoles = SERIAL_INPUT_MENU_ROLES,
         backendGuard = "inventory-service opname.rs has_admin_stok (capabilities::SERIAL_INPUT_ROLES)",
@@ -568,8 +578,28 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
  * Cerminan web: `raportInputVisible` di `DashboardLayout.tsx` (`isAkunUji`).
  * Keduanya harus sepakat, kalau tidak menu hilang di satu sisi saja dan orang
  * mengira app-nya rusak.
+ *
+ * `opname_cabang` + `opname_validasi` masuk 2026-08-14 atas permintaan user:
+ * alur opname per-SN belum boleh terlihat karyawan. Keduanya, bukan salah satu
+ * — mereka dua sisi alur yang sama (petugas menghitung, admin-stok memutus unit
+ * ketik-manual), jadi menutup satu saja meninggalkan alurnya setengah terbuka.
+ *
+ * BEDANYA DENGAN `raport`, dan ini yang perlu diingat: kedua kartu opname punya
+ * `capability` SUNGGUHAN yang server memang jawab `true` (`opname.hitung`
+ * mencakup role `karyawan` di `capabilities.rs` — sengaja, "semua pegawai di
+ * cabang itu"). Yang menyembunyikannya adalah urutan di [visibleActivityItems]:
+ * saringan set ini berjalan SEBELUM `gateAllows`, jadi ia menang atas peta
+ * kemampuan. Jangan dibalik urutannya, dan jangan "merapikan" dengan mencabut
+ * `karyawan` dari `OPNAME_HITUNG_ROLES` di rust-shared — itu mematikan izin
+ * MENGHITUNG di server untuk akun uji juga, sehingga fiturnya tak bisa diuji.
+ *
+ * TIDAK ikut ditutup (keputusan user 2026-08-14): tile "Opname" (`opname.view`)
+ * dan "Input SN" (`serial.input`) di grid Akses Cepat Operasional. Keduanya
+ * sudah jalan untuk admin/manager sejak Juli dan bukan bagian alur per-SN baru.
+ * Akibatnya layar sesi opname MASIH terjangkau lewat tile itu bagi pemegang
+ * `opname.view` — memang begitu yang diminta, bukan celah yang terlewat.
  */
-private val ITEM_KHUSUS_AKUN_UJI = setOf("raport")
+private val ITEM_KHUSUS_AKUN_UJI = setOf("raport", "opname_cabang", "opname_validasi")
 
 /**
  * Apakah akun ini akun UJI (bukan karyawan nyata).
