@@ -93,6 +93,8 @@ data class ActivityItem(
     val comingSoon: Boolean = false,
     /** Sudah bisa dipakai, tapi masih terbatas — kartunya diberi label "BETA". */
     val beta: Boolean = false,
+    /** Menu tetap terdaftar untuk kontrak route/deep-link, tetapi tidak ditampilkan di Activity. */
+    val hiddenFromActivity: Boolean = false,
 )
 
 /**
@@ -323,6 +325,7 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "kinerja-service home_service.rs LAPOR_ROLES",
         source = ActivitySource.NONE,
         navKey = "hs_lapor",
+        hiddenFromActivity = true,
     ),
     ActivityItem(
         id = "komplain_masuk",
@@ -591,6 +594,7 @@ internal fun visibleActivityItems(
     capabilities: Map<String, Boolean>? = null,
     akunUji: Boolean = false,
 ): List<ActivityItem> = ACTIVITY_ITEMS.filter {
+    if (it.hiddenFromActivity) return@filter false
     if (it.id in ITEM_KHUSUS_AKUN_UJI && !akunUji) return@filter false
     gateAllows(it.capability, it.allowedRoles, effectiveRoles, capabilities)
 }
