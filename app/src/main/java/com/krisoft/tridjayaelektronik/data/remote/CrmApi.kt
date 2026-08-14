@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.data.remote
 
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.AssigneesData
+import com.krisoft.tridjayaelektronik.data.model.CreateActivityRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateProspekData
 import com.krisoft.tridjayaelektronik.data.model.CreateProspekRequest
 import com.krisoft.tridjayaelektronik.data.model.LeadDetailData
@@ -11,6 +12,7 @@ import com.krisoft.tridjayaelektronik.data.model.LostLeadRequest
 import com.krisoft.tridjayaelektronik.data.model.MoveStageRequest
 import com.krisoft.tridjayaelektronik.data.model.PipelinesData
 import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
+import kotlinx.serialization.json.JsonElement
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -62,4 +64,11 @@ interface CrmApi {
 
     @POST("api/crm/leads/{id}/reopen")
     suspend fun reopenLead(@Path("id") id: Long): Response<ApiResponse<LeadDto>>
+
+    /** Catat aktivitas (mis. chat WhatsApp dibuka) — lihat [CreateActivityRequest]. */
+    @POST("api/crm/leads/{id}/activities")
+    suspend fun addActivity(
+        @Path("id") id: Long,
+        @Body body: CreateActivityRequest
+    ): Response<ApiResponse<JsonElement>>
 }

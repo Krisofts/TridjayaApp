@@ -155,3 +155,18 @@ data class MoveStageRequest(
 data class LostLeadRequest(
     val reason: String
 )
+
+/**
+ * Catatan aktivitas pada sebuah lead (`POST /api/crm/leads/{id}/activities`).
+ *
+ * `jenis` mengikuti enum backend `ActivityJenis` (`call|wa|visit|meeting|note`;
+ * `system` HANYA ditulis server). Dipakai untuk merekam bahwa tombol WhatsApp
+ * ditekan — worker pengingat crm-service menilai "sudah di-follow-up" dari
+ * ada-tidaknya baris non-`system`, jadi tanpa jejak ini sales yang rajin
+ * menghubungi prospeknya tetap terhitung belum follow-up.
+ */
+@Serializable
+data class CreateActivityRequest(
+    val jenis: String,
+    val isi: String
+)

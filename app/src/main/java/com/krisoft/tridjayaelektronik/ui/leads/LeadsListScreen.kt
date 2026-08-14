@@ -175,6 +175,9 @@ fun LeadsListScreen(
     val listBottomClearance = navBarInset + 104.dp
 
     val openWhatsAppPromo: (LeadDto) -> Unit = { lead ->
+        // Dicatat SEBELUM intent dibuka: begitu WhatsApp mengambil alih, layar ini
+        // bisa langsung berhenti dan baris sesudahnya belum tentu sempat jalan.
+        viewModel.catatKontakWhatsapp(lead.id)
         openWhatsApp(context, lead.phone, buildPromoMessage(lead, state.myName))
     }
 
