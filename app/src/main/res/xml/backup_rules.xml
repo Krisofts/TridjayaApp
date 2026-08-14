@@ -1,15 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Auto Backup rules (android:fullBackupContent, used on API < 31).
-  Exclude the EncryptedSharedPreferences file: its AES master key lives in the Android
-  Keystore, which is NEVER backed up. Restoring the encrypted blob onto a new device would
-  leave an undecryptable file (crash/AEADBadTagException on first read). Login is cheap to
-  redo, so we simply drop it from backups.
+  Auto Backup rules (android:fullBackupContent, dipakai di API < 31).
+
+  DUA alasan berbeda untuk mengecualikan sesuatu di sini — jangan dicampur saat menambah baris:
+
+  1. TIDAK BISA DIPULIHKAN. Blob terenkripsi yang kuncinya ada di Android Keystore. Keystore
+     TIDAK pernah ikut backup, jadi memulihkannya ke perangkat lain menyisakan berkas yang tak
+     bisa didekripsi (crash/AEADBadTagException saat baca pertama). Login murah untuk diulang.
+  2. TIDAK BOLEH KELUAR DARI PERANGKAT. Data pribadi orang lain (pelanggan/pegawai) yang
+     kebetulan singgah di cache lokal. minSdk 24 = di Android 7-11 `adb backup` menariknya
+     TANPA root; HP karyawan yang hilang/dijual/diservis membawa serta basis data prospek.
+
+  `allowBackup` SENGAJA tetap true (app side-load enterprise; perpindahan perangkat karyawan
+  masih diinginkan). Yang disaring isinya, bukan mekanismenya.
+
+  Direktori cache (`getCacheDir()`, `code_cache`, `no_backup`) sudah dikecualikan Android
+  sendiri, jadi selfie absen / foto bukti / cache gambar Coil tidak perlu disebut di sini.
 -->
 <full-backup-content>
-    <!-- Legacy EncryptedSharedPreferences store (pre-DataStore; kept for one-time migration). -->
+    <!-- (1) Legacy EncryptedSharedPreferences store (pre-DataStore; kept for one-time migration). -->
     <exclude domain="sharedpref" path="tridjaya_secure_prefs.xml" />
-    <!-- Encrypted session DataStore: its AES key lives in the Keystore (never backed up), so a
+    <!-- (1) Encrypted session DataStore: its AES key lives in the Keystore (never backed up), so a
          restored blob would be undecryptable. Exclude it — the user just re-logs in. -->
     <exclude domain="file" path="datastore/tridjaya_session.pb" />
+
+    <!-- (2) Room `tridjaya.db` — cache lokal yang memuat data pribadi:
+         · tabel `leads` (LeadEntity): nama, phone, lokasi, catatan, estimatedValue, minatBarang,
+           keteranganFincoy calon pembeli — cermin GET /api/crm/leads?assignedTo=me
+         · tabel `dashboard_cache`: blob JSON KPI + direktori petugas (nama/kontak pegawai)
+         · tabel `opname_units`: hasil hitung fisik per serial
+         Seluruh isinya bisa diambil ulang dari server sesudah login, jadi tidak ada yang hilang
+         permanen — yang hilang cuma salinannya di file backup.
+         WAL/SHM/JOURNAL wajib ikut: memulihkan .db tanpa -wal (atau sebaliknya) meninggalkan
+         basis data setengah jadi, dan -wal sendiri masih memuat baris yang sama. Room memakai
+         WAL di perangkat normal dan TRUNCATE (-journal) di perangkat low-RAM, jadi keduanya
+         disebut. -->
+    <exclude domain="database" path="tridjaya.db" />
+    <exclude domain="database" path="tridjaya.db-wal" />
+    <exclude domain="database" path="tridjaya.db-shm" />
+    <exclude domain="database" path="tridjaya.db-journal" />
+
+    <!-- (2) Riwayat pencarian global: isinya kata kunci yang diketik user, dan pencarian ini
+         mencakup PROSPEK — praktis daftar nama/nomor pelanggan dalam bentuk teks bebas. -->
+    <exclude domain="sharedpref" path="search_history.xml" />
+
+    <!-- APK pembaruan yang diunduh in-app (UpdateManager: filesDir/update/employee-app.apk).
+         Bukan soal privasi melainkan kuota: berkasnya puluhan MB sementara kuota Auto Backup
+         hanya 25 MB per app — satu APK singgah di situ bisa menggagalkan SELURUH backup tanpa
+         pesan apa pun. Isinya juga tak berguna dipulihkan (diunduh ulang saat perlu). -->
+    <exclude domain="file" path="update" />
 </full-backup-content>

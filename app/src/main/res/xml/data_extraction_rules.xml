@@ -1,17 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Backup / transfer rules for API 31+ (android:dataExtractionRules).
-  Same reasoning as backup_rules.xml: the encrypted token store is tied to a Keystore key that
-  does not travel with a cloud backup or a device transfer, so exclude it from both to avoid
-  restoring an undecryptable blob. The user just re-logs in on the new device.
+  Aturan backup / transfer untuk API 31+ (android:dataExtractionRules).
+
+  Isinya HARUS dijaga sejajar dengan backup_rules.xml (jalur API < 31) — alasan tiap baris
+  didokumentasikan di sana dan tidak diulang panjang-lebar di sini.
+
+  DUA BLOK, DUA JALUR YANG BERBEDA. `<cloud-backup>` = Google Drive backup; `<device-transfer>`
+  = salin langsung ke HP baru saat setup. Mengecualikan di salah satu saja MENINGGALKAN jalur
+  yang lain terbuka lebar. Setiap penambahan wajib ditulis di KEDUA blok.
+
+  Konsekuensi yang disadari: dengan `tridjaya.db` dikecualikan dari device-transfer, unit opname
+  dan prospek yang dibuat offline dan BELUM tersinkron tidak ikut pindah ke HP baru. Itu memang
+  harga yang dipilih — data tersebut memang ditakdirkan didorong ke server, dan membiarkannya
+  ikut berarti membiarkan seluruh basis prospek ikut juga.
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Blob terenkripsi berkunci Keystore — tak bisa didekripsi di perangkat lain. -->
         <exclude domain="sharedpref" path="tridjaya_secure_prefs.xml" />
         <exclude domain="file" path="datastore/tridjaya_session.pb" />
+        <!-- Room `tridjaya.db`: PII pelanggan (leads), direktori petugas, hasil opname. -->
+        <exclude domain="database" path="tridjaya.db" />
+        <exclude domain="database" path="tridjaya.db-wal" />
+        <exclude domain="database" path="tridjaya.db-shm" />
+        <exclude domain="database" path="tridjaya.db-journal" />
+        <!-- Kata kunci pencarian global (mencakup nama prospek). -->
+        <exclude domain="sharedpref" path="search_history.xml" />
+        <!-- APK pembaruan yang diunduh in-app — puluhan MB, kuota backup cuma 25 MB. -->
+        <exclude domain="file" path="update" />
     </cloud-backup>
     <device-transfer>
+        <!-- Blob terenkripsi berkunci Keystore — tak bisa didekripsi di perangkat lain. -->
         <exclude domain="sharedpref" path="tridjaya_secure_prefs.xml" />
         <exclude domain="file" path="datastore/tridjaya_session.pb" />
+        <!-- Room `tridjaya.db`: PII pelanggan (leads), direktori petugas, hasil opname. -->
+        <exclude domain="database" path="tridjaya.db" />
+        <exclude domain="database" path="tridjaya.db-wal" />
+        <exclude domain="database" path="tridjaya.db-shm" />
+        <exclude domain="database" path="tridjaya.db-journal" />
+        <!-- Kata kunci pencarian global (mencakup nama prospek). -->
+        <exclude domain="sharedpref" path="search_history.xml" />
+        <!-- APK pembaruan yang diunduh in-app — tak berguna dipulihkan, diunduh ulang saat perlu. -->
+        <exclude domain="file" path="update" />
     </device-transfer>
 </data-extraction-rules>
