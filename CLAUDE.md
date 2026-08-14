@@ -336,9 +336,13 @@ specific reference design (blue/white poster with promo price, tenor/cicilan gri
 price cards) — colors are intentionally hardcoded in a `FlyerColors` object, not
 `MaterialTheme`-driven, so the shared image looks identical regardless of the user's device theme.
 
-Capture works via **`PixelCopy`** (API 24+) on the host Window, cropped to the flyer's
+Capture works via **`PixelCopy`** on the host Window, cropped to the flyer's
 `onGloballyPositioned` bounds, with a `legacyCapture()` `View.draw(Canvas)` fallback when no Window
-is reachable — see the performance section for why. No newer Compose `GraphicsLayer` capture API is
+is reachable — see the performance section for why. **Batasnya API 26, bukan 24** (catatan lama di
+berkas ini keliru): overload ber-`srcRect` `PixelCopy.request(Window, Rect, Bitmap, …)` baru ada di
+Oreo, sedangkan minSdk 24. Sejak perbaikan lint 2026-08-14 ada penjagaan `Build.VERSION.SDK_INT`
+eksplisit yang menurunkan API 24–25 ke `legacyCapture()`; tanpa itu HP Android 7.0/7.1 crash
+`NoSuchMethodError` saat menekan "Buat Gambar"/"Kirim ke WA". No newer Compose `GraphicsLayer` capture API is
 used (wasn't confirmed available in this project's resolved Compose version, so don't assume it
 exists without checking `ui-graphics-android`'s actual jar contents first). Three actions: "Buat
 Gambar" (generate + generic Android share sheet), "Kirim ke WA" (generate + `Intent` targeted at
@@ -475,7 +479,8 @@ diverifikasi ulang di mesin baru; jangan pakai catatan `C:\...` versi lama.**
 Three fixes from a dedicated performance audit — don't regress these:
 
 - **Flyer capture is off the main thread.** `ProductDetailScreen.kt`'s `captureBitmap()` now uses
-  `PixelCopy` (API 24+) to copy the already-rendered window pixels on the render thread and deliver
+  `PixelCopy` (API 26+ untuk overload ber-`srcRect`; API 24–25 turun ke `legacyCapture()`)
+  to copy the already-rendered window pixels on the render thread and deliver
   the result via callback, instead of the old `View.draw(Canvas)` path that allocated a full-screen
   `ARGB_8888` bitmap and rasterised the whole view tree synchronously on the UI thread (a visible
   freeze on tap). A `legacyCapture()` software fallback remains for the rare case where no host
@@ -742,6 +747,28 @@ edge-to-edge, R8/shrinking, synchronized token refresh). This pass covered the r
   official Gradle/AGP recommendation. Low runtime impact, pure tooling/maintainability — worth
   doing but isn't urgent, and touching every dependency line in one pass is unnecessary risk for
   a build that's currently working.
+
+## Lint (`:app:lintDebug`) — baseline 0 error, jangan diturunkan
+
+`lintDebug` menggagalkan build kalau ada error (`abortOnError` default, tanpa `lint-baseline.xml`),
+dan sejak 2026-08-14 baselinenya **0 error, 30 warning**. Dua keputusan di dalamnya jangan
+"dirapikan" tanpa bertanya:
+
+- **`QUERY_ALL_PACKAGES` DITEKAN dengan `tools:ignore="QueryAllPackagesPermission"`, BUKAN dicabut.**
+  Lint menyarankan `<queries>`, tapi `<queries>` hanya bisa menyebut paket yang **sudah diketahui
+  namanya**, sedangkan `SecurityGuard.detect()` justru mengenumerasi seluruh paket terpasang untuk
+  menemukan yang menyatakan `ACCESS_MOCK_LOCATION` — termasuk app fake-GPS yang belum pernah kita
+  lihat. Mencabutnya menyisakan daftar spoofer hardcoded saja = melemahkan gerbang integritas titik
+  absen demi memuaskan pemeriksa kebijakan Play Store yang tidak berlaku untuk side-load enterprise.
+- **`ProduceStateDoesNotAssignValue` adalah FALSE POSITIVE di compose-runtime 1.7.5** (BOM
+  2024.10.01) dan itu sebabnya `SecurityGate` di `MainActivity.kt` memakai
+  `remember { mutableStateOf(...) }` + `LaunchedEffect(key)`, bukan `produceState`. Pemicunya
+  **bukan bentuk penugasan** melainkan **adanya argumen key**: dibuktikan dengan menjalankan lint
+  atas tujuh varian sekaligus — `produceState<T?>(null) { value = f() }` (tanpa key) LOLOS,
+  sedangkan keenam varian ber-key gagal semua, termasuk `this.value = h` eksplisit, versi dua
+  langkah `val h = ...; value = h`, key positional, key bernama, dan versi tanpa delegasi `by`.
+  Jadi jangan buang waktu mengutak-atik bentuk `value = ...`; itu jalan buntu. Kalau Compose naik
+  versi, uji ulang `produceState` sebelum menganggap catatan ini masih berlaku.
 
 ## Tema & warna
 

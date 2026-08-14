@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
@@ -689,14 +690,23 @@ private fun BranchStockCard(branches: List<BranchStockEntity>) {
 }
 
 /**
- * Captures just the flyer region into a bitmap. Prefers [PixelCopy] (API 24+) which copies the
+ * Captures just the flyer region into a bitmap. Prefers [PixelCopy] which copies the
  * already-rendered window pixels on the render thread and delivers the result via callback — so the
  * heavy pixel work never blocks the UI thread (the old `View.draw(Canvas)` path allocated a
  * full-screen bitmap and rasterised the whole view tree synchronously on main, briefly freezing the
- * UI on tap). Falls back to the software-draw path only if no host Activity/Window is reachable.
+ * UI on tap). Falls back to the software-draw path when no host Activity/Window is reachable.
+ *
+ * **Batas API 26, bukan 24.** Yang dipakai di sini adalah overload
+ * `PixelCopy.request(Window, Rect, Bitmap, …)` — overload ber-`srcRect` itu baru ada di API 26
+ * (Oreo), sementara `minSdk` app ini 24. Tanpa penjagaan versi, HP Android 7.0/7.1 di lapangan
+ * mendapat `NoSuchMethodError` saat menekan "Buat Gambar"/"Kirim ke WA" — bukan gagal build,
+ * melainkan crash di tangan pengguna. (Komentar lama di berkas ini dan di CLAUDE.md sempat
+ * menulis "API 24+"; itu keliru untuk overload ini.) Di API 24–25 jalurnya turun ke
+ * [legacyCapture] — lebih lambat dan sinkron di main thread, tapi jalan.
  */
 private suspend fun captureBitmap(view: View, bounds: Rect): Bitmap? {
     if (view.width <= 0 || view.height <= 0) return null
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return legacyCapture(view, bounds)
     val window = view.findActivity()?.window ?: return legacyCapture(view, bounds)
 
     // boundsInRoot() is relative to the Compose root view; PixelCopy's source rect is in window

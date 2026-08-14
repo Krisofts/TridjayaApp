@@ -1,6 +1,7 @@
 package com.krisoft.tridjayaelektronik.push
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -90,7 +91,7 @@ class FcmService : FirebaseMessagingService() {
             .setContentIntent(pending)
             .setGroup(channelId)
             .build()
-        NotificationManagerCompat.from(this).notify(notifId, notif)
+        postNotification(notifId, notif)
 
         // Ringkasan grup — Android 7+ (API 24) HANYA men-collapse notif ber-`setGroup` sama kalau
         // ada satu notif ringkasan (`setGroupSummary(true)`) menaunginya; tanpa ini tiap notif
@@ -113,7 +114,27 @@ class FcmService : FirebaseMessagingService() {
             .setAutoCancel(true)
             .setContentIntent(channelLaunchPendingIntent(channelId, summaryId))
             .build()
-        NotificationManagerCompat.from(this).notify(summaryId, summary)
+        postNotification(summaryId, summary)
+    }
+
+    /**
+     * SATU-SATUNYA pintu ke `notify()` di kelas ini. Cek izin POST_NOTIFICATIONS ada DI SINI,
+     * bukan hanya di [showNotification], karena dua alasan:
+     *  1. [showGroupSummary] posting notifikasi keduanya — dulu ia melewati gerbang izin sama
+     *     sekali (aman secara runtime karena pemanggilnya sudah menjaga, tapi rapuh terhadap
+     *     pemanggil baru) dan lint menandainya `MissingPermission`;
+     *  2. lint tidak menelusuri gerbang lintas-fungsi, jadi cek harus berada di fungsi yang
+     *     sama dengan panggilan `notify()` agar terlihat olehnya.
+     * Tanpa izin, notifikasi memang tak akan tampil di Android 13+ — diam-diam tak posting itu
+     * perilaku yang benar, bukan crash `SecurityException`.
+     */
+    private fun postNotification(id: Int, notification: Notification) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        NotificationManagerCompat.from(this).notify(id, notification)
     }
 
     /** ID stabil per channel (bukan timestamp) — ringkasan grup harus selalu menimpa dirinya sendiri,
