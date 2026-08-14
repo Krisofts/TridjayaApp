@@ -150,6 +150,9 @@ fun LeadDetailScreen(
                             lead = lead,
                             probability = probability,
                             onWhatsApp = {
+                                // Dicatat SEBELUM intent dibuka — lihat catatan yang
+                                // sama di LeadsListScreen.
+                                viewModel.catatKontakWhatsapp()
                                 openWhatsApp(context, lead.phone, buildPromoMessage(lead, state.myName))
                             },
                             onCall = {

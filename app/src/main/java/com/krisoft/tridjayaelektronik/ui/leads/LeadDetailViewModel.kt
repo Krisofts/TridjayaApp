@@ -7,6 +7,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
 import com.krisoft.tridjayaelektronik.data.model.PipelineDto
+import com.krisoft.tridjayaelektronik.domain.leads.CatatKontakWhatsappUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.GetAssigneesUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.GetLeadDetailUseCase
 import com.krisoft.tridjayaelektronik.domain.leads.MarkLeadLostUseCase
@@ -42,11 +43,16 @@ class LeadDetailViewModel @Inject constructor(
     private val markLeadLostUseCase: MarkLeadLostUseCase,
     private val reopenLeadUseCase: ReopenLeadUseCase,
     private val getAssigneesUseCase: GetAssigneesUseCase,
+    private val catatKontakWhatsappUseCase: CatatKontakWhatsappUseCase,
     authRepository: AuthRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val leadId: Long = checkNotNull(savedStateHandle.get<Long>("leadId"))
+
+    /** Dipanggil saat tombol WhatsApp ditekan — bukti follow-up untuk worker
+     *  pengingat crm-service. Fire-and-forget, tak pernah memblokir tombolnya. */
+    fun catatKontakWhatsapp() = catatKontakWhatsappUseCase(leadId)
 
     private val _uiState = MutableStateFlow(
         LeadDetailUiState(myId = authRepository.currentUserId, myName = authRepository.currentUserName)

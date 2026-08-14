@@ -9,6 +9,7 @@ import com.krisoft.tridjayaelektronik.data.local.SyncMetaEntity
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.AssigneeDto
 import com.krisoft.tridjayaelektronik.data.model.AssigneesData
+import com.krisoft.tridjayaelektronik.data.model.CreateActivityRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateProspekRequest
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
 import com.krisoft.tridjayaelektronik.data.model.ProspekDraft
@@ -441,6 +442,42 @@ class CrmRepository @Inject constructor(
         leadDao.insertAll(listOf(updated))
         appScope.launch { syncDirtyStages() }
         return AuthResult.Success(updated.toDto())
+    }
+
+    /**
+     * Catat bahwa tombol WhatsApp ditekan untuk sebuah prospek (aktivitas
+     * `jenis = "wa"`).
+     *
+     * KENAPA: worker pengingat crm-service menilai "sudah di-follow-up atau
+     * belum" dari ada-tidaknya baris `crm_activities` non-`system`. Membuka chat
+     * WhatsApp adalah follow-up yang paling sering dilakukan dan paling jarang
+     * dicatat manual — tanpa jejak ini, sales yang rajin menghubungi prospeknya
+     * tetap terhitung "belum follow-up" dan terus diingatkan, sampai
+     * pengingatnya berhenti dipercaya.
+     *
+     * SENGAJA fire-and-forget lewat [appScope], tanpa nilai balik dan tanpa
+     * antrean offline:
+     * - tombolnya membuka aplikasi lain (WhatsApp) dan layarnya bisa langsung
+     *   ditinggalkan, jadi coroutine milik ViewModel bisa mati di tengah jalan;
+     * - gagal mencatat TIDAK boleh berubah jadi gagal menghubungi konsumen —
+     *   tak ada pesan error yang ditampilkan;
+     * - tak diantrekan offline karena stempel waktunya baru dibuat saat request
+     *   terkirim; kontak kemarin yang tersinkron besok akan menggeser
+     *   "sentuhan terakhir" ke waktu yang salah, dan itu lebih menyesatkan
+     *   daripada tidak tercatat sama sekali.
+     *
+     * Lead yang belum tersinkron (id negatif) dilewati — belum punya id server.
+     */
+    fun catatKontakWhatsapp(leadId: Long) {
+        if (leadId <= 0) return
+        appScope.launch {
+            runCatching {
+                api.addActivity(
+                    leadId,
+                    CreateActivityRequest(jenis = "wa", isi = "Chat WhatsApp dibuka dari aplikasi")
+                )
+            }
+        }
     }
 
     /** Pushes every offline stage move to the server; on success the authoritative server row

@@ -18,3 +18,15 @@ class GetAssigneesUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(): AuthResult<List<AssigneeDto>> = crmRepository.assignees()
 }
+
+/**
+ * Catat pembukaan chat WhatsApp sebagai bukti follow-up. Bukan `suspend` dan
+ * tanpa nilai balik: pencatatannya fire-and-forget di scope aplikasi (lihat
+ * [CrmRepository.catatKontakWhatsapp]) karena layarnya bisa langsung
+ * ditinggalkan begitu WhatsApp terbuka.
+ */
+class CatatKontakWhatsappUseCase @Inject constructor(
+    private val crmRepository: CrmRepository
+) {
+    operator fun invoke(leadId: Long) = crmRepository.catatKontakWhatsapp(leadId)
+}
