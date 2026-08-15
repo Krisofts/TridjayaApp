@@ -94,6 +94,39 @@ internal val KNOWN_ROLES: Set<String> = setOf(
 internal val SPK_MENU_ROLES: Set<String> = KNOWN_ROLES - "ai-engineer"
 
 /**
+ * Home Service — daftar role cadangan offline. Tinggal DI SINI, bukan di
+ * `ActivityRegistry`, karena kedua registri memakainya dan arah ketergantungan
+ * antar-berkas hanya boleh SATU: `ui.activity` mengimpor dari `ui.home`
+ * (`ALL_LOGGED_IN`, `SPK_MENU_ROLES`, `gateAllows`, …), tak pernah sebaliknya.
+ *
+ * Sempat dibalik saat dua ubin Home Service ditambahkan (2026-08-15) dan
+ * akibatnya BUKAN error kompilasi melainkan `ExceptionInInitializerError` saat
+ * runtime: `<clinit>` kedua berkas saling menunggu, `ALL_LOGGED_IN` terbaca
+ * `null`, dan SELURUH registri Activity mati sekaligus. 24 test tumbang
+ * serentak dengan pesan yang tak menyebut sebabnya.
+ *
+ * **[HS_LAPOR_ROLES] kini [ALL_LOGGED_IN]** (2026-08-15, permintaan user
+ * "semua karyawan bisa mengajukan komplain konsumen"). Jalur pelaporan
+ * kinerja-service sudah LOGIN-ONLY — `ensure_role` dicabut dari `lookup`,
+ * `cari`, `create`, `list`, `detail`, dan unggah fotonya — jadi daftar role apa
+ * pun di sini hanya akan lebih sempit dari servernya.
+ *
+ * Daftar lamanya memuat 13 role dan tetap menutup 24 karyawan AKTIF di
+ * produksi (admin-penjualan 9, pic-raport 6, crm-manager 3, it-programmer 2,
+ * digital-team 2, hrd 1, ai-engineer 1). Daftar role selalu tertinggal dari
+ * daftar pegawai; itu sebabnya bentuknya diganti, bukan ditambahi.
+ *
+ * Konsekuensinya ubin `komplain_lapor` WAJIB ber-`capability = null`: kunci apa
+ * pun (termasuk `spk.pipeline` yang dipakai sebelumnya) akan menyempitkan lagi,
+ * dan peta kemampuan fail-closed membuat kunci tak dikenal menyembunyikan menu
+ * dari SEMUA orang.
+ */
+internal val HS_LAPOR_ROLES = ALL_LOGGED_IN
+
+/** `homeservice.task` — teknisi kunjungan. Cerminan `HOMESERVICE_TASK_ROLES` (= PDI_ROLES). */
+internal val HS_TASK_ROLES = setOf("pdi", "admin", "superadmin")
+
+/**
  * Daftar menu + haknya. Urutan di sini = urutan tampil di grid.
  *
  * Saat menambah menu: cari guard backend-nya DULU (gateway `require_*` /
@@ -199,6 +232,35 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
         label = "Riwayat Mutasi",
         allowedRoles = MUTASI_HISTORI_MENU_ROLES,
         backendGuard = "tanpa gate role server-side — meniru RoleGuard web InventoryMutasiPage",
+    ),
+    // ── Home Service (komplain purna-jual) ──────────────────────────────────
+    //
+    // Ditambahkan 2026-08-15 (laporan user: sales & PDI tak menemukan menunya).
+    // Sebelum ini modul komplain NOL pintu masuk di beranda: registri ini tak
+    // punya satu pun entrinya, dan di layar Activity kartu "Lapor Komplain"
+    // memang SENGAJA disembunyikan (`hiddenFromActivity`, commit 2344c71 —
+    // keputusan user, TIDAK dibatalkan di sini). Yang tersisa cuma route
+    // `home_hs_lapor` yang hidup tanpa ada yang menavigasinya.
+    //
+    // Kedua entri memakai ULANG konstanta role milik `ActivityRegistry` —
+    // menyalinnya ke sini berarti dua daftar yang bisa berpisah diam-diam,
+    // persis kelas bug yang registri ini dibuat untuk mencegahnya.
+    QuickAccessMenu(
+        id = "komplain_lapor",
+        // `null` DISENGAJA, lihat KDoc [HS_LAPOR_ROLES]: servernya login-only,
+        // jadi kunci apa pun di sini menyempitkan. `spk.pipeline` yang dipakai
+        // sampai 2026-08-15 pun menutup `ai-engineer`.
+        capability = null,
+        label = "Lapor Komplain",
+        allowedRoles = HS_LAPOR_ROLES,
+        backendGuard = "tanpa guard: kinerja-service home_service/handlers.rs create_ticket login-only (self-scoped)",
+    ),
+    QuickAccessMenu(
+        id = "komplain_tugas",
+        capability = "homeservice.task",
+        label = "Tugas Home Service",
+        allowedRoles = HS_TASK_ROLES,
+        backendGuard = "rust-shared capabilities.rs HOMESERVICE_TASK_ROLES (= PDI_ROLES)",
     ),
 )
 

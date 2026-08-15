@@ -5,6 +5,8 @@ import com.krisoft.tridjayaelektronik.ui.home.CRM_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.SERIAL_INPUT_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.STAFF_MENU_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.SPK_MENU_ROLES
+import com.krisoft.tridjayaelektronik.ui.home.HS_LAPOR_ROLES
+import com.krisoft.tridjayaelektronik.ui.home.HS_TASK_ROLES
 import com.krisoft.tridjayaelektronik.ui.home.gateAllows
 
 /**
@@ -144,17 +146,13 @@ internal val RAPORT_REVIEW_ROLES = setOf(
  * dengan `"kepala_cabang"` di [CHAT_REVIEW_ROLES]). Petugas CS sungguhan tetap
  * lolos lewat peta kemampuan server, yang memang sumber utamanya.
  */
-internal val HS_LAPOR_ROLES = setOf(
-    "sales", "admin-sales", "admin", "superadmin", "manager", "owner", "kepala-cabang",
-    "karyawan", "pdi", "kasir", "admin-stok", "delivery-control", "driver",
-)
+// [HS_LAPOR_ROLES] PINDAH ke `ui/home/QuickAccessMenus.kt` (lihat impor di atas).
 
 /** `homeservice.dispatch` — triase CS (tugaskan teknisi / minta tarik / batalkan).
  *  `"cs"` dilepas dengan alasan yang sama seperti di [HS_LAPOR_ROLES]. */
 internal val HS_DISPATCH_ROLES = setOf("admin", "superadmin", "manager", "delivery-control")
 
-/** `homeservice.task` — teknisi kunjungan. Cerminan `HOMESERVICE_TASK_ROLES` (= PDI_ROLES). */
-internal val HS_TASK_ROLES = setOf("pdi", "admin", "superadmin")
+// [HS_TASK_ROLES] PINDAH ke `ui/home/QuickAccessMenus.kt` (lihat impor di atas).
 
 /**
  * Cerminan `capabilities::OPNAME_HITUNG_ROLES` (rust-shared) — cadangan OFFLINE
@@ -317,12 +315,11 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         label = "Lapor Komplain",
         subtitle = "Keluhan konsumen purna-jual",
         kind = ActivityKind.AKSI,
-        // Tak ada kunci `homeservice.lapor` di katalog kemampuan — web pun
-        // memakai `spk.pipeline` untuk menu ini. Kunci karangan akan
-        // menyembunyikan kartunya dari SEMUA orang (peta fail-closed).
-        capability = "spk.pipeline",
+        // `null` sejak 2026-08-15 — servernya login-only, jadi kunci apa pun
+        // menyempitkan. Alasan lengkap di KDoc [HS_LAPOR_ROLES] (`ui/home`).
+        capability = null,
         allowedRoles = HS_LAPOR_ROLES,
-        backendGuard = "kinerja-service home_service.rs LAPOR_ROLES",
+        backendGuard = "tanpa guard: kinerja-service home_service/handlers.rs create_ticket login-only (self-scoped)",
         source = ActivitySource.NONE,
         navKey = "hs_lapor",
         hiddenFromActivity = true,

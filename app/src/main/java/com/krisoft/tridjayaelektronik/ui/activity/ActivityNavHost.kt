@@ -298,6 +298,10 @@ fun ActivityNavHost(
                 onQuickAccessSerialInput = { navController.navigate(ROUTE_SERIAL_INPUT) { launchSingleTop = true } },
                 onQuickAccessDeadstock = { navController.navigate(ROUTE_DEADSTOCK) { launchSingleTop = true } },
                 onQuickAccessMutasiHistori = { navController.navigate(ROUTE_MUTASI_HISTORI) { launchSingleTop = true } },
+                // Home Service: dua ubin Akses Cepat (2026-08-15). Route-nya sudah
+                // lama ada di tabel ini — yang selama ini hilang cuma pintunya.
+                onKomplainLapor = { navController.navigate(ROUTE_HS_LAPOR) { launchSingleTop = true } },
+                onKomplainTugas = { navController.navigate(ROUTE_HS_TEKNISI) { launchSingleTop = true } },
                 onSpkMenu = { key ->
                     val route = when (key) {
                         "hub" -> ROUTE_SPK_HUB

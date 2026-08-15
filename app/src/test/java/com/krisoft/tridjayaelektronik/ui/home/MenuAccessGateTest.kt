@@ -196,6 +196,46 @@ class QuickAccessRegistryTest {
         assertTrue("deadstock" in terlihatStok)
     }
 
+    /**
+     * Laporan user 2026-08-15: sales & PDI tak menemukan menu Home Service di app.
+     *
+     * Sebabnya modul komplain NOL pintu masuk di beranda — registri ini tak punya
+     * satu pun entrinya, sementara di layar Activity kartu "Lapor Komplain" memang
+     * SENGAJA disembunyikan (`hiddenFromActivity`, commit 2344c71, keputusan user
+     * yang TIDAK dibatalkan). Layar laporannya hidup, route `home_hs_lapor` hidup,
+     * dan tak ada satu pun yang menavigasi ke sana.
+     *
+     * Test ini mengunci PINTUNYA, bukan sekadar gate-nya: yang berhak melapor harus
+     * menemukan ubinnya, dan yang tidak berhak tetap tak melihatnya.
+     */
+    @Test
+    fun `home service punya pintu masuk di Akses Cepat untuk pelapor dan teknisi`() {
+        // Sales: melapor boleh, mengerjakan kunjungan tidak.
+        val sales = visibleQuickAccessMenus(setOf("sales")).map { it.id }
+        assertTrue("komplain_lapor" in sales)
+        assertFalse("komplain_tugas" in sales)
+
+        // PDI: keduanya — ia melapor DAN mengerjakan tugas kunjungan.
+        val pdi = visibleQuickAccessMenus(setOf("pdi")).map { it.id }
+        assertTrue("komplain_lapor" in pdi)
+        assertTrue("komplain_tugas" in pdi)
+
+        // Peta kemampuan server yang memutus, bukan daftar role lokal: `pdi` yang
+        // kemampuan teknisinya dicabut server kehilangan ubin tugasnya.
+        val dicabut = mapOf("spk.pipeline" to true, "homeservice.task" to false)
+        val pdiDicabut = visibleQuickAccessMenus(setOf("pdi"), dicabut).map { it.id }
+        assertTrue("komplain_lapor" in pdiDicabut)
+        assertFalse("komplain_tugas" in pdiDicabut)
+
+        // `ai-engineer` — satu-satunya role yang `spk.pipeline` tutup — kini IKUT
+        // boleh melapor (server login-only sejak 2026-08-15), tapi tetap bukan
+        // teknisi. Inilah yang membuat `capability` ubin lapor harus `null`:
+        // dengan `spk.pipeline` dia akan tertutup lagi.
+        val ai = visibleQuickAccessMenus(setOf("ai-engineer")).map { it.id }
+        assertTrue("komplain_lapor" in ai)
+        assertFalse("komplain_tugas" in ai)
+    }
+
     @Test
     fun `ajukan inden dan cari semua kini terjangkau dari Operasional`() {
         // 2026-07-30: dipindah dari Activity ke sini — pintu masuknya harus
@@ -270,8 +310,11 @@ class CapabilityDrivenMenuTest {
         // ada kunci kemampuan yang bisa dicerminkan. Daftar karyawan di dalam
         // layar itulah yang ber-gate (`kpi.manage`), dan itu dinilai di
         // KpiViewModel, bukan oleh gate menu ini.
+        // `komplain_lapor` menyusul 2026-08-15 dengan alasan yang SAMA seperti
+        // `kpi`: endpointnya tak memanggil `ensure_role` sama sekali (login-only,
+        // self-scoped), jadi kunci apa pun akan lebih sempit dari servernya.
         val tanpaKunci = QUICK_ACCESS_MENUS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("kpi", "inventory", "cari_semua"), tanpaKunci)
+        assertEquals(listOf("kpi", "inventory", "cari_semua", "komplain_lapor"), tanpaKunci)
     }
 
     @Test
