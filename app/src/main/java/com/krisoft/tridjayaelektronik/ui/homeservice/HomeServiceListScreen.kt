@@ -203,6 +203,10 @@ private fun KartuTiket(tiket: HsTicketDto, onClick: () -> Unit) {
                     // di HsTicketDto) — nilai negatif/null diperlakukan "baru".
                     tiket.umurJam?.takeIf { it > 0 }?.let { append(" · ${it} jam") }
                     if (tiket.dalamGaransi == true) append(" · garansi")
+                    // Penginput ikut di kartu daftar, bukan cuma di detail: CS
+                    // yang men-triase antrian menilai kelayakan tiket sebelum
+                    // membukanya, dan "siapa yang mengisi" bagian dari itu.
+                    tiket.pelaporNama?.takeIf { it.isNotBlank() }?.let { append(" · oleh $it") }
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

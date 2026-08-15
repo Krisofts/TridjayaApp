@@ -323,6 +323,12 @@ private fun RingkasanTiket(tiket: HsTicketDetailDto) {
             Baris("Konsumen", tiket.customerNama?.takeIf { it.isNotBlank() } ?: "—")
             tiket.customerHp?.takeIf { it.isNotBlank() }?.let { KontakKonsumen(it) }
             tiket.customerAlamat?.takeIf { it.isNotBlank() }?.let { Baris("Alamat", it) }
+            // PENGINPUT tiket. Datanya sudah tersimpan sejak migrasi 118
+            // (`pelapor_nama`) dan selalu ikut di respons, tapi app tak pernah
+            // menampilkannya — CS/teknisi yang menemukan isian meragukan tak
+            // punya cara tahu harus bertanya ke siapa, padahal namanya ada di
+            // baris yang sama. Web sudah menampilkannya di kartu papan.
+            tiket.pelaporNama?.takeIf { it.isNotBlank() }?.let { Baris("Penginput", it) }
             tiket.assignedTeknisiNama?.takeIf { it.isNotBlank() }?.let { Baris("Teknisi", it) }
             tiket.tarikDriverNama?.takeIf { it.isNotBlank() }?.let { Baris("Driver tarik", it) }
             tiket.tarikAlasan?.takeIf { it.isNotBlank() }?.let { Baris("Alasan tarik", it) }
