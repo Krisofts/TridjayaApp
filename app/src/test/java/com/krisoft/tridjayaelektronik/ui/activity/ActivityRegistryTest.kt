@@ -57,36 +57,39 @@ class ActivityRegistryTest {
     // ── Item khusus akun uji ─────────────────────────────────────────────────
 
     @Test
-    fun `Input Aktivitas hanya untuk akun uji, bukan karyawan nyata`() {
-        // 2026-08-14, permintaan user: kartunya DISEMBUNYIKAN LAGI dari orang
-        // nyata (sempat dibuka 2026-08-12). Cerminan web `raportInputVisible`.
+    fun `Input Aktivitas terbuka untuk semua karyawan`() {
+        // DIBUKA 2026-08-15 (permintaan user) — pembalikan keempat. Alasannya
+        // terukur: selama pintunya ditutup, KPI `LAPORAN AKTIVITAS` tetap
+        // menilai orang atas laporan yang tak bisa mereka isi (60 dari 61 orang
+        // di bawah 40%). KPI sengaja TIDAK diubah; yang dibuka pintunya.
+        // Cerminan web: `raportInputVisible = true` di `DashboardLayout.tsx`.
         val karyawan = visibleActivityItems(setOf("karyawan"), null, akunUji = false).map { it.id }
-        assertFalse("karyawan nyata tak boleh melihat kartu Input Aktivitas", "raport" in karyawan)
+        assertTrue("karyawan nyata harus melihat kartu Input Aktivitas", "raport" in karyawan)
 
         val uji = visibleActivityItems(setOf("karyawan"), null, akunUji = true).map { it.id }
-        assertTrue("akun uji harus tetap melihatnya", "raport" in uji)
+        assertTrue("akun uji tetap melihatnya", "raport" in uji)
 
-        // Yang dipangkas HANYA kartu-kartu akun-uji — gate ini tak boleh
-        // menyeret kartu lain ikut hilang dari karyawan nyata. Kedua kartu
-        // opname ikut sejak 2026-08-14 (lihat `ActivityOpnameCabangTest`).
+        // Yang MASIH dipangkas dari orang nyata hanya kedua kartu opname —
+        // pembukaan raport tak boleh diam-diam ikut membuka yang lain.
         assertEquals(
-            uji.filterNot { it in setOf("raport", "opname_cabang", "opname_validasi") },
+            uji.filterNot { it in setOf("opname_cabang", "opname_validasi") },
             karyawan,
         )
     }
 
     @Test
-    fun `akun uji melihatnya dengan role apa pun, orang nyata tidak`() {
-        // Keluarga akun uji ber-role macam-macam (UJI Sales/PDI/Kasir/Driver),
-        // BUKAN `karyawan` — kalau gate-nya dikunci ke satu role, justru akun
-        // uji yang kehilangan kartunya dan fiturnya tak bisa diuji sama sekali.
+    fun `Input Aktivitas terlihat dengan role apa pun, uji maupun nyata`() {
+        // `RAPORT_INPUT_ROLES = ALL_LOGGED_IN` dan itu memang cerminan backend:
+        // `upsert_raport` login-only sejak 2026-08-14. Sejak pintunya dibuka
+        // 2026-08-15, akun uji dan orang nyata sama-sama melihatnya — yang
+        // dijaga di sini adalah tak ada role yang diam-diam tertinggal.
         listOf("karyawan", "manager", "owner", "kasir", "driver", "hrd", "sales").forEach { role ->
             assertTrue(
                 "akun uji ber-role '$role' kehilangan kartu Input Aktivitas",
                 "raport" in visibleActivityItems(setOf(role), emptyMap(), akunUji = true).map { it.id },
             )
-            assertFalse(
-                "orang nyata ber-role '$role' tak boleh melihat kartu Input Aktivitas",
+            assertTrue(
+                "orang nyata ber-role '$role' kehilangan kartu Input Aktivitas",
                 "raport" in visibleActivityItems(setOf(role), emptyMap(), akunUji = false).map { it.id },
             )
         }
@@ -114,12 +117,12 @@ class ActivityRegistryTest {
     fun `PIC melihat antrian penilaian, karyawan biasa tidak`() {
         val pic = visibleActivityItems(setOf("pic_raport"), null).map { it.id }
         assertTrue("raport_review" in pic)
-        // Kartu PENGISIAN tidak lagi ikut (disembunyikan 2026-08-14, akun uji
-        // saja) — tapi kartu PENILAIAN wajib tetap ada. Ini yang paling mudah
-        // rusak tanpa terlihat: menyembunyikan `raport` sambil tak sengaja ikut
-        // menyeret `raport_review` berarti reviewer nyata kehilangan antriannya
-        // dan raport orang menumpuk tanpa satu pun error.
-        assertFalse("raport" in pic)
+        // Sejak 2026-08-15 PIC melihat KEDUANYA: kartu PENGISIAN (dibuka untuk
+        // semua) dan kartu PENILAIAN. Yang dijaga di sini tetap sama seperti
+        // dulu — `raport_review` tak boleh ikut tergeser oleh perubahan apa pun
+        // pada `raport`; reviewer yang kehilangan antriannya membuat raport
+        // orang menumpuk tanpa satu pun error.
+        assertTrue("raport" in pic)
         assertTrue(
             "akun uji PIC harus melihat KEDUANYA",
             visibleActivityItems(setOf("pic_raport"), null, akunUji = true)
@@ -652,15 +655,19 @@ class ActivityOpnameCabangTest {
     }
 
     @Test
-    fun `jalan tembus itu KHUSUS opname — raport tetap akun uji murni`() {
-        // Kalau daftar tembus suatu hari dipukul rata ke seluruh
-        // ITEM_KHUSUS_AKUN_UJI, Input Aktivitas ikut bocor ke admin-stok tanpa
-        // ada yang meminta. Riwayat kartu itu sudah tiga kali dibuka-tutup.
+    fun `jalan tembus itu KHUSUS opname, bukan pintu umum`() {
+        // Daftar tembus tak boleh dipukul rata ke seluruh ITEM_KHUSUS_AKUN_UJI.
+        // `raport` sudah TIDAK di set itu sejak 2026-08-15 (dibuka untuk semua),
+        // jadi yang dijaga sekarang: kedua kartu opname tetap TERTUTUP bagi
+        // karyawan biasa meski pelaksana nyata menembusnya.
         val caps = mapOf("opname.hitung" to true, "serial.input" to true)
+        val karyawanBiasa = visibleActivityItems(setOf("karyawan"), caps, akunUji = false).map { it.id }
+        assertFalse("opname_cabang" in karyawanBiasa)
+        assertFalse("opname_validasi" in karyawanBiasa)
         OPNAME_PELAKSANA_NYATA.forEach { role ->
-            assertFalse(
-                "raport bocor ke pelaksana nyata ber-role '$role'",
-                "raport" in visibleActivityItems(setOf(role), caps, akunUji = false).map { it.id },
+            assertTrue(
+                "pelaksana nyata ber-role '$role' kehilangan kartu opname",
+                "opname_cabang" in visibleActivityItems(setOf(role), caps, akunUji = false).map { it.id },
             )
         }
     }
@@ -676,7 +683,8 @@ class ActivityOpnameCabangTest {
         val caps = mapOf("opname.hitung" to true, "serial.input" to true, "indent.approve" to true)
         val nyata = visibleActivityItems(setOf("karyawan"), caps, akunUji = false).map { it.id }
         val uji = visibleActivityItems(setOf("karyawan"), caps, akunUji = true).map { it.id }
-        assertEquals(uji.filterNot { it in setOf("raport", "opname_cabang", "opname_validasi") }, nyata)
+        // `raport` keluar dari set ini 2026-08-15 — selisihnya kini kedua opname saja.
+        assertEquals(uji.filterNot { it in setOf("opname_cabang", "opname_validasi") }, nyata)
     }
 
     @Test
