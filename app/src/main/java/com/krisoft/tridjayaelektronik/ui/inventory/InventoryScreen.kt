@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -657,9 +658,10 @@ private fun InventoryFilterSheet(
     var categoryDraft by remember { mutableStateOf(filters.category) }
     var merkDraft by remember { mutableStateOf(filters.merk) }
     var sortDraft by remember { mutableStateOf(filters.sortOrder) }
-    var dealerDraft by remember {
-        mutableStateOf(if (filters.dealer.isEmpty()) "" else DealerAlias.label(filters.dealer))
-    }
+    // Draft menyimpan KODE dealer ("D-01"), bukan labelnya: dulu kolom ini teks
+    // bebas yang di-resolve balik ke kode saat Terapkan, jadi salah ketik satu
+    // huruf diam-diam berarti "semua toko" — filternya seolah tak berfungsi.
+    var dealerDraft by remember { mutableStateOf(filters.dealer) }
     val sortOptions = listOf(
         ProductSortOrder.NAME_ASC to "Nama (A-Z)",
         ProductSortOrder.PRICE_ASC to "Harga Termurah",
@@ -723,12 +725,9 @@ private fun InventoryFilterSheet(
                 placeholder = "Semua merk"
             )
             Spacer(modifier = Modifier.height(12.dp))
-            SheetSuggestField(
-                label = "Toko / Cabang",
-                value = dealerDraft,
-                onValueChange = { dealerDraft = it },
-                options = DealerAlias.allLabels,
-                placeholder = "Semua toko"
+            SheetDealerDropdown(
+                selectedCode = dealerDraft,
+                onSelect = { dealerDraft = it }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -763,13 +762,104 @@ private fun InventoryFilterSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
             ExpressiveFilledButton(
-                onClick = { onApply(categoryDraft.trim(), merkDraft.trim(), sortDraft, dealerDraft.trim()) },
+                onClick = { onApply(categoryDraft.trim(), merkDraft.trim(), sortDraft, dealerDraft) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Terapkan")
             }
         }
     }
+}
+
+/**
+ * Pemilih toko: dropdown pilihan tetap, bukan kolom teks bebas.
+ *
+ * Sebelumnya toko memakai [SheetSuggestField] yang sama dengan Kategori & Merk,
+ * padahal tokonya cuma 13 dan daftarnya TETAP ([DealerAlias]) — teks bebas cuma
+ * membuka dua cara gagal yang senyap: (1) salah ketik ter-resolve jadi kosong
+ * sehingga filternya terlihat tak berfungsi, dan (2) saran chip dipotong enam,
+ * jadi toko ke-7 dan seterusnya hanya bisa ditemukan dengan mengetik namanya
+ * lebih dulu. Kategori & Merk TETAP teks bebas: nilainya datang dari data ERP,
+ * jumlahnya tak tentu, dan mengetik memang lebih cepat di sana.
+ */
+@Composable
+private fun SheetDealerDropdown(
+    selectedCode: String,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Text(text = "Toko / Cabang", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    Spacer(modifier = Modifier.height(6.dp))
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(14.dp))
+                .clickable { expanded = true }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Storefront,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = if (selectedCode.isEmpty()) "Semua toko" else DealerAlias.label(selectedCode),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selectedCode.isEmpty()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.padding(start = 10.dp).weight(1f)
+            )
+            Icon(
+                imageVector = Icons.Rounded.KeyboardArrowDown,
+                contentDescription = "Pilih toko",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DealerOption(
+                label = "Semua toko",
+                selected = selectedCode.isEmpty(),
+                onClick = { onSelect(""); expanded = false }
+            )
+            DealerAlias.allCodes.forEach { code ->
+                DealerOption(
+                    label = DealerAlias.label(code),
+                    selected = code == selectedCode,
+                    onClick = { onSelect(code); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DealerOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = label,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            )
+        },
+        trailingIcon = if (selected) {
+            {
+                Icon(
+                    Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        } else null,
+        onClick = onClick
+    )
 }
 
 /** Kolom teks + saran chip (maks 6, terfilter mengikuti ketikan) — tap saran mengisi kolom. */
