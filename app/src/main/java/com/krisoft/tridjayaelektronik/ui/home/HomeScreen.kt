@@ -31,6 +31,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.HomeRepairService
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Discount
 import androidx.compose.material.icons.rounded.PointOfSale
@@ -124,6 +126,8 @@ fun HomeScreen(
     onQuickAccessSerialInput: () -> Unit = {},
     onQuickAccessDeadstock: () -> Unit = {},
     onQuickAccessMutasiHistori: () -> Unit = {},
+    onKomplainLapor: () -> Unit = {},
+    onKomplainTugas: () -> Unit = {},
     /** Buka satu menu alur SPK berdasarkan key: input/diskon/kasir/pdi/kontrol/driver. */
     onSpkMenu: (String) -> Unit = {},
     /** Buka layar isi prospek untuk satu event (id-nya). */
@@ -221,6 +225,7 @@ fun HomeScreen(
                                     onQuickAccessOpname, onQuickAccessAbsen, onQuickAccessGaji, onQuickAccessKpi,
                                     onQuickAccessHargaGs,
                                     onQuickAccessSerialInput, onQuickAccessDeadstock, onQuickAccessMutasiHistori,
+                                    onKomplainLapor, onKomplainTugas,
                                     onSpkMenu
                                 )
                             }
@@ -253,6 +258,8 @@ private fun LazyListScope.homeSection(
     onQuickAccessSerialInput: () -> Unit,
     onQuickAccessDeadstock: () -> Unit,
     onQuickAccessMutasiHistori: () -> Unit,
+    onKomplainLapor: () -> Unit,
+    onKomplainTugas: () -> Unit,
     onSpkMenu: (String) -> Unit
 ) {
     when (section) {
@@ -285,6 +292,8 @@ private fun LazyListScope.homeSection(
                     onSerialInput = onQuickAccessSerialInput,
                     onDeadstock = onQuickAccessDeadstock,
                     onMutasiHistori = onQuickAccessMutasiHistori,
+                    onKomplainLapor = onKomplainLapor,
+                    onKomplainTugas = onKomplainTugas,
                     onSpkMenu = onSpkMenu,
                 )
             }
@@ -557,6 +566,8 @@ private fun QuickAccessRow(
     onSerialInput: () -> Unit,
     onDeadstock: () -> Unit,
     onMutasiHistori: () -> Unit,
+    onKomplainLapor: () -> Unit,
+    onKomplainTugas: () -> Unit,
     onSpkMenu: (String) -> Unit,
 ) {
     // Tile dirender dari REGISTRI (`QuickAccessMenus.kt`) — hak akses tiap menu
@@ -592,6 +603,8 @@ private fun QuickAccessRow(
                         "serial_input" -> onSerialInput()
                         "deadstock" -> onDeadstock()
                         "mutasi_histori" -> onMutasiHistori()
+                        "komplain_lapor" -> onKomplainLapor()
+                        "komplain_tugas" -> onKomplainTugas()
                     }
                 },
                 modifier = Modifier.width(86.dp)
@@ -619,6 +632,11 @@ private fun quickAccessVisual(id: String): Pair<androidx.compose.ui.graphics.vec
     "serial_input" -> Pair(Icons.Rounded.Numbers, Color(0xFF667085))
     "deadstock" -> Pair(Icons.Rounded.Inventory2, Color(0xFFB54708))
     "mutasi_histori" -> Pair(Icons.Rounded.SwapHoriz, Color(0xFF7A5AF8))
+    // Warna merah yang sama dipakai kartu komplain di layar Activity
+    // (`ActivityScreen.kt`), supaya modul yang sama tak berganti rupa
+    // tergantung dari mana ia dibuka.
+    "komplain_lapor" -> Pair(Icons.Rounded.Build, Color(0xFFD92D20))
+    "komplain_tugas" -> Pair(Icons.Rounded.HomeRepairService, Color(0xFFD92D20))
     else -> Pair(Icons.Rounded.Bolt, MaterialTheme.colorScheme.primary)
 }
 

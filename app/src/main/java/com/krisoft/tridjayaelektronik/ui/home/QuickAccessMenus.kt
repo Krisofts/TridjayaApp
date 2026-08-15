@@ -94,6 +94,30 @@ internal val KNOWN_ROLES: Set<String> = setOf(
 internal val SPK_MENU_ROLES: Set<String> = KNOWN_ROLES - "ai-engineer"
 
 /**
+ * Home Service — daftar role cadangan offline. Tinggal DI SINI, bukan di
+ * `ActivityRegistry`, karena kedua registri memakainya dan arah ketergantungan
+ * antar-berkas hanya boleh SATU: `ui.activity` mengimpor dari `ui.home`
+ * (`ALL_LOGGED_IN`, `SPK_MENU_ROLES`, `gateAllows`, …), tak pernah sebaliknya.
+ *
+ * Sempat dibalik saat dua ubin Home Service ditambahkan (2026-08-15) dan
+ * akibatnya BUKAN error kompilasi melainkan `ExceptionInInitializerError` saat
+ * runtime: `<clinit>` kedua berkas saling menunggu, `ALL_LOGGED_IN` terbaca
+ * `null`, dan SELURUH registri Activity mati sekaligus. 24 test tumbang
+ * serentak dengan pesan yang tak menyebut sebabnya.
+ *
+ * `"cs"` SENGAJA tak ditulis di sini: rust-shared menyatakan sendiri role
+ * literal `cs` belum ada di sistem, jadi ejaan itu tak akan pernah cocok dengan
+ * siapa pun. Petugas CS sungguhan lolos lewat peta kemampuan server.
+ */
+internal val HS_LAPOR_ROLES = setOf(
+    "sales", "admin-sales", "admin", "superadmin", "manager", "owner", "kepala-cabang",
+    "karyawan", "pdi", "kasir", "admin-stok", "delivery-control", "driver",
+)
+
+/** `homeservice.task` — teknisi kunjungan. Cerminan `HOMESERVICE_TASK_ROLES` (= PDI_ROLES). */
+internal val HS_TASK_ROLES = setOf("pdi", "admin", "superadmin")
+
+/**
  * Daftar menu + haknya. Urutan di sini = urutan tampil di grid.
  *
  * Saat menambah menu: cari guard backend-nya DULU (gateway `require_*` /
@@ -199,6 +223,35 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
         label = "Riwayat Mutasi",
         allowedRoles = MUTASI_HISTORI_MENU_ROLES,
         backendGuard = "tanpa gate role server-side — meniru RoleGuard web InventoryMutasiPage",
+    ),
+    // ── Home Service (komplain purna-jual) ──────────────────────────────────
+    //
+    // Ditambahkan 2026-08-15 (laporan user: sales & PDI tak menemukan menunya).
+    // Sebelum ini modul komplain NOL pintu masuk di beranda: registri ini tak
+    // punya satu pun entrinya, dan di layar Activity kartu "Lapor Komplain"
+    // memang SENGAJA disembunyikan (`hiddenFromActivity`, commit 2344c71 —
+    // keputusan user, TIDAK dibatalkan di sini). Yang tersisa cuma route
+    // `home_hs_lapor` yang hidup tanpa ada yang menavigasinya.
+    //
+    // Kedua entri memakai ULANG konstanta role milik `ActivityRegistry` —
+    // menyalinnya ke sini berarti dua daftar yang bisa berpisah diam-diam,
+    // persis kelas bug yang registri ini dibuat untuk mencegahnya.
+    QuickAccessMenu(
+        id = "komplain_lapor",
+        // Sama seperti kartu Activity-nya: tak ada kunci `homeservice.lapor` di
+        // katalog kemampuan, dan web pun memakai `spk.pipeline` untuk menu ini.
+        // Kunci karangan = menu hilang dari SEMUA orang (peta fail-closed).
+        capability = "spk.pipeline",
+        label = "Lapor Komplain",
+        allowedRoles = HS_LAPOR_ROLES,
+        backendGuard = "kinerja-service home_service.rs LAPOR_ROLES",
+    ),
+    QuickAccessMenu(
+        id = "komplain_tugas",
+        capability = "homeservice.task",
+        label = "Tugas Home Service",
+        allowedRoles = HS_TASK_ROLES,
+        backendGuard = "rust-shared capabilities.rs HOMESERVICE_TASK_ROLES (= PDI_ROLES)",
     ),
 )
 

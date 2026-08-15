@@ -21,11 +21,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -41,6 +44,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
+import androidx.core.net.toUri
+import android.content.Intent
+import com.krisoft.tridjayaelektronik.ui.leads.rememberKirimWa
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -314,7 +321,7 @@ private fun RingkasanTiket(tiket: HsTicketDetailDto) {
                 null -> Unit
             }
             Baris("Konsumen", tiket.customerNama?.takeIf { it.isNotBlank() } ?: "—")
-            tiket.customerHp?.takeIf { it.isNotBlank() }?.let { Baris("HP", it) }
+            tiket.customerHp?.takeIf { it.isNotBlank() }?.let { KontakKonsumen(it) }
             tiket.customerAlamat?.takeIf { it.isNotBlank() }?.let { Baris("Alamat", it) }
             tiket.assignedTeknisiNama?.takeIf { it.isNotBlank() }?.let { Baris("Teknisi", it) }
             tiket.tarikDriverNama?.takeIf { it.isNotBlank() }?.let { Baris("Driver tarik", it) }
@@ -324,6 +331,67 @@ private fun RingkasanTiket(tiket: HsTicketDetailDto) {
             Spacer(Modifier.height(8.dp))
             Text("Keluhan", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(tiket.deskripsi, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/**
+ * Baris "HP" yang bisa DIPAKAI, bukan sekadar dibaca (2026-08-15, laporan user:
+ * teknisi tak punya tombol chat/telepon di layar penugasan).
+ *
+ * Sebelumnya nomor konsumen dirender `Baris("HP", …)` — teks mati. Teknisi yang
+ * sudah berdiri di depan rumah dan tak menemukan orangnya harus mengetik ulang
+ * nomornya ke aplikasi lain; nomor ERP sering ditulis `62…`/`+62…`/`08…` dan
+ * salah satu bentuk itu tak bisa langsung ditelepon.
+ *
+ * Chat WA memakai ULANG [rememberKirimWa] — itu yang menghormati pilihan
+ * WhatsApp Business vs biasa (sheet muncul hanya bila keduanya terpasang) dan
+ * yang menormalkan nomor lewat `normalizeWaPhone`. Menulis intent `wa.me`
+ * sendiri di sini akan memaksa satu paket dan mengulang normalisasi nomor —
+ * dua aturan yang sudah punya satu rumah.
+ *
+ * Pesannya sengaja KOSONG: teknisi menelepon/mengetik sendiri sesuai keadaan di
+ * lapangan, dan template yang salah konteks lebih merepotkan daripada tak ada.
+ *
+ * `ACTION_DIAL` (bukan `ACTION_CALL`) supaya tak butuh izin `CALL_PHONE` —
+ * nomornya cuma dimuat di dialer, penggunanya yang menekan panggil.
+ */
+@Composable
+private fun KontakKonsumen(hp: String) {
+    val context = LocalContext.current
+    val kirimWa = rememberKirimWa()
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "HP",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(96.dp),
+        )
+        Text(hp, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        IconButton(onClick = { kirimWa(hp, "") {} }) {
+            Icon(
+                Icons.AutoMirrored.Rounded.Chat,
+                contentDescription = "Chat WhatsApp konsumen",
+                tint = Color(0xFF12B76A),
+            )
+        }
+        IconButton(
+            onClick = {
+                // Gagal (tak ada dialer, mis. tablet tanpa telepon) tak boleh
+                // menutup app — tombolnya diam saja, nomornya tetap terbaca.
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_DIAL, "tel:$hp".toUri()))
+                }
+            }
+        ) {
+            Icon(
+                Icons.Rounded.Call,
+                contentDescription = "Telepon konsumen",
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }

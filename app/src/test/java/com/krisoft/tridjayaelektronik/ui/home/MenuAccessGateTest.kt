@@ -196,6 +196,43 @@ class QuickAccessRegistryTest {
         assertTrue("deadstock" in terlihatStok)
     }
 
+    /**
+     * Laporan user 2026-08-15: sales & PDI tak menemukan menu Home Service di app.
+     *
+     * Sebabnya modul komplain NOL pintu masuk di beranda — registri ini tak punya
+     * satu pun entrinya, sementara di layar Activity kartu "Lapor Komplain" memang
+     * SENGAJA disembunyikan (`hiddenFromActivity`, commit 2344c71, keputusan user
+     * yang TIDAK dibatalkan). Layar laporannya hidup, route `home_hs_lapor` hidup,
+     * dan tak ada satu pun yang menavigasi ke sana.
+     *
+     * Test ini mengunci PINTUNYA, bukan sekadar gate-nya: yang berhak melapor harus
+     * menemukan ubinnya, dan yang tidak berhak tetap tak melihatnya.
+     */
+    @Test
+    fun `home service punya pintu masuk di Akses Cepat untuk pelapor dan teknisi`() {
+        // Sales: melapor boleh, mengerjakan kunjungan tidak.
+        val sales = visibleQuickAccessMenus(setOf("sales")).map { it.id }
+        assertTrue("komplain_lapor" in sales)
+        assertFalse("komplain_tugas" in sales)
+
+        // PDI: keduanya — ia melapor DAN mengerjakan tugas kunjungan.
+        val pdi = visibleQuickAccessMenus(setOf("pdi")).map { it.id }
+        assertTrue("komplain_lapor" in pdi)
+        assertTrue("komplain_tugas" in pdi)
+
+        // Peta kemampuan server yang memutus, bukan daftar role lokal: `pdi` yang
+        // kemampuan teknisinya dicabut server kehilangan ubin tugasnya.
+        val dicabut = mapOf("spk.pipeline" to true, "homeservice.task" to false)
+        val pdiDicabut = visibleQuickAccessMenus(setOf("pdi"), dicabut).map { it.id }
+        assertTrue("komplain_lapor" in pdiDicabut)
+        assertFalse("komplain_tugas" in pdiDicabut)
+
+        // Role di luar LAPOR_ROLES tak melihat apa pun dari modul ini.
+        val ai = visibleQuickAccessMenus(setOf("ai-engineer")).map { it.id }
+        assertFalse("komplain_lapor" in ai)
+        assertFalse("komplain_tugas" in ai)
+    }
+
     @Test
     fun `ajukan inden dan cari semua kini terjangkau dari Operasional`() {
         // 2026-07-30: dipindah dari Activity ke sini — pintu masuknya harus
