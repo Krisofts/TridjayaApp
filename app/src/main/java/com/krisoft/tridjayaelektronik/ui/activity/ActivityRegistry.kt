@@ -596,7 +596,23 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
  * Akibatnya layar sesi opname MASIH terjangkau lewat tile itu bagi pemegang
  * `opname.view` — memang begitu yang diminta, bukan celah yang terlewat.
  */
-private val ITEM_KHUSUS_AKUN_UJI = setOf("raport", "opname_cabang", "opname_validasi")
+// `raport` DIKELUARKAN 2026-08-15 (permintaan user): kartu "Input aktivitas"
+// kembali terlihat oleh SEMUA karyawan, keempat kalinya gate ini dibalik.
+//
+// Alasannya kali ini terukur, bukan preferensi: selama pintu masuknya ditutup,
+// indikator KPI `LAPORAN AKTIVITAS` TETAP menilai orang atasnya. Di produksi
+// 2026-08-15 itu berarti 431 dari 493 baris Agustus ternyata tulisan worker
+// auto-isi prospek (`evidence_mode='none'`, tanpa bukti) — cuma 62 baris dari
+// 14 orang yang benar-benar diunggah manusia — dan 60 dari 61 orang divonis di
+// bawah 40% pada laporan yang tak punya jalan untuk mereka isi. Angka itu
+// mengalir ke insentif.
+//
+// KPI SENGAJA TIDAK diubah (keputusan user): indikatornya tetap dihitung apa
+// adanya; yang dibuka hanya pintunya. Cerminan web: `raportInputVisible = true`
+// di `DashboardLayout.tsx` — dua sisi ini WAJIB sepakat.
+//
+// Menutupnya lagi = kembalikan `"raport"` ke set ini DAN balikkan baris web itu.
+private val ITEM_KHUSUS_AKUN_UJI = setOf("opname_cabang", "opname_validasi")
 
 /**
  * Role yang TETAP melihat kartu opname walau item-nya ber-gate akun-uji.
