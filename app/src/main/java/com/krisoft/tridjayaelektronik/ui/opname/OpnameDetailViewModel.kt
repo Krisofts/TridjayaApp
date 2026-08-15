@@ -33,6 +33,32 @@ data class OpnameDetailUiState(
     val isLoading: Boolean = true,
     val detail: OpnameDetailDto? = null,
     val stock: List<OpnameStockItemDto> = emptyList(),
+    /**
+     * Permintaan daftar barang MASIH TERBANG.
+     *
+     * Wajib terpisah dari [isLoading]: `isLoading` dimatikan begitu detail sesi
+     * tiba, sedangkan `stockList` baru ditembak SESUDAHNYA — dan layar mulai
+     * merender isi begitu [detail] tidak `null`. Tanpa flag ini ada jeda satu
+     * round-trip penuh di mana [stock] kosong dan [stockError] `null`, dan
+     * satu-satunya kesimpulan yang bisa ditarik dari keadaan itu adalah "sesi
+     * ini tidak punya daftar barang sama sekali". Sesi SEHAT dituduh kosong,
+     * persis penyakit yang sedang diberantas.
+     */
+    val stockLoading: Boolean = false,
+    /**
+     * Kenapa permintaan daftar barang GAGAL — kalimat dari server apa adanya;
+     * `null` = tak ada kegagalan yang tercatat. Dibaca BERSAMA [stockLoading];
+     * `sebabDaftarBarangKosong` (OpnameDetailScreen.kt) menggabungkan keduanya
+     * jadi satu vonis supaya tak ada layar yang menebak sendiri.
+     *
+     * Perlu dicatat karena seluruh blok "Daftar Barang" di layar hanya
+     * dirender saat [stock] tidak kosong. Sebelum field ini ada, kegagalan
+     * memuat daftar barang dibuang diam-diam (`as? AuthResult.Success`), jadi
+     * petugas yang berdiri di gudang melihat sesi TANPA satu pun barang untuk
+     * dihitung — tak ada error, tak ada tombol muat ulang, dan tak ada cara
+     * membedakannya dari sesi yang memang rusak.
+     */
+    val stockError: String? = null,
     /** Unit terscan sesi ini (buffer Room; baris tanpa syncedAtMillis masih diantre). */
     val units: List<OpnameUnitEntity> = emptyList(),
     /** Barang yang sedang dihitung — semua scan berikutnya masuk ke barang ini. */
@@ -196,7 +222,16 @@ class OpnameDetailViewModel @Inject constructor(
             when (val result = repository.detail(id)) {
                 is AuthResult.Success -> {
                     applyDetail(result.data)
-                    _uiState.update { it.copy(isLoading = false) }
+                    // Diputuskan DI SINI, bukan di dekat panggilan `stockList` di
+                    // bawah, dan dipasang pada emisi yang SAMA dengan
+                    // `isLoading = false`: emisi itulah yang pertama kali dilihat
+                    // layar dengan `detail != null`, jadi keadaan "stok sedang
+                    // dimuat" harus sudah berdiri di situ. Memasangnya belakangan
+                    // menyisakan satu emisi berisi daftar kosong tanpa sebab —
+                    // yang terbaca sebagai "sesi ini memang tak punya barang".
+                    val muatStock = result.data.status == STATUS_DRAFT &&
+                        (paksaStock || _uiState.value.stock.isEmpty())
+                    _uiState.update { it.copy(isLoading = false, stockLoading = muatStock) }
                     // Vonis admin-stok (pending → approved/rejected) hidup di server;
                     // fail-soft, badge lama bertahan bila gagal. Menunggu detail dulu
                     // karena rekonsiliasi hanya boleh untuk sesi draft (repositori
@@ -217,9 +252,25 @@ class OpnameDetailViewModel @Inject constructor(
                     // Coverage list matters for any viewer while the session is still
                     // draft (owner counting, or kepala-cabang/manager verifying progress)
                     // — completed sessions already have their own reconciled `items`.
-                    if (result.data.status == STATUS_DRAFT && (paksaStock || _uiState.value.stock.isEmpty())) {
-                        (repository.stockList(id) as? AuthResult.Success)?.let { stock ->
-                            _uiState.update { it.copy(stock = stock.data) }
+                    if (muatStock) {
+                        // Kegagalan DICATAT, bukan dibuang. Blok "Daftar Barang"
+                        // di layar hanya muncul kalau `stock` terisi, jadi
+                        // membuang error di sini berarti sesi yang sehat terlihat
+                        // persis seperti sesi tanpa barang — dan petugasnya tak
+                        // punya satu pun petunjuk untuk mencoba lagi.
+                        //
+                        // `stockLoading` dimatikan di KEDUA cabang: satu cabang
+                        // yang lupa meninggalkan layar menunggu selamanya, dan
+                        // itu keadaan keempat yang tak seorang pun bisa keluar
+                        // darinya (tombol "Coba lagi" cuma dirender pada vonis
+                        // GAGAL_DIMUAT).
+                        when (val stock = repository.stockList(id)) {
+                            is AuthResult.Success -> _uiState.update {
+                                it.copy(stock = stock.data, stockError = null, stockLoading = false)
+                            }
+                            is AuthResult.Failure -> _uiState.update {
+                                it.copy(stockError = stock.message, stockLoading = false)
+                            }
                         }
                     }
                 }
@@ -786,6 +837,34 @@ fun pesanAntre(serialNumber: String, reason: String?): String {
 }
 
 /**
+ * Kalimat untuk daftar barang sesi yang GAGAL dimuat.
+ *
+ * [sebab] adalah `message` dari `AuthResult.Failure` milik
+ * `OpnameRepository.stockList`. Isinya salah satu dari dua hal yang sangat
+ * berbeda: kalimat server (`parseError` mengambil `errors[0]` lalu `message`
+ * dari badan error, dan gateway menulis kalimatnya dalam Bahasa Indonesia),
+ * atau teks exception jaringan mentah bila permintaannya tak pernah terjawab
+ * (`call` menangkap `Exception` lalu memakai `e.message` apa adanya). Yang
+ * pertama layak dibaca petugas; yang kedua tidak, dan disaring [sebabTeknis]
+ * persis seperti di [pesanAntre].
+ *
+ * Kenapa bukan satu kalimat tetap saja: "coba lagi setelah sinyal stabil"
+ * melebur SEMUA sebab jadi "sinyal jelek". Petugas yang membaca itu akan
+ * menunggu sinyal membaik — dan kalau sebabnya bukan sinyal, ia menunggu
+ * sesuatu yang tak akan pernah mengubah keadaan.
+ */
+fun pesanDaftarBarangGagal(sebab: String?): String {
+    val inti = "Daftar barang sesi ini gagal dimuat — bukan berarti tidak ada barang " +
+        "untuk dihitung."
+    val rinci = sebab?.trim().orEmpty()
+    return if (rinci.isEmpty() || sebabTeknis(rinci)) {
+        "$inti Coba lagi setelah sinyal stabil."
+    } else {
+        "$inti Sebab dari server: $rinci"
+    }
+}
+
+/**
  * `true` = [sebab] itu teks exception jaringan mentah, bukan keterangan yang
  * berguna bagi petugas.
  *
@@ -799,6 +878,10 @@ fun pesanAntre(serialNumber: String, reason: String?): String {
  */
 private fun sebabTeknis(sebab: String): Boolean {
     val l = sebab.lowercase()
+    // Alamat internal TIDAK pernah layak dibaca petugas gudang, dan
+    // kehadirannya menandai kalimat mesin apa pun bentuknya. Ini penjaga
+    // umum: daftar penanda di bawah selalu ketinggalan satu kalimat baru.
+    if ("http://" in l || "https://" in l) return true
     return PENANDA_SEBAB_TEKNIS.any { it in l }
 }
 
@@ -815,6 +898,14 @@ private val PENANDA_SEBAB_TEKNIS = listOf(
     "certpathvalidator",
     "econnaborted",
     "software caused connection abort",
+    // Kalimat GATEWAY, bukan OkHttp: saat inventory-service mati, gateway
+    // menjawab 502 dengan `upstream tidak merespons: {reqwest::Error}`, yang
+    // Display-nya berbunyi `error sending request for url (http://host:port/...)`.
+    // Tanpa penanda ini kalimat itu lolos ke layar sebagai "sebab dari server"
+    // — persis kebalikan dari alasan fungsi ini ada.
+    "upstream tidak merespons",
+    "error sending request",
+    "route bukan milik",
 )
 
 /** Temuan server: serial tak ada di registry cabang mana pun. */

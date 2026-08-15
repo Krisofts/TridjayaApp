@@ -114,6 +114,43 @@ internal fun filterOpnameStock(
 }
 
 /**
+ * Kenapa daftar barang sesi ini kosong di layar. Tiga keadaan yang tindak
+ * lanjutnya berbeda: tunggu / coba lagi / minta sesinya dibatalkan.
+ *
+ * [SEDANG_DIMUAT] sebelumnya TIDAK ADA, dan itu cacatnya: permintaan yang masih
+ * terbang tak bisa dibedakan dari daftar yang benar-benar kosong, jadi sesi
+ * sehat divonis "tidak punya daftar barang sama sekali" — lengkap dengan saran
+ * membatalkannya — selama satu round-trip penuh.
+ */
+internal enum class SebabDaftarBarangKosong { SEDANG_DIMUAT, GAGAL_DIMUAT, MEMANG_KOSONG }
+
+/**
+ * Vonis tiga-keadaan atas daftar barang yang kosong. Dipisah dari Compose
+ * supaya bisa diuji (pola sama [filterOpnameStock]) — modul ini tak punya
+ * source set `androidTest` sama sekali, jadi keputusan yang hidup di dalam
+ * `@Composable` tak terjaga apa pun.
+ *
+ * [stockLoading] MENANG atas [stockError], dan itu disengaja: error lama sengaja
+ * TIDAK dibersihkan saat "Coba lagi" ditekan (`stockError` baru ditimpa setelah
+ * jawabannya tiba), jadi tanpa urutan ini percobaan ulang akan tetap terbaca
+ * gagal selama ia berlangsung.
+ *
+ * Yang TIDAK dijanjikan di sini: layar berubah seketika saat tombol ditekan.
+ * `load(paksaStock = true)` mengulang dari permintaan DETAIL, dan [stockLoading]
+ * baru menyala sesudah detail itu tiba — jadi ada jeda pendek yang masih
+ * menampilkan kegagalan lama. Yang dijamin cuma ini: begitu permintaan stok
+ * benar-benar terbang, vonisnya SEDANG_DIMUAT, bukan GAGAL_DIMUAT.
+ */
+internal fun sebabDaftarBarangKosong(
+    stockLoading: Boolean,
+    stockError: String?,
+): SebabDaftarBarangKosong = when {
+    stockLoading -> SebabDaftarBarangKosong.SEDANG_DIMUAT
+    stockError != null -> SebabDaftarBarangKosong.GAGAL_DIMUAT
+    else -> SebabDaftarBarangKosong.MEMANG_KOSONG
+}
+
+/**
  * One opname session. Counting is BLIND (system stock is never shown while counting — matches
  * the physical-count discipline and the backend's own coverage endpoint) and per-UNIT: satu
  * baris per serial number, bukan angka jumlah. Tiap scan disimpan ke Room lalu LANGSUNG
@@ -414,6 +451,59 @@ fun OpnameDetailScreen(
                                         "milik cabang lain. Hubungi admin stok kalau seharusnya " +
                                         "kamu ikut menghitung."
                                 )
+                            }
+                        }
+                    }
+
+                    // Seluruh blok "Daftar Barang" di bawah hanya dirender saat
+                    // `state.stock` terisi. Tanpa cabang ini, sesi yang daftar
+                    // barangnya BELUM SELESAI atau GAGAL dimuat terlihat persis
+                    // seperti sesi tanpa barang: layarnya sunyi, tak ada tombol
+                    // muat ulang, dan petugas yang sedang berdiri di gudang
+                    // menyimpulkan sesinya rusak. Ketiga sebabnya dibedakan
+                    // karena tindak lanjutnya berbeda.
+                    if (!completed && detail.status == "draft" && state.stock.isEmpty()) {
+                        item(key = "coverage_kosong") {
+                            Column(modifier = Modifier.padding(top = 16.dp)) {
+                                when (sebabDaftarBarangKosong(state.stockLoading, state.stockError)) {
+                                    // Permintaannya masih terbang — sesi ini belum
+                                    // boleh dituduh apa pun.
+                                    SebabDaftarBarangKosong.SEDANG_DIMUAT -> DaftarBarangMemuatNote()
+
+                                    SebabDaftarBarangKosong.GAGAL_DIMUAT -> ExpressiveInlineError(
+                                        // Sebab dari server ikut disebut kalau ada:
+                                        // tanpa itu layanan yang mati (gateway
+                                        // menjawab 502/503 dengan kalimatnya
+                                        // sendiri) dan sinyal yang hilang melebur
+                                        // jadi satu keluhan "sinyal jelek".
+                                        message = pesanDaftarBarangGagal(state.stockError),
+                                        onRetry = { viewModel.load(sessionId, paksaStock = true) }
+                                    )
+
+                                    // Sesi tanpa satu pun baris snapshot. Server
+                                    // sekarang menolak melahirkannya (`snapshot
+                                    // .is_empty()` di `create_opname_session`),
+                                    // jadi ini hanya sesi lama — tapi ia TIDAK
+                                    // bisa dikerjakan dan tak boleh terbaca
+                                    // sebagai "belum dihitung". `cancel_opname`
+                                    // memakai `authorize_kelola`, BUKAN
+                                    // `authorize_owner`: selain pembuatnya,
+                                    // admin stok mana pun boleh membatalkan bila
+                                    // pembuatnya sudah nonaktif (jalan darurat
+                                    // sesi yatim). Jalan kedua itu wajib ikut
+                                    // disebut justru di sini — sesi bersnapshot
+                                    // kosong hanya lahir dari masa lalu, dan
+                                    // pembuatnya paling mungkin sudah resign.
+                                    SebabDaftarBarangKosong.MEMANG_KOSONG -> IzinKurangNote(
+                                        "Sesi ini tidak punya daftar barang sama sekali, jadi " +
+                                            "tak ada yang bisa dihitung di sini. Minta " +
+                                            (detail.createdByName?.takeIf { it.isNotBlank() }
+                                                ?: "pembuat sesi ini") +
+                                            " membatalkan sesi ini lalu membuat sesi baru. " +
+                                            "Kalau akunnya sudah tidak aktif, admin stok yang " +
+                                            "bisa membatalkannya."
+                                    )
+                                }
                             }
                         }
                     }
@@ -766,6 +856,43 @@ private fun IzinKurangNote(message: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
         )
+    }
+}
+
+/**
+ * Keadaan "daftar barangnya sedang diambil" — keadaan ketiga yang dulu tak ada
+ * sama sekali di layar ini.
+ *
+ * Sengaja BUKAN skeleton atau spinner telanjang: yang perlu dibantah di sini
+ * bukan kekosongan visual melainkan sebuah kesimpulan ("sesi ini kosong"), dan
+ * kesimpulan cuma bisa dibantah kalimat. Bentuknya dibuat sama dengan
+ * [IzinKurangNote] supaya ketiga keadaan menempati slot yang sama dan tak ada
+ * yang terlihat seperti kerusakan.
+ */
+@Composable
+private fun DaftarBarangMemuatNote() {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Daftar barang sesi ini masih diambil dari server. " +
+                    "Tunggu sebentar — belum tentu sesinya kosong.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
