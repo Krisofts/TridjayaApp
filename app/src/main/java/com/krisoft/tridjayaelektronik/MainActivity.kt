@@ -521,6 +521,25 @@ private fun MainScreen(
     LaunchedEffect(pendingNotifChannel, pendingNotifRoute) {
         when (pendingNotifChannel) {
             "delivery" -> {
+                // Komplen (home service) MENUMPANG channel ini — satu channel
+                // notifikasi lapangan — tapi layarnya BUKAN turunan hub SPK.
+                // Karena itu kunci `hs_*` dipisahkan dan dipetakan lewat
+                // `routeForNavKey`, peta yang sama dipakai kartu Activity.
+                //
+                // Tanpa pemisahan ini, cabang di bawah membuka hub SPK LEBIH
+                // DULU tanpa syarat — jadi teknisi yang menerima "Tugas home
+                // service" mendarat di layar SPK yang tak ada hubungannya
+                // dengan pemberitahuannya, dan itulah perilaku sampai 2026-08-15
+                // (route-nya bahkan dikirim `null`, jadi tak ada yang bisa
+                // membedakannya dari notifikasi SPK biasa).
+                val komplen = pendingNotifRoute
+                    ?.takeIf { it.startsWith("hs_") }
+                    ?.let { routeForNavKey(it) }
+                if (komplen != null) {
+                    selected = AppDestination.ACTIVITY
+                    activityNav.navigate(komplen) { launchSingleTop = true }
+                    return@LaunchedEffect
+                }
                 selected = AppDestination.ACTIVITY
                 activityNav.navigate(ROUTE_SPK_HUB) { launchSingleTop = true }
                 // Deep-link halus: buka LANGSUNG halaman tahap terkait (di atas hub, jadi
