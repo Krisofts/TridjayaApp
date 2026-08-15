@@ -164,9 +164,11 @@ class InventoryViewModel @Inject constructor(
     }
 
     /** Commit dari bottom sheet Filter & Urutkan — kategori, merk, toko, dan sort sekali jalan.
-     *  [dealerText] teks bebas dari kolom toko; di-resolve ke kode dealer (tak dikenal = tanpa filter). */
-    fun applyFilterSheet(category: String, merk: String, sortOrder: Int, dealerText: String) {
-        val dealerCode = DealerAlias.codeFromLabel(dealerText).orEmpty()
+     *  [dealerKode] kode dealer hasil pilihan dropdown (mis. "D-01"); kosong = semua toko.
+     *  Kode asing tetap disaring jadi kosong: dropdown tak bisa menghasilkannya, tapi
+     *  membiarkannya lewat berarti daftar barang kosong tanpa satu pun penjelasan. */
+    fun applyFilterSheet(category: String, merk: String, sortOrder: Int, dealerKode: String) {
+        val dealerCode = if (dealerKode in DealerAlias.allCodes) dealerKode else ""
         _uiState.update {
             it.copy(
                 filters = it.filters.copy(
