@@ -41,6 +41,22 @@ interface LeadDao {
     @Query("SELECT * FROM leads WHERE pendingSync = 1 ORDER BY id DESC")
     suspend fun pendingLeads(): List<LeadEntity>
 
+    /**
+     * Baris antrean yang MASIH masuk akal dikirim ulang — yang sudah divonis
+     * permanen oleh server ([LeadEntity.syncRejectReason] terisi) dilewati.
+     *
+     * Beda dari [pendingLeads], dan bedanya penting: [pendingLeads] tetap
+     * memuat baris tertolak karena penyegaran cache memakainya untuk memutuskan
+     * baris mana yang TIDAK boleh tertimpa data server. Yang berhenti hanyalah
+     * pengirimannya, bukan penyimpanannya.
+     */
+    @Query("SELECT * FROM leads WHERE pendingSync = 1 AND syncRejectReason IS NULL ORDER BY id DESC")
+    suspend fun pendingPushableLeads(): List<LeadEntity>
+
+    /** Catat vonis permanen server pada satu baris antrean. */
+    @Query("UPDATE leads SET syncRejectReason = :reason WHERE id = :id")
+    suspend fun markSyncRejected(id: Long, reason: String)
+
     @Query("SELECT * FROM leads WHERE id = :id")
     suspend fun byId(id: Long): LeadEntity?
 

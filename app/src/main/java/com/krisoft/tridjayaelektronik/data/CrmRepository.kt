@@ -53,6 +53,38 @@ data class LeadSummary(
 private const val KEY_CRM_PIPELINES = "crm_pipelines"
 private const val KEY_CRM_ASSIGNEES = "crm_assignees"
 
+/**
+ * `true` = antrean create prospek boleh berhenti mencoba baris ini — **fungsi murni**.
+ *
+ * DUA syarat, dan syarat kedua yang mencegah kerusakan baru: statusnya harus
+ * memvonis isi permintaan ([sifatGagal] = [SifatGagal.PERMANEN]), **DAN** vonis
+ * itu harus datang dari aplikasi kita sendiri (badan JSON ber-`code`), bukan
+ * dari lapisan di depannya. Alasannya sama persis dengan [bolehBuangAntrean] di
+ * `OpnameRepository`: tridjaya.com ada di belakang Cloudflare, yang menjawab
+ * 403/429 HTML saat WAF atau rate-limit bicara — tanpa syarat kedua, satu
+ * gelombang rate-limit akan memvonis "ditolak permanen" seluruh prospek yang
+ * baru saja diketik sales, padahal keadaannya sementara.
+ *
+ * `401` sengaja BUKAN permanen ([sifatGagal] memetakannya ke [SifatGagal.SESI]):
+ * permintaannya sah, sesinya yang mati, dan push sesudah login ulang berhasil.
+ */
+fun vonisPermanenProspek(failure: AuthResult.Failure): Boolean =
+    sifatGagal(failure.httpStatus) == SifatGagal.PERMANEN && !failure.code.startsWith("http_")
+
+/**
+ * Kalimat untuk sales pemilik baris antrean yang ditolak permanen — **fungsi murni**.
+ *
+ * Pesan server dipakai apa adanya (ia sudah berbahasa Indonesia dan menyebut
+ * kolom yang salah), lalu DILENGKAPI langkah berikutnya. Vonis telanjang tak
+ * menolong siapa pun: baris ini tak bisa disunting dari app, jadi satu-satunya
+ * jalan keluar adalah menginput ulang prospeknya dengan data yang benar.
+ */
+fun pesanTolakProspek(failure: AuthResult.Failure): String {
+    val dasar = failure.message.trim().ifEmpty { "Ditolak server" }.trimEnd('.')
+    return "$dasar. Prospek ini BELUM masuk ke server dan tidak terhitung di target " +
+        "harianmu — input ulang dengan data yang benar."
+}
+
 @Singleton
 class CrmRepository @Inject constructor(
     private val api: CrmApi,
@@ -199,6 +231,7 @@ class CrmRepository @Inject constructor(
         createdAt = createdAt,
         updatedAt = updatedAt,
         pendingSync = pendingSync,
+        syncRejectReason = syncRejectReason,
         minatBarang = minatBarang,
         kategoriProduk = kategoriProduk
     )
@@ -224,7 +257,8 @@ class CrmRepository @Inject constructor(
         kategoriProduk = kategoriProduk,
         createdAt = createdAt,
         updatedAt = updatedAt,
-        pendingSync = pendingSync
+        pendingSync = pendingSync,
+        syncRejectReason = syncRejectReason
     )
 
     /** Pipelines with an offline fallback: every successful fetch is cached as JSON in Room, and a
@@ -380,13 +414,31 @@ class CrmRepository @Inject constructor(
     /**
      * Pushes every locally-created (pending) prospect to `POST /api/prospek-harian`, oldest-first.
      * That endpoint doesn't return the CRM lead row, so after any successful push the fresh list is
-     * re-fetched to swap temp rows for the authoritative server rows. Failed pushes stay pending
-     * and are retried on the next trigger (create / refresh / app open). Mutex-guarded so
+     * re-fetched to swap temp rows for the authoritative server rows. Mutex-guarded so
      * concurrent triggers don't double-submit.
+     *
+     * **Kegagalan dibagi dua, dan itu inti fungsi ini.** Sampai 2026-08-15 SETIAP
+     * kegagalan diperlakukan "belum ada sinyal": barisnya tetap mengantre, dikirim
+     * ulang tiap create/refresh/buka-app, dan di layar tetap berlabel "ANTRE".
+     * Untuk kegagalan sementara itu benar. Untuk vonis PERMANEN (server menolak
+     * ISI permintaannya, mis. nomor WhatsApp di luar 7–15 angka) itu keliru dua
+     * kali: percobaannya tak akan pernah berhasil, dan sales-nya diberi tahu
+     * prospeknya "antre" padahal server tak pernah menerimanya — jadi prospek itu
+     * tak ikut menghitung target harian dan jobdesk raportnya tak pernah otomatis
+     * disetujui. Terukur di nginx: 390 penolakan 400 dalam tujuh hari (8–14 Agt
+     * 2026), naik 40/hari → 93/hari seiring baris macet menumpuk.
+     *
+     * Sekarang: vonis permanen DICATAT di baris itu ([LeadEntity.syncRejectReason]),
+     * barisnya berhenti dikirim ulang, dan layar menyebut sebab + langkah
+     * berikutnya. Barisnya TIDAK dihapus — isinya hasil kerja orang. Klasifikasinya
+     * memakai [sifatGagal] yang sama dengan antrean opname, arah aman ke SEMENTARA.
      */
     suspend fun syncPendingLeads() {
         syncMutex.withLock {
-            val pending = leadDao.pendingLeads().sortedBy { it.id * -1 } // oldest create first
+            // Baris yang sudah divonis permanen sengaja TIDAK ikut: mengirimnya lagi
+            // cuma menghasilkan 400 yang sama. Rekonsiliasi cache tetap memakai
+            // `pendingLeads()` yang lebih luas, jadi barisnya tak ikut tertimpa.
+            val pending = leadDao.pendingPushableLeads().sortedBy { it.id * -1 } // oldest create first
             var pushedAny = false
             for (entity in pending) {
                 val request = CreateProspekRequest(
@@ -407,8 +459,16 @@ class CrmRepository @Inject constructor(
                 if (response?.isSuccessful == true) {
                     leadDao.deleteById(entity.id)
                     pushedAny = true
+                    continue
                 }
-                // else: leave it pending; a later trigger retries it.
+                // `response == null` = permintaannya tak pernah sampai (lempar
+                // IOException) → SEMENTARA, tetap mengantre tanpa disentuh.
+                if (response == null) continue
+                val gagal = kegagalanProspek(response)
+                if (vonisPermanenProspek(gagal)) {
+                    leadDao.markSyncRejected(entity.id, pesanTolakProspek(gagal))
+                }
+                // SEMENTARA & SESI: biarkan mengantre, pemicu berikutnya mengulang.
             }
             // Pull the server rows the pushes just created (fetch only — no queue re-entry).
             // Selalu pakai id user SENDIRI — bukan assignedTo lead yang dipush: prospek yang
@@ -612,6 +672,28 @@ class CrmRepository @Inject constructor(
         } catch (e: Exception) {
             AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
         }
+    }
+
+    /**
+     * Kegagalan push prospek, LENGKAP dengan `httpStatus` dan pesan paling
+     * spesifik yang dipunya server.
+     *
+     * Dipisah dari [parseError] dengan sengaja, dua-duanya penting:
+     * - `httpStatus` WAJIB terbawa, karena [vonisPermanenProspek] memutuskan
+     *   nasib baris antrean dari situ ([parseError] membuangnya).
+     * - Kalimat yang dibaca sales diambil dari `errors[0]` dulu ("Nomor
+     *   WhatsApp tidak valid"), baru `message` ("Input tidak valid" — benar
+     *   tapi tak memberi tahu apa pun). Pola sama `RaportRepository.parseError`.
+     */
+    private fun kegagalanProspek(response: Response<*>): AuthResult.Failure {
+        val raw = response.errorBody()?.string()
+        val parsed = raw?.let {
+            runCatching { errorJson.decodeFromString(ApiErrorResponse.serializer(), it) }.getOrNull()
+        }
+        val pesan = parsed?.errors?.firstOrNull()?.takeIf { it.isNotBlank() }
+            ?: parsed?.message
+            ?: "Terjadi kesalahan (${response.code()})"
+        return AuthResult.Failure(parsed?.code ?: "http_${response.code()}", pesan, response.code())
     }
 
     private fun <T> parseError(response: Response<*>): AuthResult<T> {

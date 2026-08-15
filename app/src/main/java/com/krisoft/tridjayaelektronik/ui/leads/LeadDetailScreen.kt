@@ -283,16 +283,37 @@ private fun ProspectHeroCard(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
+                // "ANTRE" hanya untuk yang benar-benar mengantre. Baris yang
+                // server tolak permanen diberi label sendiri + sebabnya di bawah.
                 if (lead.pendingSync) {
-                    Surface(color = Color(0xFFB5670C).copy(alpha = 0.13f), shape = RoundedCornerShape(50)) {
+                    val ditolak = lead.syncRejectReason != null
+                    val warna = if (ditolak) MaterialTheme.colorScheme.error else Color(0xFFB5670C)
+                    Surface(color = warna.copy(alpha = 0.13f), shape = RoundedCornerShape(50)) {
                         Text(
-                            text = "ANTRE",
-                            color = Color(0xFFB5670C),
+                            text = if (ditolak) "BELUM MASUK SERVER" else "ANTRE",
+                            color = warna,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Black,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
                     }
+                }
+            }
+
+            lead.syncRejectReason?.let { alasan ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = alasan,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
                 }
             }
 

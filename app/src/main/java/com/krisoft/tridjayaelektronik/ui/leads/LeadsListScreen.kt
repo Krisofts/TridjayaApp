@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Groups
@@ -464,12 +465,16 @@ private fun LeadRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
+                // Antre ≠ ditolak. Ikon awan naik berarti "nanti terkirim sendiri";
+                // memakainya juga untuk baris yang server tolak permanen membuat
+                // sales menunggu sesuatu yang tak akan pernah terjadi.
                 if (lead.pendingSync) {
+                    val ditolak = lead.syncRejectReason != null
                     Spacer(modifier = Modifier.width(5.dp))
                     Icon(
-                        Icons.Rounded.CloudUpload,
-                        contentDescription = "Antre sinkron",
-                        tint = Color(0xFFB5670C),
+                        if (ditolak) Icons.Rounded.CloudOff else Icons.Rounded.CloudUpload,
+                        contentDescription = if (ditolak) "Ditolak server" else "Antre sinkron",
+                        tint = if (ditolak) MaterialTheme.colorScheme.error else Color(0xFFB5670C),
                         modifier = Modifier.size(13.dp)
                     )
                 }
@@ -515,6 +520,20 @@ private fun LeadRow(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            // Sebab + langkah berikutnya, di kartu — bukan disembunyikan di balik
+            // ketukan. Tanpa ini baris yang server tolak terlihat persis sama
+            // dengan prospek yang tersimpan baik-baik saja.
+            lead.syncRejectReason?.let { alasan ->
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = alasan,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         Spacer(modifier = Modifier.width(10.dp))

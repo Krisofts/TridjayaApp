@@ -35,6 +35,25 @@ data class LeadEntity(
     /** True while this lead was created locally (optimistic) and hasn't been pushed to the server yet.
      *  Such rows use a temporary negative [id] until the queued sync replaces them with the server row. */
     val pendingSync: Boolean = false,
+    /**
+     * Alasan server MENOLAK baris antrean ini secara permanen — kosong (`null`)
+     * selama barisnya masih benar-benar mengantre.
+     *
+     * Ada karena antrean create prospek dulu memperlakukan SEMUA kegagalan
+     * sebagai "belum ada sinyal": baris yang dijawab 400 tetap `pendingSync`
+     * selamanya, terus dikirim ulang tiap create/refresh/buka-app, dan di layar
+     * tetap berlabel "ANTRE". Sales-nya mengira prospeknya tersimpan, padahal
+     * server tak pernah menerimanya — jadi prospek itu tidak ikut menghitung
+     * target harian dan jobdesk raportnya tak pernah otomatis disetujui.
+     * Terukur di nginx: 390 penolakan 400 pada `POST /api/prospek-harian` dalam
+     * tujuh hari (8-14 Agt 2026), seluruhnya dari app (okhttp), naik 40/hari
+     * menjadi 93/hari seiring baris macet menumpuk.
+     *
+     * Terisi = baris berhenti dikirim ulang dan layar menyebut sebabnya.
+     * Barisnya SENGAJA tidak dihapus: isinya hasil kerja orang, hanya nomornya
+     * yang perlu dibetulkan.
+     */
+    val syncRejectReason: String? = null,
     /** True while a stage move done offline/optimistically hasn't been pushed to the server yet.
      *  Only meaningful for server rows (positive id); temp pending rows sync via the create queue. */
     val stageDirty: Boolean = false,

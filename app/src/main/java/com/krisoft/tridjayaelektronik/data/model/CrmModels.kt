@@ -53,7 +53,14 @@ data class LeadDto(
     val createdAt: String = "",
     val updatedAt: String = "",
     /** Client-only: set for optimistic local leads awaiting sync. Server responses default it to false. */
-    val pendingSync: Boolean = false
+    val pendingSync: Boolean = false,
+    /**
+     * Client-only: alasan server MENOLAK baris antrean ini secara permanen.
+     * `null` = masih benar-benar mengantre. Lihat `LeadEntity.syncRejectReason`
+     * — layar WAJIB membedakannya dari "ANTRE", karena keduanya terlihat sama
+     * bagi sales sampai targetnya meleset di akhir hari.
+     */
+    val syncRejectReason: String? = null
 )
 
 @Serializable

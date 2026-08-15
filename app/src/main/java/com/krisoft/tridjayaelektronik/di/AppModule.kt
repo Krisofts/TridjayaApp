@@ -209,11 +209,22 @@ object AppModule {
         }
     }
 
+    /** v15 → v16: antrean create prospek menyimpan vonis permanen server
+     *  (`leads.syncRejectReason`). Eksplisit, bukan destructive — alasan sama
+     *  MIGRATION_13_14: wipe DB ikut membuang antrean offline yang belum
+     *  terkirim, dan justru baris antrean itulah yang kolom ini jelaskan.
+     *  Baris lama otomatis NULL = masih benar-benar mengantre. */
+    private val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `leads` ADD COLUMN `syncRejectReason` TEXT")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "tridjaya.db")
-            .addMigrations(MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15)
+            .addMigrations(MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
             // Local cache only (server is the source of truth) — safe to wipe on schema bumps
             // that don't have an explicit migration above.
             .fallbackToDestructiveMigration()
