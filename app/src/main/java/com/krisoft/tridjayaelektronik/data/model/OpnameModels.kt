@@ -145,7 +145,31 @@ data class OpnameContextDto(
     val canCreate: Boolean = false,
     val isManager: Boolean = false,
     val role: String = "",
-    val dealers: List<OpnameDealerDto> = emptyList()
+    val dealers: List<OpnameDealerDto> = emptyList(),
+    /**
+     * Lingkup daftar sesi: `"semua"` (pemantau lintas cabang), `"cabang"`
+     * (disaring ke cabang akun), `"pembuat"` (akun tanpa cabang — hanya sesi
+     * buatannya sendiri). Cerminan `list_scope` di inventory-service.
+     *
+     * String kosong = server belum mengenal field ini.
+     */
+    val lingkup: String = "",
+    /** Cabang yang dipakai server menyaring daftar; `null` untuk `semua`/`pembuat`. */
+    val dealerCode: String? = null,
+    val dealerName: String? = null,
+    /**
+     * Kalimat siap tampil saat daftar sesi KOSONG — menyebut CABANG orang itu
+     * dan SIAPA yang bisa membuka sesi.
+     *
+     * Datang dari server, bukan dikarang app: dua fakta di dalamnya (cabang mana
+     * yang dipakai menyaring, dan peran mana yang lolos guard
+     * `create_opname_session`) hanya benar di sisi server, dan menyalinnya ke
+     * sini berarti kalimatnya basi diam-diam begitu guard-nya bergeser.
+     *
+     * `null`/kosong = server lama → pemanggil WAJIB jatuh balik ke teks
+     * cadangannya sendiri, jangan menampilkan layar tanpa keterangan.
+     */
+    val pesanKosong: String? = null,
 )
 
 /** One row of the session's frozen coverage list (identity only — no stock values). */

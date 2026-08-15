@@ -150,11 +150,9 @@ fun OpnameListScreen(
                             ExpressiveEmptyState(
                                 icon = { Icon(Icons.Rounded.FactCheck, contentDescription = null) },
                                 title = "Belum ada sesi opname",
-                                subtitle = if (state.context?.canCreate == true) {
-                                    "Tekan tombol + untuk memulai hitung fisik stok"
-                                } else {
-                                    "Belum ada sesi opname yang bisa ditampilkan untuk akunmu"
-                                }
+                                // Kalimatnya menyebut CABANG + siapa yang bisa
+                                // membuka sesi — lihat `subtitleDaftarKosong`.
+                                subtitle = subtitleDaftarKosong(state.context)
                             )
                         }
                     }
