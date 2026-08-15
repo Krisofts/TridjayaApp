@@ -14,9 +14,13 @@ sealed class CreateLeadOutcome {
 
 /**
  * Validation + request-shaping for the prospect form, mirroring the web's Submit Prospek rules
- * (kinerja-service `/api/prospek-harian`): nama, WhatsApp (valid, 08-prefixed), minat barang, and
- * kategori produk are required; the WhatsApp number is normalized the same way the web does
- * (digits only, 62xx → 08xx) before submit.
+ * (kinerja-service `/api/prospek-harian`): nama, WhatsApp, minat barang, and kategori produk are
+ * required.
+ *
+ * Normalisasi + aturan nomor WhatsApp hidup di [ProspekNomor.kt][masalahNomorProspek] — dipisah
+ * karena batasnya harus sejajar dengan `is_plausible_whatsapp` di server, dan karena selisih
+ * sekecil "server punya batas atas, form tidak" sudah pernah membuat 390 prospek ditolak diam-diam
+ * dalam seminggu. Baca catatan lengkapnya di file itu sebelum melonggarkan apa pun di sini.
  */
 class CreateLeadUseCase @Inject constructor(
     private val crmRepository: CrmRepository,
@@ -45,10 +49,12 @@ class CreateLeadUseCase @Inject constructor(
         if (missing.isNotEmpty()) {
             return CreateLeadOutcome.ValidationError("Lengkapi dulu: ${missing.joinToString(", ")}")
         }
-        val normalizedPhone = normalizeWhatsapp(phone)
-        if (!normalizedPhone.startsWith("08") || normalizedPhone.length < 10) {
-            return CreateLeadOutcome.ValidationError("Nomor WhatsApp harus valid dan diawali 08")
-        }
+        val normalizedPhone = normalisasiNomorProspek(phone)
+        // Aturannya WAJIB sama persis dengan server (lihat `ProspekNomor.kt`):
+        // form yang lebih longgar tidak "memaafkan" apa pun, ia cuma memindahkan
+        // penolakan ke tempat yang tak terlihat siapa pun — antrean offline yang
+        // ditolak 400 selamanya sambil tetap berlabel "ANTRE" di layar.
+        masalahNomorProspek(normalizedPhone)?.let { return CreateLeadOutcome.ValidationError(it) }
 
         val draft = ProspekDraft(
             nama = nama.trim(),
@@ -68,13 +74,5 @@ class CreateLeadUseCase @Inject constructor(
             is AuthResult.Success -> CreateLeadOutcome.Success(result.data.id)
             is AuthResult.Failure -> CreateLeadOutcome.Failure(result.message)
         }
-    }
-
-    /** Same normalization as the web form: strip non-digits, 62xx → 0xx, 8xx → 08xx. */
-    private fun normalizeWhatsapp(raw: String): String {
-        var digits = raw.filter { it.isDigit() }
-        if (digits.startsWith("62")) digits = "0" + digits.drop(2)
-        else if (digits.startsWith("8")) digits = "0$digits"
-        return digits
     }
 }
