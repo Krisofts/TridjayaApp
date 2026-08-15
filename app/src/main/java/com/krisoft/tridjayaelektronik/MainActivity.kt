@@ -78,6 +78,7 @@ import com.krisoft.tridjayaelektronik.ui.activity.HOME_ROUTE_DASHBOARD
 import com.krisoft.tridjayaelektronik.ui.activity.landsOnSummary
 import com.krisoft.tridjayaelektronik.ui.activity.routeForNavKey
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
+import com.krisoft.tridjayaelektronik.ui.home.findLifecycle
 import com.krisoft.tridjayaelektronik.ui.inventory.InventoryNavHost
 import com.krisoft.tridjayaelektronik.ui.inventory.SEARCH_ROUTE_ROOT
 import com.krisoft.tridjayaelektronik.ui.login.ChangePasswordScreen
@@ -91,6 +92,7 @@ import com.krisoft.tridjayaelektronik.ui.settings.SettingsScreen
 import com.krisoft.tridjayaelektronik.ui.splash.SplashScreen
 import com.krisoft.tridjayaelektronik.ui.update.UpdateDialog
 import com.krisoft.tridjayaelektronik.ui.update.UpdateViewModel
+import com.krisoft.tridjayaelektronik.ui.update.bolehTampilkanPrompt
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaAppTheme
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaFloatingNav
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaNavItem
@@ -218,8 +220,30 @@ private fun TridjayaNavHost(
     val mustChangePassword by sessionViewModel.mustChangePassword.collectAsState()
 
     val updateStatus by updateViewModel.status.collectAsState()
-    val optionalDismissed by updateViewModel.optionalDismissed.collectAsState()
+    val versiPromptDitutup by updateViewModel.versiPromptDitutup.collectAsState()
     val updateDownload by updateViewModel.download.collectAsState()
+
+    // Pemeriksaan pembaruan diulang tiap app kembali ke foreground. Tanpa ini pemeriksaannya
+    // cuma sekali di `UpdateViewModel.init`, dan karena ViewModel-nya hidup selama Activity
+    // hidup, aplikasi yang dibuka pagi lalu dibiarkan hidup seharian tak pernah bertanya lagi.
+    // Ambang jeda ada di ViewModel (`bolehCekOtomatis`) — ON_RESUME sering, permintaannya tidak.
+    //
+    // WAJIB lifecycle ACTIVITY lewat `findLifecycle()`, bukan `LocalLifecycleOwner.current`.
+    // Di posisi ini keduanya kebetulan sama (TridjayaNavHost dikomposisi langsung di
+    // `setContent`, di LUAR NavHost mana pun), tapi helper itulah yang tetap benar kalau
+    // pemanggilnya nanti bergeser ke dalam NavHost — jebakan NavBackStackEntry yang mandek di
+    // STARTED sudah dua kali menggigit di app ini (lihat `NotificationPermissionBanner` dan
+    // `ActivityScreen`).
+    val updateCtx = LocalContext.current
+    val updateLifecycle = remember(updateCtx) { updateCtx.findLifecycle() }
+    DisposableEffect(updateLifecycle, updateViewModel) {
+        if (updateLifecycle == null) return@DisposableEffect onDispose {}
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) updateViewModel.onForeground()
+        }
+        updateLifecycle.addObserver(observer)
+        onDispose { updateLifecycle.removeObserver(observer) }
+    }
 
     // Single reactive source of truth for which gate we belong on: logout / background
     // session-invalidation → Login; server-flagged forced change → Change Password; otherwise Main.
@@ -321,10 +345,19 @@ private fun TridjayaNavHost(
     }
 
     // Update gate — a force update blocks the whole app (over any screen incl. login) and its
-    // download already auto-started (UpdateViewModel.init); an optional update shows a dismissible
-    // prompt once, download starts on tap. AlertDialog renders in its own window above the NavHost.
+    // download already auto-started (UpdateViewModel detects it); an optional update shows a
+    // dismissible prompt, download starts on tap. AlertDialog renders in its own window above the
+    // NavHost. "Nanti" kini menutup SATU VERSI saja (`bolehTampilkanPrompt`), bukan seluruh sesi:
+    // menutup prompt 84 tak boleh ikut menelan prompt 85 yang terbit sesudahnya.
+    //
+    // `UpdateStatus.Unknown` (pemeriksaan gagal: 401/403/5xx, offline, timeout, TLS, gagal parse —
+    // lihat `UpdateManager.check`) sengaja TIDAK menampilkan apa pun di sini. Orang sedang
+    // bekerja; kegagalan jaringan biasa bukan alasan memasang dialog di atas layarnya. Pemeriksaan
+    // ulangnya lebih cepat (`JEDA_CEK_GAGAL_MS`), dan jalur yang pengguna sendiri yang memintanya
+    // — "Cek Pembaruan" di Settings — tetap melaporkan kegagalan apa adanya lewat
+    // `updateCheckMessage`, jadi kegagalan tak pernah menyamar jadi "sudah versi terbaru".
     (updateStatus as? UpdateStatus.Available)?.let { available ->
-        if (available.force || !optionalDismissed) {
+        if (bolehTampilkanPrompt(available, versiPromptDitutup)) {
             UpdateDialog(
                 available = available,
                 download = updateDownload,

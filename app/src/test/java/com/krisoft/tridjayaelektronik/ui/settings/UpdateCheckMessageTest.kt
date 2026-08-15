@@ -38,6 +38,7 @@ class UpdateCheckMessageTest {
     fun `pembaruan tersedia tidak memunculkan toast — dialognya yang tampil`() {
         val status = UpdateStatus.Available(
             force = false,
+            latestVersionCode = 39,
             latestVersionName = "2.28",
             releaseNotes = "catatan",
         )
@@ -48,6 +49,7 @@ class UpdateCheckMessageTest {
     fun `pembaruan wajib juga tanpa toast`() {
         val status = UpdateStatus.Available(
             force = true,
+            latestVersionCode = 39,
             latestVersionName = "2.28",
             releaseNotes = "",
         )

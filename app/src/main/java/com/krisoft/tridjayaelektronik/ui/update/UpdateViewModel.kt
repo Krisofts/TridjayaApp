@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.update
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.update.UpdateDownloadState
@@ -12,9 +13,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** Checks for an app update once at startup; the root UI gates a force update on the result.
- *  Mandatory updates auto-download the moment they're detected (see [check]'s call site in
- *  [init]) — optional ones wait for [startDownload] (the dialog's "Perbarui Sekarang" tap). */
+/** Checks for an app update at startup **and every time the app returns to the foreground**; the
+ *  root UI gates a force update on the result. Mandatory updates auto-download the moment they're
+ *  detected — optional ones wait for [startDownload] (the dialog's "Perbarui Sekarang" tap).
+ *
+ *  Pemeriksaan berulang itu inti perubahan ini: ViewModel ini hidup selama Activity hidup, jadi
+ *  satu pemeriksaan di `init` berarti satu pemeriksaan per pembukaan aplikasi, dan aplikasi kerja
+ *  yang dibiarkan hidup seharian tak pernah bertanya lagi. Pemicunya ON_RESUME dari lifecycle
+ *  Activity (dipasang di `TridjayaNavHost`) — bukan timer, bukan polling. Ambang jeda,
+ *  penanganan kegagalan, dan penutupan prompt per versi ada di `UpdatePrompt.kt` sebagai fungsi
+ *  murni; kelas ini cuma menyimpan keadaan dan memanggilnya. */
 @HiltViewModel
 class UpdateViewModel @Inject constructor(
     private val updateManager: UpdateManager
@@ -23,26 +31,76 @@ class UpdateViewModel @Inject constructor(
     private val _status = MutableStateFlow<UpdateStatus>(UpdateStatus.Unknown)
     val status: StateFlow<UpdateStatus> = _status.asStateFlow()
 
-    /** Set once an optional-update prompt has been dismissed so it doesn't reappear this session. */
-    private val _optionalDismissed = MutableStateFlow(false)
-    val optionalDismissed: StateFlow<Boolean> = _optionalDismissed.asStateFlow()
+    /** `latestVersionCode` yang promptnya sudah ditutup pengguna; `null` = belum ada yang ditutup.
+     *  Versi yang lebih baru dari ini WAJIB memunculkan prompt lagi — lihat
+     *  [bolehTampilkanPrompt], yang dipakai pemanggil (root UI) untuk memutuskan. */
+    private val _versiPromptDitutup = MutableStateFlow<Long?>(null)
+    val versiPromptDitutup: StateFlow<Long?> = _versiPromptDitutup.asStateFlow()
 
     private val _download = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
     val download: StateFlow<UpdateDownloadState> = _download.asStateFlow()
 
+    /** Versi yang keadaan [_download] saat ini mewakilinya — dipakai membuang unduhan basi
+     *  ([unduhanBasi]) saat pemeriksaan berikutnya menemukan versi yang lebih baru. */
+    private var unduhanUntukVersi: Long? = null
+
+    /** Waktu monotonik ([SystemClock.elapsedRealtime]) saat pemeriksaan terakhir DIMULAI. Jam
+     *  dinding sengaja tak dipakai: ia bisa melompat mundur (koreksi NTP/manual) dan mengunci
+     *  pemeriksaan berikutnya selama selisihnya. */
+    private var cekTerakhirAt: Long? = null
+    private var cekTerakhirGagal = false
+    private var cekBerjalan = false
+
     init {
+        // Pemeriksaan pertama selalu jalan, tanpa ambang.
+        jalankanCek(paksa = true)
+    }
+
+    /** Dipanggil saat aplikasi kembali ke foreground (ON_RESUME Activity). Sengaja TIDAK
+     *  memaksa: ambangnya yang memutuskan, karena ON_RESUME di aplikasi ini sering (kembali dari
+     *  kamera selfie absen, dari WhatsApp, dari kunci layar). */
+    fun onForeground() {
+        jalankanCek(paksa = false)
+    }
+
+    private fun jalankanCek(paksa: Boolean) {
+        if (cekBerjalan) return
+        val now = SystemClock.elapsedRealtime()
+        if (!paksa && !bolehCekOtomatis(cekTerakhirAt, cekTerakhirGagal, now)) return
+        cekBerjalan = true
+        // Dicatat SEBELUM permintaan terbang: kalau dicatat sesudah, ON_RESUME yang datang
+        // selagi permintaan masih berjalan lolos dari ambang dan mengirim permintaan kedua.
+        cekTerakhirAt = now
         viewModelScope.launch {
-            val result = updateManager.check()
-            _status.value = result
-            // Mandatory update: don't wait for a tap, start pulling it down right away.
-            if (result is UpdateStatus.Available && result.force) {
+            val hasil = try {
+                updateManager.check()
+            } finally {
+                cekBerjalan = false
+            }
+            cekTerakhirGagal = hasil is UpdateStatus.Unknown
+            val baru = statusSetelahCek(_status.value, hasil)
+            _status.value = baru
+
+            val versiBaru = (baru as? UpdateStatus.Available)?.latestVersionCode
+            if (unduhanBasi(unduhanUntukVersi, _download.value is UpdateDownloadState.Downloading, versiBaru)) {
+                unduhanUntukVersi = null
+                _download.value = UpdateDownloadState.Idle
+            }
+            // Pembaruan wajib: jangan menunggu ketukan, langsung tarik berkasnya.
+            // Syarat `Idle` mencegah pemeriksaan foreground berikutnya menembakkan ULANG intent
+            // installer sistem di atas pekerjaan pengguna; saat wajib, dialognya toh memblokir
+            // seluruh app dan menyediakan tombol "Instal Sekarang" untuk mengulanginya manual.
+            if (baru is UpdateStatus.Available && baru.force && _download.value is UpdateDownloadState.Idle) {
                 startDownload()
             }
         }
     }
 
+    /** Menutup prompt untuk versi yang SEDANG tampil saja. Penanda lama berupa Boolean per-sesi
+     *  membuat penutupan versi 84 ikut menelan prompt versi 85 yang terbit sesudahnya. */
     fun dismissOptional() {
-        _optionalDismissed.value = true
+        val tampil = _status.value as? UpdateStatus.Available ?: return
+        _versiPromptDitutup.value = tampil.latestVersionCode
     }
 
     /** Starts (or re-fires the install prompt for) the update download. Safe to call while a
@@ -54,6 +112,7 @@ class UpdateViewModel @Inject constructor(
             updateManager.promptInstall(current.fileUri)
             return
         }
+        unduhanUntukVersi = (_status.value as? UpdateStatus.Available)?.latestVersionCode
         viewModelScope.launch {
             _download.value = UpdateDownloadState.Downloading(null)
             updateManager.downloadApk { progress -> _download.value = UpdateDownloadState.Downloading(progress) }

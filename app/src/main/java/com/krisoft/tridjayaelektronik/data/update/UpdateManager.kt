@@ -36,9 +36,16 @@ sealed interface UpdateStatus {
     /** Couldn't determine (offline / request failed) — treated as no-force. */
     data object Unknown : UpdateStatus
 
-    /** A newer version exists. [force] = superadmin marked it mandatory — the app must update. */
+    /** A newer version exists. [force] = superadmin marked it mandatory — the app must update.
+     *
+     *  [latestVersionCode] adalah angka yang dibandingkan dengan `BuildConfig.VERSION_CODE` di
+     *  [UpdateManager.check]. Ia dibawa keluar (bukan cuma dipakai lalu dibuang) karena
+     *  penutupan prompt oleh pengguna disimpan PER VERSI — lihat `bolehTampilkanPrompt` di
+     *  `ui/update/UpdatePrompt.kt`. [latestVersionName] tidak bisa dipakai untuk itu: ia
+     *  `String` bebas dari server, boleh null (`ApkMetaDto.versionName`) dan jatuh ke `"?"`. */
     data class Available(
         val force: Boolean,
+        val latestVersionCode: Long,
         val latestVersionName: String,
         val releaseNotes: String
     ) : UpdateStatus
@@ -88,6 +95,7 @@ class UpdateManager @Inject constructor(
             if (serverCode <= BuildConfig.VERSION_CODE) return UpdateStatus.UpToDate
             UpdateStatus.Available(
                 force = meta.mandatory,
+                latestVersionCode = serverCode,
                 latestVersionName = meta.versionName ?: "?",
                 releaseNotes = meta.changelog.orEmpty()
             )
