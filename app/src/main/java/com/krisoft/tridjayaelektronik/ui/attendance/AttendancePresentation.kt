@@ -217,6 +217,84 @@ fun gateAbsenPulang(today: AktivitasChatTodayDto?): GatePulang {
     return GatePulang(false, today.alasanCheckoutTertutup ?: "Bukti chat harian belum beres.")
 }
 
+/**
+ * Hasil gate tombol Absen Masuk (geofence).
+ *
+ * Sengaja terpisah dari [GatePulang]: aturannya berlawanan. Absen MASUK ditolak
+ * server kalau di luar area, absen PULANG tidak (`check_out` sengaja tak dipagari
+ * supaya driver/sales yang masih di lapangan sore hari tetap bisa pulang).
+ */
+data class GateMasuk(val boleh: Boolean, val alasan: String? = null)
+
+/**
+ * Jarak di mana "aku sudah di depan toko tapi tetap ditulis di luar area" masih
+ * masuk akal, sehingga tersangkanya titik geofence yang meleset — bukan orangnya.
+ * Radius cabang di produksi 200 m, jadi 500 m memberi ruang untuk simpangan GPS
+ * di dalam gedung tanpa menyarankan hal itu kepada orang yang jaraknya kilometer.
+ */
+const val AMBANG_DUGAAN_TITIK_SALAH_M = 500
+
+/**
+ * Cermin gate server `AbsensiService::check_in` → `pastikan_di_area_toko`
+ * (kinerja-service): absen MASUK di luar radius semua toko ditolak 400, tidak
+ * tercatat sama sekali.
+ *
+ * **Kenapa ada.** Sebelum ini layar absensi menulis "absen perlu review" untuk
+ * keadaan itu dan membiarkan tombol Check In hidup — kalimat yang menjanjikan
+ * absennya tetap masuk, hanya butuh persetujuan. Yang terjadi sebaliknya: tak ada
+ * baris yang lahir. Terukur di nginx produksi 4–15 Agustus 2026, **314 check-in
+ * dijawab 400 dan seluruhnya penolakan geofence** (ukuran badan 152/153/154 byte
+ * = varian pesan berjarak; nol yang "foto wajib" atau "titik toko belum diatur").
+ * Orang di lapangan tak punya cara membedakannya dari aplikasi rusak.
+ *
+ * **[daftarCabangLengkap] menentukan apakah kita BOLEH mengunci.** Server menilai
+ * terhadap SELURUH `absensi_cabang_config` (karyawan boleh absen di cabang
+ * Tridjaya manapun), jadi vonis "di luar area" baru sepadan dengan vonis server
+ * kalau app memegang daftar lengkapnya — yaitu saat `today` mengirim `geofences[]`.
+ * Server lama hanya mengirim `geofence` tunggal (cabang sendiri); dari satu titik
+ * itu "di luar" bisa berarti "sedang bertugas di cabang sebelah", dan mengunci
+ * atas dasar itu MENGHENTIKAN orang yang sebenarnya berhak. Karena itu tanpa
+ * daftar lengkap fungsi ini **fail-open** — server tetap penegak sebenarnya.
+ *
+ * [inArea] `null` (lokasi belum terbaca / belum ada geofence sama sekali) juga
+ * fail-open, alasan yang sama.
+ */
+fun gateAbsenMasuk(
+    inArea: Boolean?,
+    daftarCabangLengkap: Boolean,
+    namaCabangTerdekat: String?,
+    jarakM: Int?
+): GateMasuk {
+    if (inArea != false) return GateMasuk(true)
+    val cabang = namaCabangTerdekat?.trim()?.takeIf { it.isNotBlank() }
+    val jarak = jarakM?.takeIf { it >= 0 }
+    val sebutJarak = when {
+        jarak != null && cabang != null -> "Kamu ${formatDistance(jarak.toLong())} dari $cabang"
+        jarak != null -> "Kamu ${formatDistance(jarak.toLong())} dari toko terdekat"
+        cabang != null -> "Toko terdekat $cabang"
+        else -> "Kamu berada di luar area toko"
+    }
+    if (!daftarCabangLengkap) {
+        // Tak boleh mengunci, tapi diam juga salah: orangnya berhak tahu titik
+        // ini akan ditolak KALAU ia memang tak sedang di cabang lain.
+        return GateMasuk(
+            true,
+            "$sebutJarak. Kalau kamu sedang bertugas di cabang lain, absen masuk tetap bisa; " +
+                "kalau tidak, mendekatlah ke toko dulu."
+        )
+    }
+    // Dugaan "titik cabangnya yang meleset" hanya masuk akal dari dekat. Menyodorkan
+    // "minta admin memperbaiki titik" kepada orang yang jaraknya 2 km mengajari
+    // seluruh cabang menyalahkan setelan untuk lokasi yang memang salah.
+    val jalanKeluar = if (jarak != null && jarak <= AMBANG_DUGAAN_TITIK_SALAH_M) {
+        " Mendekatlah ke toko lalu perbarui lokasi. Kalau kamu memang sudah di toko, " +
+            "minta admin membetulkan titik lokasi cabang di halaman Absensi."
+    } else {
+        " Mendekatlah ke toko lalu perbarui lokasi."
+    }
+    return GateMasuk(false, "Absen masuk hanya bisa dari dalam area toko. $sebutJarak.$jalanKeluar")
+}
+
 fun buildTimeline(
     history: List<AbsensiRecordDto>,
     offRequests: List<OffRequestDto>

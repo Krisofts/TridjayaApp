@@ -44,6 +44,17 @@ data class AttendanceUiState(
 
     /** Geofence SEMUA cabang (dari `today`) — app pilih terdekat/yang memuat untuk verdict live. */
     val geofences: List<AbsensiGeofenceDto> = emptyList(),
+    /**
+     * `true` hanya bila [geofences] datang dari field `geofences[]` server, yaitu
+     * daftar SELURUH cabang — himpunan yang SAMA dengan yang dinilai
+     * `evaluate_punch` di server.
+     *
+     * `false` = kita cuma punya `geofence` tunggal (cabang sendiri) dari server
+     * lama, atau tak punya apa-apa. Bedanya menentukan: vonis "di luar area" dari
+     * satu titik tidak sepadan dengan vonis server, jadi [gateAbsenMasuk] tak
+     * boleh mengunci tombol atas dasar itu.
+     */
+    val geofenceLengkap: Boolean = false,
     /** Cabang hasil resolve (yang memuat kita, atau terdekat) — untuk nama & verdict live. */
     val geofence: AbsensiGeofenceDto? = null,
     val distanceM: Int? = null,
@@ -70,6 +81,8 @@ data class AttendanceUiState(
     val hasLocation: Boolean get() = lat != null && lng != null
     val rekap: AttendanceRekap get() = buildRekap(history, offRequests)
     val gatePulang: GatePulang get() = gateAbsenPulang(chatToday)
+    val gateMasuk: GateMasuk
+        get() = gateAbsenMasuk(inArea, geofenceLengkap, geofence?.cabangNama, distanceM)
 }
 
 /**
@@ -145,8 +158,12 @@ class AttendanceViewModel @Inject constructor(
             }
             val todayData = (todayRes as? AuthResult.Success)?.data
             val today = todayData?.record
-            // Kompat: backend baru kirim `geofences[]`; versi lama kirim `geofence` tunggal.
+            // Kompat: backend baru kirim `geofences[]` (SELURUH cabang); versi lama
+            // kirim `geofence` tunggal (cabang sendiri). Bedanya bukan kosmetik —
+            // hanya daftar lengkap yang boleh dipakai MENGUNCI tombol Check In,
+            // lihat [AttendanceUiState.geofenceLengkap] dan [gateAbsenMasuk].
             val geofences = todayData?.let { it.geofences.ifEmpty { listOfNotNull(it.geofence) } }
+            val geofenceLengkap = todayData?.geofences?.isNotEmpty() == true
             val history = (historyRes as? AuthResult.Success)?.data
             val error = when {
                 todayRes is AuthResult.Failure && historyRes is AuthResult.Failure -> todayRes.message
@@ -163,7 +180,12 @@ class AttendanceViewModel @Inject constructor(
                         // bisa sudah tak berlaku, dan menahan gate tertutup atas
                         // data basi persis yang dilarang doc [gateAbsenPulang].
                         chatToday = (chatRes as? AuthResult.Success)?.data,
-                        geofences = geofences ?: it.geofences
+                        geofences = geofences ?: it.geofences,
+                        // Ikut nasib `geofences`: kalau daftarnya tak diperbarui
+                        // (panggilan gagal), status "lengkap"-nya juga tak boleh
+                        // berubah — kalau tidak, satu muat ulang yang gagal bisa
+                        // mengunci tombol atas daftar cabang yang lama.
+                        geofenceLengkap = if (geofences != null) geofenceLengkap else it.geofenceLengkap
                     )
                 )
             }

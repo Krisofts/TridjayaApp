@@ -356,6 +356,10 @@ private fun AbsenCard(
                     state, isCheckIn = false, onRefreshLocation, onTakeSelfie, onCheckOut,
                     gate = state.gatePulang, onUploadBuktiChat = onUploadBuktiChat
                 )
+                // Absen MASUK tak pernah dikunci bukti chat (`GatePulang(true)`) —
+                // buktinya justru baru bisa dikumpulkan setelah orangnya masuk
+                // kerja. Yang mengunci absen masuk adalah GEOFENCE, dan itu
+                // dinilai `state.gateMasuk` di dalam `PunchSection`.
                 else -> PunchSection(
                     state, isCheckIn = true, onRefreshLocation, onTakeSelfie, onCheckIn,
                     gate = GatePulang(true), onUploadBuktiChat = onUploadBuktiChat
@@ -400,7 +404,7 @@ private fun ColumnScope.PunchSection(
     }
 
     Spacer(modifier = Modifier.height(14.dp))
-    LocationStatus(state, onRefreshLocation)
+    LocationStatus(state, isCheckIn, onRefreshLocation)
     Spacer(modifier = Modifier.height(14.dp))
     SelfieBox(state, onTakeSelfie)
     Spacer(modifier = Modifier.height(16.dp))
@@ -409,7 +413,11 @@ private fun ColumnScope.PunchSection(
     // dipisah dari `gate` supaya petunjuk di bawah tombol tak salah menuduh
     // "menunggu lokasi…" padahal yang mengunci adalah bukti chat.
     val siapKirim = state.hasLocation && state.selfie != null && !state.submitting
-    val canSubmit = siapKirim && gate.boleh
+    // Gate geofence HANYA untuk absen masuk: `check_out` di server sengaja tak
+    // dipagari area, jadi mengunci tombol pulang di sini akan menahan orang yang
+    // server-nya sendiri akan menerima.
+    val gateMasuk = if (isCheckIn) state.gateMasuk else GateMasuk(true)
+    val canSubmit = siapKirim && gate.boleh && gateMasuk.boleh
     ExpressiveFilledButton(onClick = onSubmit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) {
         if (state.submitting) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
@@ -433,6 +441,24 @@ private fun ColumnScope.PunchSection(
             hint,
             style = MaterialTheme.typography.labelSmall,
             color = if (state.actionError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+    }
+    // Alasan geofence. Pola sama dengan kartu bukti chat di bawah: dirender saat
+    // ada ALASAN, bukan saat tertutup — tanpa daftar cabang lengkap kita tak
+    // mengunci tapi tetap wajib memberi tahu (lihat [gateAbsenMasuk]).
+    gateMasuk.alasan?.let { alasan ->
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            alasan,
+            style = MaterialTheme.typography.bodySmall,
+            // Merah hanya saat benar-benar menahan; peringatan yang tak memblokir
+            // tapi berwarna error mengajari orang mengabaikan merah.
+            color = if (gateMasuk.boleh) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.error
+            },
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
@@ -508,9 +534,16 @@ private fun TimePill(label: String, time: String, flag: String?, color: Color, m
     }
 }
 
-/** Status lokasi GPS (deteksi / ditolak / error / terdeteksi). Verdict geofence dari server, bukan sini. */
+/**
+ * Status lokasi GPS (deteksi / ditolak / error / terdeteksi). Verdict akhir tetap
+ * server, tapi kalimat di sini WAJIB sesuai dengan apa yang akan dilakukan server:
+ * absen MASUK di luar area DITOLAK (`pastikan_di_area_toko`, 400), absen PULANG
+ * tetap tercatat. Karena itu [isCheckIn] ada di sini — sampai 2026-08-15 kedua
+ * keadaan itu memakai kalimat yang sama ("absen perlu review"), yang untuk absen
+ * masuk adalah janji yang tak pernah ditepati.
+ */
 @Composable
-private fun LocationStatus(state: AttendanceUiState, onRefresh: () -> Unit) {
+private fun LocationStatus(state: AttendanceUiState, isCheckIn: Boolean, onRefresh: () -> Unit) {
     val (bg, fg, icon, title, subtitle) = when {
         state.locationDenied -> Quintet(Color(0xFFF04438).copy(alpha = 0.12f), Color(0xFFF04438), Icons.Rounded.LocationOff, "Izin lokasi ditolak", "Aktifkan izin lokasi untuk absen.")
         state.locating -> Quintet(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant, Icons.Rounded.MyLocation, "Mendeteksi lokasi…", "Mohon tunggu sebentar.")
@@ -518,19 +551,36 @@ private fun LocationStatus(state: AttendanceUiState, onRefresh: () -> Unit) {
         state.hasLocation && state.inArea == true -> Quintet(
             Color(0xFF12B76A).copy(alpha = 0.12f), Color(0xFF12B76A), Icons.Rounded.LocationOn,
             state.geofence?.cabangNama?.takeIf { it.isNotBlank() }?.let { "Dalam area $it" } ?: "Dalam area toko",
-            "Jarak ${formatDistance((state.distanceM ?: 0).toLong())} dari titik toko · siap check-in."
+            "Jarak ${formatDistance((state.distanceM ?: 0).toLong())} dari titik toko · " +
+                if (isCheckIn) "siap check-in." else "siap check-out."
         )
         state.hasLocation && state.inArea == false -> Quintet(
             Color(0xFFF04438).copy(alpha = 0.12f), Color(0xFFF04438), Icons.Rounded.LocationOn,
             "Di luar area toko",
-            state.geofence?.cabangNama?.takeIf { it.isNotBlank() }
-                ?.let { "Terdekat $it · ${formatDistance((state.distanceM ?: 0).toLong())} · absen perlu review." }
-                ?: "Jarak ${formatDistance((state.distanceM ?: 0).toLong())} dari titik toko · absen jadi perlu review."
+            run {
+                val terdekat = state.geofence?.cabangNama?.takeIf { it.isNotBlank() }
+                    ?.let { "Terdekat $it · " } ?: ""
+                val jarak = formatDistance((state.distanceM ?: 0).toLong())
+                // Absen MASUK: server menolaknya. Absen PULANG: tetap tercatat —
+                // sejak 2026-07-31 tak ada lagi antrian review absen pulang, jadi
+                // "perlu review" pun sudah tak benar untuk keadaan ini.
+                val akibat = if (isCheckIn) {
+                    "absen masuk belum bisa dari sini."
+                } else {
+                    "absen pulang tetap tercatat, jaraknya ikut tercatat juga."
+                }
+                "$terdekat$jarak · $akibat"
+            }
         )
         state.hasLocation -> Quintet(
             Color(0xFF12B76A).copy(alpha = 0.12f), Color(0xFF12B76A), Icons.Rounded.LocationOn,
             "Lokasi terdeteksi",
-            "Cabang belum diatur geofence — titik GPS tetap dikirim."
+            // Dulu berbunyi "Cabang belum diatur geofence — titik GPS tetap
+            // dikirim.", dua klaim yang sama-sama bisa salah: daftar cabang bisa
+            // saja gagal dimuat (bukan berarti belum diatur), dan kalau memang
+            // belum diatur, check-in justru DITOLAK (fail-closed 2026-07-31),
+            // bukan "tetap dikirim".
+            "Area toko belum bisa dicek dari sini. Coba perbarui lokasi."
         )
         else -> Quintet(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant, Icons.Rounded.MyLocation, "Lokasi belum terdeteksi", "Tekan perbarui untuk ambil lokasi.")
     }
@@ -594,8 +644,12 @@ private fun SelfieBox(state: AttendanceUiState, onTakeSelfie: () -> Unit) {
 private fun GeofenceLine(inGeofence: Boolean?, distanceM: Long?) {
     val (color, text) = when (inGeofence) {
         true -> Color(0xFF12B76A) to ("Dalam area toko" + (distanceM?.let { " · ${formatDistance(it)}" } ?: ""))
-        false -> Color(0xFFB5670C) to ("Di luar area · " + (distanceM?.let { formatDistance(it) } ?: "?") + " · perlu review")
-        null -> MaterialTheme.colorScheme.onSurfaceVariant to "Geofence cabang belum diatur"
+        // "perlu review" DIBUANG 2026-08-15: antrian review absen sudah dihapus
+        // 2026-07-31 (tak ada lagi jalan lahir `pending_review`), jadi kalimat itu
+        // menjanjikan pemeriksaan yang tak pernah datang. Yang benar-benar terjadi
+        // pada baris begini cuma: jaraknya ikut tercatat.
+        false -> Color(0xFFB5670C) to ("Di luar area · " + (distanceM?.let { formatDistance(it) } ?: "?") + " · jarak tercatat")
+        null -> MaterialTheme.colorScheme.onSurfaceVariant to "Jarak ke titik toko tidak tercatat"
     }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
         Icon(Icons.Rounded.LocationOn, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
