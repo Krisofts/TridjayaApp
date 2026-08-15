@@ -142,6 +142,48 @@ internal enum class PdiClaimView {
     BELUM_DIKLAIM,
     MILIK_SAYA,
     MILIK_ORANG_LAIN,
+
+    /**
+     * Ada nama pengklaim TAPI pegangannya sudah lewat batas waktu — server sudah
+     * membebaskan unitnya. Bukan [MILIK_ORANG_LAIN]: siapa pun boleh mengambil
+     * dan mengerjakannya sekarang.
+     */
+    KEDALUWARSA,
+}
+
+/**
+ * Apakah klaim sudah lewat batas waktu — CERMINAN klausa `WHERE` `claim_pdi`
+ * backend: `pdi_claimed_at < NOW() - INTERVAL <ttl> HOUR`.
+ *
+ * Kenapa app perlu menghitungnya sendiri: server mengevaluasi batas itu HANYA
+ * saat ada yang mencoba mengklaim ulang — tak ada worker pembersih, jadi kolom
+ * `pdiClaimedBy` menyimpan nama pengklaim lama SELAMANYA. App yang cuma membaca
+ * kolom itu menutup form PDI atas nama orang yang berhenti mengerjakannya
+ * berhari-hari lalu, sambil menjanjikan "klaimnya lepas sendiri setelah N jam"
+ * — janji yang tak pernah terlihat ditepati. Terukur di produksi 2026-08-15:
+ * 59 unit di 9 cabang memegang klaim lewat batas (tertua 371 jam ≈ 15 hari)
+ * sementara hanya SATU klaim yang benar-benar masih hidup.
+ *
+ * Dua keadaan sengaja TIDAK divonis bebas, keduanya meniru server: batas waktu
+ * tak diketahui (konteks belum/gagal dimuat) dan stempel waktu hilang/tak
+ * terbaca (`pdi_claimed_at IS NULL` juga bukan kedaluwarsa di SQL-nya).
+ *
+ * Salah vonis aman di dua arah: mengira bebas padahal belum → server menjawab
+ * 409 berisi nama pemegangnya; mengira masih dipegang padahal sudah bebas →
+ * persis perilaku sebelum fungsi ini ada.
+ *
+ * `java.time` HARAM di modul ini (minSdk 24 tanpa desugaring) — parsing lewat
+ * [parseTimestampMillis] yang sudah ada (`SimpleDateFormat`), bukan util baru.
+ */
+internal fun klaimKedaluwarsa(
+    pdiClaimedAt: String?,
+    ttlJam: Int?,
+    nowMs: Long = System.currentTimeMillis(),
+): Boolean {
+    if (ttlJam == null || ttlJam <= 0) return false
+    val mulai = parseTimestampMillis(pdiClaimedAt?.trim()?.takeIf { it.isNotEmpty() }?.replace(' ', 'T'))
+        ?: return false
+    return nowMs - mulai > ttlJam * 3_600_000L
 }
 
 /**
@@ -164,18 +206,54 @@ internal fun pdiClaimView(
     pdiClaimedBy: String?,
     currentUserId: String,
     serverSupportsClaim: Boolean = false,
+    pdiClaimedAt: String? = null,
+    ttlJam: Int? = null,
+    nowMs: Long = System.currentTimeMillis(),
 ): PdiClaimView = when {
     pdiClaimedBy.isNullOrBlank() -> if (serverSupportsClaim) PdiClaimView.BELUM_DIKLAIM else PdiClaimView.TAK_DIDUKUNG
+    // Batas waktu diperiksa SEBELUM identitas: klaim milik sendiri yang sudah
+    // lewat batas juga sudah lepas di server, jadi menampilkan "Lepas Klaim"
+    // untuk klaim yang tak lagi dipegang siapa pun cuma menyesatkan.
+    klaimKedaluwarsa(pdiClaimedAt, ttlJam, nowMs) -> PdiClaimView.KEDALUWARSA
     pdiClaimedBy == currentUserId && currentUserId.isNotBlank() -> PdiClaimView.MILIK_SAYA
     else -> PdiClaimView.MILIK_ORANG_LAIN
 }
+
+private fun namaPengklaim(claimedByName: String?): String =
+    claimedByName?.trim()?.ifBlank { null } ?: "petugas lain"
 
 /** Label klaim (kartu antrian & detail); `null` = tak ada klaim, tak ada label. */
 internal fun pdiClaimLabel(view: PdiClaimView, claimedByName: String?): String? = when (view) {
     PdiClaimView.MILIK_SAYA -> "Kamu sedang memproses"
     // Nama BISA kosong (job lama / nama aktor tak terekam) — jangan menampilkan
     // "Diproses oleh " menggantung.
-    PdiClaimView.MILIK_ORANG_LAIN -> "Diproses oleh ${claimedByName?.trim()?.ifBlank { null } ?: "petugas lain"}"
+    PdiClaimView.MILIK_ORANG_LAIN -> "Diproses oleh ${namaPengklaim(claimedByName)}"
+    PdiClaimView.KEDALUWARSA -> "Pernah diambil ${namaPengklaim(claimedByName)}, belum selesai"
+    else -> null
+}
+
+/**
+ * Kalimat penjelas di bawah label: APA keadaannya, KENAPA, dan APA langkah
+ * berikutnya bagi yang membaca. `null` = keadaan biasa, tak perlu kalimat.
+ *
+ * Dipisah dari [pdiClaimLabel] supaya bisa diuji tanpa Compose — label itu
+ * judul, ini yang menghentikan orang menebak.
+ */
+internal fun pdiClaimKeterangan(
+    view: PdiClaimView,
+    claimedByName: String?,
+    ttlJam: Int?,
+    bolehKlaim: Boolean,
+): String? = when (view) {
+    PdiClaimView.KEDALUWARSA -> {
+        val batas = ttlJam?.let { " Batas memegang unit $it jam." } ?: ""
+        val langkah = if (bolehKlaim) " Unit ini sudah bebas — tekan \"Ambil PDI\" lalu kerjakan."
+        else " Unit ini sudah bebas dan bisa dikerjakan petugas PDI mana pun."
+        "${namaPengklaim(claimedByName)} mengambil unit ini tapi belum menyelesaikannya.$batas$langkah"
+    }
+    PdiClaimView.MILIK_ORANG_LAIN ->
+        "Unit ini sedang dikerjakan petugas lain, jadi form PDI-nya ditutup di sini." +
+            (ttlJam?.let { " Kalau tidak dilanjutkan, unit bebas sendiri setelah $it jam sejak diambil; admin atau manajer bisa melepasnya lebih cepat." } ?: "")
     else -> null
 }
 
@@ -281,6 +359,10 @@ fun DeliveryQueueScreen(
     // sebagai kegagalan. Sekarang unit dikelompokkan per SPK dan tombolnya
     // hidup di kepala grup.
     val groups = remember(state.items) { groupJobsBySpk(state.items) }
+    // Batas berlaku klaim PDI. `loadQueue` sudah menarik konteksnya (fail-soft),
+    // jadi `null` di sini = konteks belum/gagal termuat = jangan pernah memvonis
+    // sebuah klaim kedaluwarsa.
+    val ttlKlaimJam = state.deliveryContext?.pdiClaimTtlHours
 
     val terbitkanLangsung = status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && viewModel.access.note
 
@@ -362,7 +444,7 @@ fun DeliveryQueueScreen(
                             itemsIndexed(groups, key = { _, g -> g.kode }) { index, grup ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(modifier = Modifier.weight(1f)) {
-                                        SpkRingkasCard(grup, viewModel.currentUserId) { onOpen(grup.jobs.first().id) }
+                                        SpkRingkasCard(grup, viewModel.currentUserId, ttlKlaimJam) { onOpen(grup.jobs.first().id) }
                                     }
                                     Column {
                                         IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = true) }, enabled = index > 0) {
@@ -379,6 +461,7 @@ fun DeliveryQueueScreen(
                                 SpkRingkasCard(
                                     grup = grup,
                                     currentUserId = viewModel.currentUserId,
+                                    ttlKlaimJam = ttlKlaimJam,
                                     // Tombol tahap jadi KAKI kartu, bukan tombol
                                     // mengambang di bawahnya. Tahap tanpa aksi
                                     // level-SPK tak mengirim slot ini sama sekali.
@@ -423,6 +506,9 @@ fun DeliveryQueueScreen(
 private fun SpkRingkasCard(
     grup: SpkBatchGroup,
     currentUserId: String = "",
+    /** `pdiClaimTtlHours` dari `/delivery/context`; `null` = batas tak diketahui
+     *  → klaim tak pernah divonis kedaluwarsa (lihat [klaimKedaluwarsa]). */
+    ttlKlaimJam: Int? = null,
     /**
      * Tombol tahap, dirender DI DALAM kartu sebagai kaki. Sebelumnya ia
      * mengambang di bawah kartu, sehingga tiap baris antrian terbaca sebagai
@@ -568,9 +654,18 @@ private fun SpkRingkasCard(
                 // (unit yang sudah dipegang orang lain memang DILEWATI server,
                 // bukan direbut) — yang perlu diketahui petugas adalah bahwa dia
                 // punya pekerjaan di sini, bukan bahwa ada yang tidak.
-                val klaimSaya = currentUserId.isNotBlank() && grup.jobs.any { it.pdiClaimedBy == currentUserId }
-                val klaimOrangLain = grup.jobs.firstOrNull {
+                //
+                // Klaim yang sudah LEWAT BATAS WAKTU tidak lagi dihitung sebagai
+                // "dipegang orang" — server sudah membebaskannya, dan label lama
+                // ("Diproses oleh X") membuat unit yang ditinggalkan berhari-hari
+                // terlihat persis seperti unit yang sedang dikerjakan.
+                val hidup = grup.jobs.filterNot { klaimKedaluwarsa(it.pdiClaimedAt, ttlKlaimJam) }
+                val klaimSaya = currentUserId.isNotBlank() && hidup.any { it.pdiClaimedBy == currentUserId }
+                val klaimOrangLain = hidup.firstOrNull {
                     !it.pdiClaimedBy.isNullOrBlank() && it.pdiClaimedBy != currentUserId
+                }
+                val klaimTerbengkalai = grup.jobs.firstOrNull {
+                    !it.pdiClaimedBy.isNullOrBlank() && klaimKedaluwarsa(it.pdiClaimedAt, ttlKlaimJam)
                 }
                 when {
                     klaimSaya -> {
@@ -587,6 +682,16 @@ private fun SpkRingkasCard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold, color = Color(0xFFB5670C),
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    klaimTerbengkalai != null -> {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            pdiClaimLabel(PdiClaimView.KEDALUWARSA, klaimTerbengkalai.pdiClaimedByName)
+                                + " — bebas diambil",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold, color = Color(0xFFB5670C),
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -1486,7 +1591,13 @@ private fun PdiAction(
     // jadi seluruh blok ini murni tampilan: ia mencegah dua petugas mengerjakan
     // unit yang sama, tapi tak pernah menghalangi pekerjaan saat datanya tak ada.
     val ttlJam = photoState.deliveryContext?.pdiClaimTtlHours
-    val claim = pdiClaimView(job.pdiClaimedBy, vm.currentUserId, serverSupportsClaim = ttlJam != null)
+    val claim = pdiClaimView(
+        job.pdiClaimedBy,
+        vm.currentUserId,
+        serverSupportsClaim = ttlJam != null,
+        pdiClaimedAt = job.pdiClaimedAt,
+        ttlJam = ttlJam,
+    )
     // Cerminan `PDI_ROLES` backend (pdi/admin/superadmin) = gate yang SAMA dengan
     // submit PDI, lewat `access.pdi` yang sudah melipat divisi. Sales PDI Mandiri
     // sampai ke sini lewat `isSelfPdiJob` tapi TIDAK berhak mengklaim (403) —
@@ -1499,21 +1610,26 @@ private fun PdiAction(
         )
         Spacer(Modifier.height(8.dp))
     }
-    if (claim == PdiClaimView.MILIK_ORANG_LAIN) {
+    pdiClaimKeterangan(claim, job.pdiClaimedByName, ttlJam, bolehKlaim)?.let { keterangan ->
         Text(
-            "Unit ini sedang dikerjakan petugas lain, jadi form PDI-nya ditutup di sini." +
-                (ttlJam?.let { " Klaimnya lepas sendiri setelah $it jam." } ?: ""),
+            keterangan,
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(6.dp))
+    }
+    if (claim == PdiClaimView.MILIK_ORANG_LAIN) {
         // Jalan keluar kalau pengklaimnya pulang sebelum TTL habis (backend
         // mengizinkan admin/superadmin/manager merebut).
         if (vm.isAdminViewer) {
-            Spacer(Modifier.height(6.dp))
             TextButton(onClick = { vm.releasePdiClaim(id) }, enabled = !submitting) { Text("Lepas Klaim (Paksa)") }
         }
         return
     }
-    if (claim == PdiClaimView.BELUM_DIKLAIM && bolehKlaim) {
+    // KEDALUWARSA sengaja TIDAK `return`: server sudah membebaskan unitnya, jadi
+    // menutup form di sini berarti app lebih ketat dari aturan yang berlaku —
+    // dan itulah yang mengunci 59 unit di produksi. Tombolnya sama dengan
+    // BELUM_DIKLAIM di bawah; bedanya cuma kalimat penjelas di atas.
+    if ((claim == PdiClaimView.BELUM_DIKLAIM || claim == PdiClaimView.KEDALUWARSA) && bolehKlaim) {
         ExpressiveFilledButton(onClick = { vm.claimPdi(id) }, enabled = !submitting, modifier = Modifier.fillMaxWidth()) {
             Text("Ambil PDI")
         }
