@@ -315,12 +315,11 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         label = "Lapor Komplain",
         subtitle = "Keluhan konsumen purna-jual",
         kind = ActivityKind.AKSI,
-        // Tak ada kunci `homeservice.lapor` di katalog kemampuan — web pun
-        // memakai `spk.pipeline` untuk menu ini. Kunci karangan akan
-        // menyembunyikan kartunya dari SEMUA orang (peta fail-closed).
-        capability = "spk.pipeline",
+        // `null` sejak 2026-08-15 — servernya login-only, jadi kunci apa pun
+        // menyempitkan. Alasan lengkap di KDoc [HS_LAPOR_ROLES] (`ui/home`).
+        capability = null,
         allowedRoles = HS_LAPOR_ROLES,
-        backendGuard = "kinerja-service home_service.rs LAPOR_ROLES",
+        backendGuard = "tanpa guard: kinerja-service home_service/handlers.rs create_ticket login-only (self-scoped)",
         source = ActivitySource.NONE,
         navKey = "hs_lapor",
         hiddenFromActivity = true,

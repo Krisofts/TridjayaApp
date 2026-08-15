@@ -227,9 +227,12 @@ class QuickAccessRegistryTest {
         assertTrue("komplain_lapor" in pdiDicabut)
         assertFalse("komplain_tugas" in pdiDicabut)
 
-        // Role di luar LAPOR_ROLES tak melihat apa pun dari modul ini.
+        // `ai-engineer` — satu-satunya role yang `spk.pipeline` tutup — kini IKUT
+        // boleh melapor (server login-only sejak 2026-08-15), tapi tetap bukan
+        // teknisi. Inilah yang membuat `capability` ubin lapor harus `null`:
+        // dengan `spk.pipeline` dia akan tertutup lagi.
         val ai = visibleQuickAccessMenus(setOf("ai-engineer")).map { it.id }
-        assertFalse("komplain_lapor" in ai)
+        assertTrue("komplain_lapor" in ai)
         assertFalse("komplain_tugas" in ai)
     }
 
@@ -307,8 +310,11 @@ class CapabilityDrivenMenuTest {
         // ada kunci kemampuan yang bisa dicerminkan. Daftar karyawan di dalam
         // layar itulah yang ber-gate (`kpi.manage`), dan itu dinilai di
         // KpiViewModel, bukan oleh gate menu ini.
+        // `komplain_lapor` menyusul 2026-08-15 dengan alasan yang SAMA seperti
+        // `kpi`: endpointnya tak memanggil `ensure_role` sama sekali (login-only,
+        // self-scoped), jadi kunci apa pun akan lebih sempit dari servernya.
         val tanpaKunci = QUICK_ACCESS_MENUS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("kpi", "inventory", "cari_semua"), tanpaKunci)
+        assertEquals(listOf("kpi", "inventory", "cari_semua", "komplain_lapor"), tanpaKunci)
     }
 
     @Test

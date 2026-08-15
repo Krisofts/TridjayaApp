@@ -105,14 +105,23 @@ internal val SPK_MENU_ROLES: Set<String> = KNOWN_ROLES - "ai-engineer"
  * `null`, dan SELURUH registri Activity mati sekaligus. 24 test tumbang
  * serentak dengan pesan yang tak menyebut sebabnya.
  *
- * `"cs"` SENGAJA tak ditulis di sini: rust-shared menyatakan sendiri role
- * literal `cs` belum ada di sistem, jadi ejaan itu tak akan pernah cocok dengan
- * siapa pun. Petugas CS sungguhan lolos lewat peta kemampuan server.
+ * **[HS_LAPOR_ROLES] kini [ALL_LOGGED_IN]** (2026-08-15, permintaan user
+ * "semua karyawan bisa mengajukan komplain konsumen"). Jalur pelaporan
+ * kinerja-service sudah LOGIN-ONLY — `ensure_role` dicabut dari `lookup`,
+ * `cari`, `create`, `list`, `detail`, dan unggah fotonya — jadi daftar role apa
+ * pun di sini hanya akan lebih sempit dari servernya.
+ *
+ * Daftar lamanya memuat 13 role dan tetap menutup 24 karyawan AKTIF di
+ * produksi (admin-penjualan 9, pic-raport 6, crm-manager 3, it-programmer 2,
+ * digital-team 2, hrd 1, ai-engineer 1). Daftar role selalu tertinggal dari
+ * daftar pegawai; itu sebabnya bentuknya diganti, bukan ditambahi.
+ *
+ * Konsekuensinya ubin `komplain_lapor` WAJIB ber-`capability = null`: kunci apa
+ * pun (termasuk `spk.pipeline` yang dipakai sebelumnya) akan menyempitkan lagi,
+ * dan peta kemampuan fail-closed membuat kunci tak dikenal menyembunyikan menu
+ * dari SEMUA orang.
  */
-internal val HS_LAPOR_ROLES = setOf(
-    "sales", "admin-sales", "admin", "superadmin", "manager", "owner", "kepala-cabang",
-    "karyawan", "pdi", "kasir", "admin-stok", "delivery-control", "driver",
-)
+internal val HS_LAPOR_ROLES = ALL_LOGGED_IN
 
 /** `homeservice.task` — teknisi kunjungan. Cerminan `HOMESERVICE_TASK_ROLES` (= PDI_ROLES). */
 internal val HS_TASK_ROLES = setOf("pdi", "admin", "superadmin")
@@ -238,13 +247,13 @@ internal val QUICK_ACCESS_MENUS: List<QuickAccessMenu> = listOf(
     // persis kelas bug yang registri ini dibuat untuk mencegahnya.
     QuickAccessMenu(
         id = "komplain_lapor",
-        // Sama seperti kartu Activity-nya: tak ada kunci `homeservice.lapor` di
-        // katalog kemampuan, dan web pun memakai `spk.pipeline` untuk menu ini.
-        // Kunci karangan = menu hilang dari SEMUA orang (peta fail-closed).
-        capability = "spk.pipeline",
+        // `null` DISENGAJA, lihat KDoc [HS_LAPOR_ROLES]: servernya login-only,
+        // jadi kunci apa pun di sini menyempitkan. `spk.pipeline` yang dipakai
+        // sampai 2026-08-15 pun menutup `ai-engineer`.
+        capability = null,
         label = "Lapor Komplain",
         allowedRoles = HS_LAPOR_ROLES,
-        backendGuard = "kinerja-service home_service.rs LAPOR_ROLES",
+        backendGuard = "tanpa guard: kinerja-service home_service/handlers.rs create_ticket login-only (self-scoped)",
     ),
     QuickAccessMenu(
         id = "komplain_tugas",

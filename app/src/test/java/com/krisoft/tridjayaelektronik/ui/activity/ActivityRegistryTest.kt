@@ -4,6 +4,7 @@ import com.krisoft.tridjayaelektronik.ui.home.ALL_LOGGED_IN
 import com.krisoft.tridjayaelektronik.ui.home.KNOWN_ROLES
 import com.krisoft.tridjayaelektronik.ui.navigation.AppDestination
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,8 +47,11 @@ class ActivityRegistryTest {
         // raport: hak `upsert_raport` belum punya kunci di /api/me/capabilities.
         // inventory/cari_semua PINDAH ke QUICK_ACCESS_MENUS 2026-07-30 (lihat
         // MenuAccessGateTest.kt) — bukan lagi milik registri ini.
+        // `lapor_komplain` menyusul 2026-08-15: jalur pelaporan kinerja-service
+        // jadi login-only, jadi tak ada kunci yang bisa dicerminkan tanpa
+        // menyempitkan. Keduanya WAJIB menyebutkan alasannya di `backendGuard`.
         val tanpaKunci = ACTIVITY_ITEMS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("raport"), tanpaKunci)
+        assertEquals(listOf("raport", "lapor_komplain"), tanpaKunci)
     }
 
     // ── Item khusus akun uji ─────────────────────────────────────────────────
@@ -165,12 +169,24 @@ class ActivityRegistryTest {
     }
 
     @Test
-    fun `owner ikut daftar pelapor, hrd tidak`() {
-        // Cadangan offline harus mencerminkan LAPOR_ROLES server: `owner` ADA di
-        // sana, `hrd` TIDAK. Salah satu arah = kartu yang 403 atau menu hilang.
+    fun `pelapor komplain kini semua yang login, termasuk hrd`() {
+        // Sampai 2026-08-15 cadangan offline menyalin `LAPOR_ROLES` server, dan
+        // test ini mengunci bahwa `hrd` TIDAK ada di sana. Servernya kini
+        // login-only (permintaan user: "semua karyawan bisa mengajukan komplain
+        // konsumen"), jadi arah yang benar berbalik: menahan `hrd` di klien
+        // berarti menu hilang dari orang yang servernya justru menerima.
         val kartu = ACTIVITY_ITEMS.first { it.id == "lapor_komplain" }
-        assertTrue("owner" in kartu.allowedRoles)
-        assertFalse("hrd" in kartu.allowedRoles)
+        assertEquals(ALL_LOGGED_IN, kartu.allowedRoles)
+        // `capability` WAJIB null — kunci apa pun lebih sempit dari login-only,
+        // dan peta kemampuan fail-closed menyembunyikan kunci yang tak dikenal.
+        assertNull(kartu.capability)
+        assertTrue(kartu.backendGuard.startsWith("tanpa guard:"))
+
+        // Dua kartu komplain LAIN tetap ber-gate — pelebaran ini tak merembet.
+        val triase = ACTIVITY_ITEMS.first { it.id == "komplain_masuk" }
+        val tugas = ACTIVITY_ITEMS.first { it.id == "tugas_home_service" }
+        assertEquals("homeservice.dispatch", triase.capability)
+        assertEquals("homeservice.task", tugas.capability)
     }
 
     @Test
