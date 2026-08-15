@@ -96,6 +96,8 @@ fun LeadDetailScreen(
     val context = LocalContext.current
     var showLostDialog by remember { mutableStateOf(false) }
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // Pemilih WhatsApp Business vs biasa — sama dengan tombol WA di layar list.
+    val kirimWa = rememberKirimWa()
 
     TridjayaCollapsibleHeader(title = "Detail Prospek", onBack = onBack) { contentModifier ->
         TridjayaPullRefresh(
@@ -150,10 +152,11 @@ fun LeadDetailScreen(
                             lead = lead,
                             probability = probability,
                             onWhatsApp = {
-                                // Dicatat SEBELUM intent dibuka — lihat catatan yang
-                                // sama di LeadsListScreen.
-                                viewModel.catatKontakWhatsapp()
-                                openWhatsApp(context, lead.phone, buildPromoMessage(lead, state.myName))
+                                kirimWa(lead.phone, buildPromoMessage(lead, state.myName)) {
+                                    // Dicatat SEBELUM intent dibuka, sesudah app tujuan
+                                    // dipilih — lihat catatan yang sama di LeadsListScreen.
+                                    viewModel.catatKontakWhatsapp()
+                                }
                             },
                             onCall = {
                                 runCatching {
