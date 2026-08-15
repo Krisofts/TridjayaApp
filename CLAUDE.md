@@ -724,8 +724,13 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
     multi-gambar dari web **sudah lama** terkena. Kalau app ikut membungkus SEMUA kasus,
     jalur paling ramai (satu foto kamera) ikut rusak dan gejalanya "bukti saya hilang
     setelah update aplikasi" tanpa satu pun error server. Membalik aturan ini baru aman
-    setelah `karyawan_id_for_evidence` diperbaiki (JSON_CONTAINS/LIKE/tabel anak) — itu
-    pekerjaan di repo backend, belum dikerjakan.
+    setelah `karyawan_id_for_evidence` diperbaiki (JSON_CONTAINS/LIKE/tabel anak).
+    **SUDAH DIPERBAIKI 2026-08-15** (repo tridjaya, commit `c3f05a77`): guard-nya kini
+    `bukti_url = ? OR JSON_CONTAINS(IF(JSON_VALID(bukti_url), bukti_url, '[]'), JSON_QUOTE(?))`,
+    jadi baris JSON array dikenali pemiliknya. Aturan "1 gambar → string polos" karena itu
+    tak lagi WAJIB secara teknis — tapi JANGAN diubah sampai binary itu benar-benar
+    ter-deploy di VPS; sampai saat itu perilaku produksi masih yang lama. Kalau kelak
+    disederhanakan, `RaportBuktiPlanTest` adalah tempat aturannya dikunci.
   * **Foto galeri tetap di-watermark** tapi judulnya `TRIDJAYA · AKTIVITAS (GALERI)`,
     berbeda dari kamera — stempel jam di bar watermark itu jam PROSES, bukan jam foto
     diambil, jadi tanpa label ini foto tahun lalu terlihat seperti foto hari ini.
@@ -770,7 +775,11 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
 - **Komplain / Home Service** (`ui/homeservice/`, `data/HomeServiceRepository.kt`) — alur purna-jual
   penuh di mobile: lapor → triase CS → kunjungan teknisi → penarikan unit. Lima kartu di Activity
   (`lapor_komplain`, `komplain_masuk`, `tugas_home_service`, `tarik_unit`, `tugas_tarik_unit`),
-  route `home_hs_*`. Yang mengikat:
+  route `home_hs_*`. **Plus DUA ubin Akses Cepat sejak 2026-08-15** (`komplain_lapor`,
+  `komplain_tugas`) — dilaporkan user bahwa sales & PDI tak menemukan menunya: registri
+  beranda tak punya satu pun entri home service, sementara kartu `lapor_komplain` memang
+  sengaja ber-`hiddenFromActivity` (commit 2344c71, keputusan user yang TIDAK dibatalkan),
+  jadi layar laporannya hidup tanpa satu pun pintu menuju ke sana. Yang mengikat:
   * **`status` server cuma menerima SATU nilai** (`"baru,ditugaskan"` → 400), sementara tiap antrian
     butuh beberapa — jadi daftar dimuat TANPA filter status lalu disaring klien (`saringStatus` +
     `HsMode`, cerminan cara web). Angka badge Activity juga dihitung dari hasil saringan itu, BUKAN
@@ -786,9 +795,20 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   * `umurJam`/`melewatiSla` dipakai APA ADANYA dari server. Jangan hitung ulang: `created_at`
     ditulis WIB tapi dibandingkan dengan `Utc::now()`, jadi angkanya sudah punya bias ~7 jam yang
     diketahui — menghitung sendiri cuma menghasilkan angka KEDUA yang beda dari yang dilihat CS.
-  * **Role `cs` SENGAJA tak ditulis** di `HS_LAPOR_ROLES`/`HS_DISPATCH_ROLES` walau ada di daftar
-    server: rust-shared menyatakan sendiri role literal `cs` belum ada di sistem, jadi ejaan itu tak
+  * **`HS_LAPOR_ROLES` = `ALL_LOGGED_IN` sejak 2026-08-15**, dan ubin/kartu lapor ber-`capability
+    = null`. Jalur pelaporan kinerja-service kini LOGIN-ONLY (repo tridjaya `57166a31`), jadi kunci
+    apa pun di klien lebih SEMPIT dari servernya — `spk.pipeline` yang dipakai sebelumnya pun
+    menutup `ai-engineer`. Daftar 13 role yang lama menutup 24 karyawan aktif di produksi
+    (admin-penjualan 9, pic-raport 6, crm-manager 3, it-programmer 2, digital-team 2, hrd 1,
+    ai-engineer 1); daftar role selalu tertinggal dari daftar pegawai. Jangan "merapikannya"
+    kembali jadi daftar role.
+  * **Role `cs` SENGAJA tak ditulis** di `HS_DISPATCH_ROLES` walau ada di daftar server:
+    rust-shared menyatakan sendiri role literal `cs` belum ada di sistem, jadi ejaan itu tak
     akan pernah cocok (baris mati). CS sungguhan lolos lewat `homeservice.dispatch`.
+  * **Teknisi lintas cabang** — server memberi scope `CabangAtauDitugaskan` sejak 2026-08-15
+    (`57166a31`). Sebelumnya teknisi hanya melihat tiket CABANGNYA, padahal CS pusat menugaskan
+    lintas 13 cabang: penugasan diterima, daftar kosong, nol galat. Sisi app tak perlu diubah —
+    tapi kalau daftar teknisi terlihat kosong di lapangan, periksa versi BACKEND dulu.
   * **Belum ada di app** (sengaja): sparepart berbiaya saat menutup kunjungan (nominal + bukti bayar
     + setoran kasir — alur uang yang belum diuji lewat HP), dan tak ada endpoint edit/komentar tiket
     sama sekali di backend (salah input = batalkan lalu buat ulang).
