@@ -206,9 +206,17 @@ class RaportRepository @Inject constructor(
     /**
      * Beda dari repository lain di app ini: pesan `errors[0]` dipakai LEBIH
      * DULU. `ApiError::Validation` selalu ber-`message` generik "Input tidak
-     * valid" — detail sebenarnya ("Pelaporan jobdesk sedang ditutup. Jam
-     * pelaporan aktif: 08:00 - 18:00 WITA", "alasan wajib minimal 10 karakter",
-     * dst) hanya ada di `errors`, dan tanpa itu user tak tahu harus berbuat apa.
+     * valid" — detail sebenarnya ("Laporan aktivitas harian sedang tutup. Jam
+     * bukanya 08:00 - 22:00 WIB (waktu Jakarta). …", "alasan wajib minimal 10
+     * karakter", dst) hanya ada di `errors`, dan tanpa itu user tak tahu harus
+     * berbuat apa.
+     *
+     * Kutipan di atas disegarkan 2026-08-15: kalimat servernya dulu menulis
+     * "WITA" padahal gerbangnya dihitung WIB (`raport/service.rs`
+     * `ensure_window_open` → `chrono::Local`, zona VPS `Asia/Jakarta`), jadi 12
+     * karyawan cabang Manado membaca jam yang meleset 1 jam. Kalimat barunya
+     * sampai ke HP TANPA rilis APK — persis karena `errors[0]` dipakai apa
+     * adanya di sini.
      */
     private fun <T> parseError(response: Response<*>, fallback: String): AuthResult<T> {
         val raw = response.errorBody()?.string()
