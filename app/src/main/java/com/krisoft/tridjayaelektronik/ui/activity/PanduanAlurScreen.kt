@@ -31,7 +31,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,7 +41,7 @@ import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
 import com.krisoft.tridjayaelektronik.data.model.PetugasDirektoriDto
 import com.krisoft.tridjayaelektronik.data.model.PetugasDto
 import com.krisoft.tridjayaelektronik.data.model.PetugasGroupDto
-import com.krisoft.tridjayaelektronik.ui.leads.openWhatsApp
+import com.krisoft.tridjayaelektronik.ui.leads.rememberKirimWa
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
@@ -134,7 +133,9 @@ fun PanduanAlurScreen(
     viewModel: PanduanAlurViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
+    // Sama dengan tombol WA di prospek: kalau HP punya WhatsApp Business DAN
+    // WhatsApp biasa, petugasnya yang memilih mau menghubungi lewat nomor mana.
+    val kirimWa = rememberKirimWa()
     LaunchedEffect(Unit) { viewModel.load() }
 
     TridjayaCollapsibleHeader(title = "Panduan Alur", onBack = onBack) { contentModifier ->
@@ -195,7 +196,7 @@ fun PanduanAlurScreen(
                     data.divisi.forEach { group ->
                         item(key = "divisi_${group.kunci}") {
                             KelompokPetugas(group) { petugas ->
-                                openWhatsApp(context, petugas.whatsapp.orEmpty(), "Halo ${petugas.nama}, ")
+                                kirimWa(petugas.whatsapp.orEmpty(), "Halo ${petugas.nama}, ") {}
                             }
                         }
                     }
