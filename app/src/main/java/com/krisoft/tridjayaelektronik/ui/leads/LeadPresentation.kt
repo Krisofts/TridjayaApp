@@ -1,15 +1,11 @@
 package com.krisoft.tridjayaelektronik.ui.leads
 
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.core.net.toUri
 import com.krisoft.tridjayaelektronik.data.model.LeadDto
 
 /** Status → warna aksen semantik, dipakai konsisten di list & detail. */
@@ -130,20 +126,6 @@ internal fun buildPromoMessage(lead: LeadDto, senderName: String?): String {
     }
 }
 
-/**
- * Buka chat WhatsApp dengan pesan terisi — prioritas WhatsApp Business (com.whatsapp.w4b),
- * lalu WhatsApp biasa, terakhir intent umum (browser/wa.me) bila keduanya tidak terpasang.
- */
-internal fun openWhatsApp(context: Context, phone: String, message: String) {
-    val uri = "https://wa.me/${normalizeWaPhone(phone)}?text=${android.net.Uri.encode(message)}".toUri()
-    val packages = listOf("com.whatsapp.w4b", "com.whatsapp")
-    for (pkg in packages) {
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage(pkg))
-            return
-        } catch (_: ActivityNotFoundException) {
-            // paket tidak terpasang — coba kandidat berikutnya
-        }
-    }
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-}
+// Pembukaan chat WhatsApp pindah ke `KirimWa.kt`: dulu paketnya dipilih otomatis
+// (Business menang kalau terpasang) sehingga pemakai dua nomor tak bisa memilih;
+// sekarang lewat `rememberKirimWa()` yang menampilkan pemilih bila keduanya ada.

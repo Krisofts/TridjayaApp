@@ -175,11 +175,17 @@ fun LeadsListScreen(
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listBottomClearance = navBarInset + 104.dp
 
+    // Menampilkan pemilih WhatsApp Business vs WhatsApp biasa saat keduanya
+    // terpasang; kalau cuma satu, langsung dibuka tanpa ketukan tambahan.
+    val kirimWa = rememberKirimWa()
     val openWhatsAppPromo: (LeadDto) -> Unit = { lead ->
-        // Dicatat SEBELUM intent dibuka: begitu WhatsApp mengambil alih, layar ini
-        // bisa langsung berhenti dan baris sesudahnya belum tentu sempat jalan.
-        viewModel.catatKontakWhatsapp(lead.id)
-        openWhatsApp(context, lead.phone, buildPromoMessage(lead, state.myName))
+        kirimWa(lead.phone, buildPromoMessage(lead, state.myName)) {
+            // Dicatat SEBELUM intent dibuka: begitu WhatsApp mengambil alih, layar ini
+            // bisa langsung berhenti dan baris sesudahnya belum tentu sempat jalan.
+            // Dijalankan hanya setelah app tujuan dipilih — sheet yang dibatalkan
+            // berarti tak ada chat yang dibuka, jadi bukan bukti follow-up.
+            viewModel.catatKontakWhatsapp(lead.id)
+        }
     }
 
     if (showSortSheet) {
