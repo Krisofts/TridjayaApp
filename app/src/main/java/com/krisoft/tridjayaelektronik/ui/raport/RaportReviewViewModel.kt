@@ -98,12 +98,14 @@ class RaportReviewViewModel @Inject constructor(
     fun terapkanCari() = muat()
 
     /**
-     * Putusan atas satu baris. [skor] `null` = biarkan server memakai bawaannya
+     * Putusan atas satu baris. Nilainya TIDAK dikirim: sejak 2026-08-15 server
+     * menentukannya sendiri dari `status` (setuju 100 / tolak 0) dan mengabaikan
+     * `score` kiriman klien
      * (100 saat setuju); tolak WAJIB ber-[komentar] — dijaga [bolehSimpanReview]
      * di sini JUGA, bukan cuma di tombol, supaya jalur mana pun tak bisa
      * mengirim penolakan tanpa alasan.
      */
-    fun putuskan(id: String, status: String, skor: Int? = null, komentar: String? = null) {
+    fun putuskan(id: String, status: String, komentar: String? = null) {
         val gate = bolehSimpanReview(status, komentar)
         if (!gate.ok) {
             _state.update { it.copy(error = gate.alasan) }
@@ -111,7 +113,7 @@ class RaportReviewViewModel @Inject constructor(
         }
         _state.update { it.copy(memutuskanId = id, error = null, pesan = null) }
         viewModelScope.launch {
-            when (val r = repository.review(id, status, skorReview(status, skor), komentar)) {
+            when (val r = repository.review(id, status, skorReview(status), komentar)) {
                 is AuthResult.Success -> {
                     // Baris yang sudah diputus dibuang dari daftar HANYA saat
                     // filternya "pending" — di filter lain ia memang masih milik
@@ -128,7 +130,7 @@ class RaportReviewViewModel @Inject constructor(
                                         if (baris.id == id) {
                                             baris.copy(
                                                 reviewStatus = r.data.status.ifBlank { status },
-                                                score = r.data.score ?: skorReview(status, skor),
+                                                score = r.data.score ?: skorReview(status),
                                                 reviewerComment = komentar,
                                             )
                                         } else baris

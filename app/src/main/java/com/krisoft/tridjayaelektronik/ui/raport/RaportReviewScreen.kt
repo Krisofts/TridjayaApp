@@ -123,8 +123,8 @@ fun RaportReviewScreen(
     setujuId?.let { id ->
         DialogSetuju(
             onBatal = { setujuId = null },
-            onSetuju = { skor ->
-                viewModel.putuskan(id, "approved", skor)
+            onSetuju = {
+                viewModel.putuskan(id, "approved")
                 setujuId = null
             },
         )
@@ -250,29 +250,17 @@ private fun IsiAntrian(
     }
 }
 
-/** Skor dipilih saat menyetujui — bawaannya 100, sama dengan web. */
+/** Konfirmasi setuju. TANPA pilihan nilai: sejak 2026-08-15 nilainya biner dan
+ *  ditentukan SERVER (setuju 100 / tolak 0). Chip 70/85/100 yang dulu ada di
+ *  sini sudah tak berpengaruh apa pun — server mengabaikan `score` kiriman
+ *  klien — jadi menampilkannya cuma membuat PIC mengira nilainya bisa diatur. */
 @Composable
-private fun DialogSetuju(onBatal: () -> Unit, onSetuju: (Int) -> Unit) {
-    var skor by remember { mutableStateOf(100) }
+private fun DialogSetuju(onBatal: () -> Unit, onSetuju: () -> Unit) {
     AlertDialog(
         onDismissRequest = onBatal,
         title = { Text("Setujui laporan", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text("Pilih nilai untuk laporan ini.", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PRESET_SKOR.forEach { nilai ->
-                        FilterChip(
-                            selected = skor == nilai,
-                            onClick = { skor = nilai },
-                            label = { Text("$nilai") },
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSetuju(skor) }) { Text("Setujui") } },
+        text = { Text("Laporan ini akan ditandai disetujui.", style = MaterialTheme.typography.bodySmall) },
+        confirmButton = { TextButton(onClick = onSetuju) { Text("Setujui") } },
         dismissButton = { TextButton(onClick = onBatal) { Text("Batal") } },
     )
 }

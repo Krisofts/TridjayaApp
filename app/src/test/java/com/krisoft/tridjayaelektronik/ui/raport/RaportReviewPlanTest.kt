@@ -36,14 +36,25 @@ class RaportReviewPlanTest {
 
     // ── Skor: cerminan aturan server ─────────────────────────────────────────
 
+    /**
+     * Nilai review BINER sejak 2026-08-15 (keputusan user): setuju 100, tolak 0,
+     * tanpa nilai antara. Test lama menguji `skorReview("approved", 85) == 85` —
+     * itu justru perilaku yang DIBUANG, jadi ia diganti, bukan ditambah.
+     *
+     * Angka di sini cuma cerminan optimistis untuk layar. Yang menentukan tetap
+     * server: `RaportService::review` menurunkan nilainya dari `status` dan
+     * MENGABAIKAN `score` kiriman klien, jadi app tak bisa lagi menitipkan 85
+     * walau seseorang memanggil fungsi ini dengan angka.
+     */
     @Test
-    fun `skor mengikuti aturan server`() {
-        assertEquals(0, skorReview("rejected", 90))
-        assertEquals(100, skorReview("approved", null))
-        assertEquals(85, skorReview("approved", 85))
-        assertEquals(100, skorReview("approved", 300))
-        assertEquals(0, skorReview("approved", -5))
-        assertNull(skorReview("pending", 70))
+    fun `skor biner mengikuti aturan server`() {
+        assertEquals(SKOR_SETUJU, skorReview("approved"))
+        assertEquals(SKOR_TOLAK, skorReview("rejected"))
+        assertNull(skorReview("pending"))
+        // Nilai yang benar-benar dipakai, bukan sekadar konstanta yang cocok
+        // dengan dirinya sendiri.
+        assertEquals(100, skorReview("approved"))
+        assertEquals(0, skorReview("rejected"))
     }
 
     // ── Bukti ────────────────────────────────────────────────────────────────

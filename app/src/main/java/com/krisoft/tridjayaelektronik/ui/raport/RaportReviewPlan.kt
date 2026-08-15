@@ -8,10 +8,6 @@ import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
  * supaya bisa diuji JUnit biasa. Pola sama [RaportPlan.kt].
  */
 
-/** Skor cepat yang ditawarkan tombol setuju — sama dengan preset web
- *  (`PicEvidenceReviewControls.tsx`). 100 = default kalau PIC tak memilih. */
-internal val PRESET_SKOR = listOf(70, 85, 100)
-
 data class ReviewGate(val ok: Boolean, val alasan: String? = null)
 
 /**
@@ -32,10 +28,17 @@ internal fun bolehSimpanReview(status: String, komentar: String?): ReviewGate = 
  * Aturan server (`raport/service.rs`): `rejected` → 0 (apa pun yang dikirim),
  * `pending` → tanpa skor, selainnya `score ?: 100` di-clamp 0..100.
  */
-internal fun skorReview(status: String, diminta: Int?): Int? = when (status) {
+/** Nilai review DITENTUKAN SERVER (keputusan user 2026-08-15): setuju 100,
+ *  tolak 0, tanpa nilai antara. Angka ini cuma cerminan optimistis untuk
+ *  layar — server mengabaikan `score` kiriman klien dan menghitung sendiri
+ *  dari `status`, jadi kalau keduanya pernah berbeda yang benar server. */
+internal const val SKOR_SETUJU = 100
+internal const val SKOR_TOLAK = 0
+
+internal fun skorReview(status: String): Int? = when (status) {
     "pending" -> null
-    "rejected" -> 0
-    else -> (diminta ?: 100).coerceIn(0, 100)
+    "rejected" -> SKOR_TOLAK
+    else -> SKOR_SETUJU
 }
 
 /**
