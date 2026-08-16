@@ -434,6 +434,22 @@ nyata. Kontrak lengkap: `docs/absen-api-contract.md`.
   `run_in_background`, watch the Gradle daemon's `java` CPU/RAM climbing to confirm progress,
   and only trust `BUILD SUCCESSFUL` in the output — `--console=plain` buffers, so an empty output
   file mid-build is normal, not a hang.
+- **Peta deobfuskasi R8 diarsipkan OTOMATIS** — `assembleRelease` di-`finalizedBy`
+  tugas `arsipkanMappingRilis`, yang menyalin
+  `app/build/outputs/mapping/release/mapping.txt` ke
+  `../cadangan-lokal/mapping-<versionName>-vc<versionCode>.txt`. **Jangan cabut
+  penautannya, dan jangan kembalikan jadi langkah manual di runbook.** Manual
+  sudah dicoba dan gagal LIMA KALI berturut-turut: audit 2026-08-16 menemukan
+  `cadangan-lokal/` cuma memuat `mapping-2.71-vc82.txt`, artinya peta untuk 2.76
+  s/d 2.80 hilang permanen — ditimpa `assembleRelease` berikutnya, nol error,
+  nol gejala, dan baru ketahuan karena ada yang kebetulan mendaftar isi
+  direktori. Tanpa peta itu, stack trace crash dari HP pengguna tak terbaca lagi
+  selamanya. Arsipnya sengaja hidup DI LUAR pohon kerja git (sejajar repo, sama
+  seperti keystore): arsip di dalam repo adalah arsip yang lenyap pada
+  `git clean -xdf` berikutnya. Tugasnya **berhenti dengan galat** kalau arsip
+  untuk versionCode yang sama sudah ada dengan isi BERBEDA — itu berarti dua
+  biner memakai satu nomor versi, dan menimpanya membuang peta milik biner yang
+  mungkin sudah beredar.
 - **`versionCode` must be bumped** in `app/build.gradle.kts` for every release (per 2026-07-29:
   `versionCode = 49`, `versionName = "2.38"`) — the update system's Remote Config comparison and
   Play/side-load upgrades both depend on it. Pola commit yang dipakai: satu commit

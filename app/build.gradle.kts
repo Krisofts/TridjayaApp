@@ -231,3 +231,74 @@ dependencies {
 if (rootProject.file("app/google-services.json").exists() && !project.hasProperty("localApi")) {
     apply(plugin = "com.google.gms.google-services")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ARSIP PETA DEOBFUSKASI R8 — menempel di `assembleRelease`, bukan langkah manual
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `app/build/outputs/mapping/release/mapping.txt` adalah SATU-SATUNYA cara
+// membaca stack trace crash dari HP pengguna setelah R8 mengaburkan namanya.
+// Ia ditimpa setiap `assembleRelease` berikutnya, dan direktori `build/` memang
+// pantas dihapus kapan saja — jadi tanpa arsip, peta itu hidup persis sampai
+// build berikutnya.
+//
+// KENAPA INI TUGAS GRADLE, BUKAN LANGKAH DI RUNBOOK: langkah manual sudah
+// DICOBA dan GAGAL. Audit 2026-08-16 menemukan `cadangan-lokal/` cuma memuat
+// `mapping-2.71-vc82.txt` — artinya peta untuk 2.76, 2.77, 2.78, 2.79, dan 2.80
+// hilang permanen, ditimpa satu per satu tanpa seorang pun menyadarinya. Nol
+// error, nol gejala; ketahuannya cuma karena ada yang kebetulan mendaftar isi
+// direktori. Aturan yang bergantung pada ingatan manusia lima kali berturut-turut
+// gagal, jadi ia dipindah ke tempat yang tak bisa lupa: `finalizedBy`.
+//
+// Nilainya diambil saat KONFIGURASI (bukan di dalam `doLast`) supaya tugas ini
+// tidak mematikan configuration cache Gradle.
+val versiKodeRilis = android.defaultConfig.versionCode
+val versiNamaRilis = android.defaultConfig.versionName
+val berkasMappingRilis = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
+// `cadangan-lokal/` hidup DI LUAR repo (sejajar dengannya) — sengaja, sama
+// seperti keystore: arsip yang tinggal di dalam pohon kerja git adalah arsip
+// yang lenyap pada `git clean -xdf` berikutnya.
+val direktoriArsipRilis = rootProject.file("../cadangan-lokal")
+
+val arsipkanMappingRilis = tasks.register("arsipkanMappingRilis") {
+    description = "Salin mapping.txt R8 ke ../cadangan-lokal/ dengan nama ber-versi."
+    group = "release"
+    doLast {
+        val sumber = berkasMappingRilis.get().asFile
+        if (!sumber.exists()) {
+            // Bukan kegagalan: build tanpa minify (atau varian lain) memang tak
+            // menghasilkan peta. Tetap dicetak supaya "tak ada arsip" tak pernah
+            // jadi hal yang cuma bisa ditemukan lewat `ls`.
+            logger.lifecycle("arsip mapping DILEWATI: ${sumber.path} tak ada (build tanpa R8?)")
+            return@doLast
+        }
+        if (!direktoriArsipRilis.isDirectory) {
+            logger.warn("arsip mapping DILEWATI: ${direktoriArsipRilis.path} tak ada — peta untuk $versiNamaRilis TIDAK terarsip")
+            return@doLast
+        }
+        val tujuan = File(direktoriArsipRilis, "mapping-$versiNamaRilis-vc$versiKodeRilis.txt")
+        if (tujuan.exists()) {
+            // Ukuran sama = build ulang versi yang sama; itu wajar (malam ini
+            // 2.81 dibangun dua kali) dan tak perlu diributkan.
+            if (tujuan.length() == sumber.length()) {
+                logger.lifecycle("arsip mapping: $versiNamaRilis-vc$versiKodeRilis sudah ada, isinya sama")
+                return@doLast
+            }
+            // Ukuran BEDA untuk versionCode yang sama = dua biner berbeda memakai
+            // satu nomor versi. Menimpanya diam-diam akan membuang peta milik
+            // biner yang mungkin sudah beredar. Berhenti, jangan tebak mana yang benar.
+            throw GradleException(
+                "Arsip mapping untuk vc$versiKodeRilis SUDAH ADA dengan isi BERBEDA " +
+                    "(${tujuan.length()} byte vs ${sumber.length()} byte). Dua build berbeda memakai " +
+                    "satu versionCode — naikkan versionCode dulu, atau arsipkan yang lama dengan nama lain. " +
+                    "JANGAN timpa: peta yang tertimpa tak bisa dipulihkan."
+            )
+        }
+        sumber.copyTo(tujuan)
+        logger.lifecycle("arsip mapping: ${tujuan.path} (${tujuan.length()} byte)")
+    }
+}
+
+// `matching` + `configureEach`, bukan `named`: tugas `assembleRelease` baru lahir
+// setelah plugin Android selesai memasang variannya.
+tasks.matching { it.name == "assembleRelease" }.configureEach { finalizedBy(arsipkanMappingRilis) }
