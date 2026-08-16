@@ -64,6 +64,26 @@ internal fun nextSyncStep(page: Int, hasMore: Boolean, maxPages: Int = SYNC_MAX_
         else -> SyncStep.CONTINUE
     }
 
+/**
+ * Hasil pencarian petunjuk in-transit — TIGA keadaan, bukan dua.
+ *
+ * Memetakan kegagalan dan "memang tak ada" ke `null` yang sama adalah kelas bug
+ * yang menyembunyikan matinya `mutasi-histori` selama tiga minggu (10.230
+ * permintaan, nol 200, 78 akun). Sebabnya berganti-ganti — 403 kemarin, 429
+ * hari ini karena rate limit 20/menit di gateway — tapi gejalanya selalu sama:
+ * petunjuknya hilang tanpa satu pun tanda. Selama tipe ini punya cabang
+ * [Gagal] yang terpisah, pemanggil tak bisa lagi salah menyimpulkan.
+ */
+sealed interface InTransitLookup {
+    /** Ketemu. */
+    data class Ada(val hint: InTransitHint) : InTransitLookup
+    /** Server menjawab, dan jawabannya "tak ada". Ini SAH — layak di-memo. */
+    data object TakAda : InTransitLookup
+    /** Permintaannya sendiri gagal (jaringan, 4xx, 5xx). JANGAN di-memo:
+     *  memo-nya akan mengunci kegagalan sementara jadi permanen. */
+    data class Gagal(val kode: Int?) : InTransitLookup
+}
+
 /** Hasil [InventoryRepository.findInTransitHint] — barang ketemu di mutasi OUT belum ada padanan IN. */
 data class InTransitHint(
     val namaBarang: String,
@@ -183,19 +203,30 @@ class InventoryRepository @Inject constructor(
      * pemindaian habis waktu), bukan kegagalan — ini pelengkap di empty-state,
      * bukan jalur kritis.
      */
-    suspend fun findInTransitHint(dealerCode: String, query: String, limit: Int = 15): InTransitHint? {
+    suspend fun findInTransitHint(
+        dealerCode: String,
+        query: String,
+        limit: Int = 15
+    ): InTransitLookup {
         val needle = query.trim()
-        if (needle.isEmpty()) return null
+        if (needle.isEmpty()) return InTransitLookup.TakAda
         return try {
             val response = api.inTransitSelf(q = needle)
-            val hint = response.body()?.data?.hint ?: return null
-            InTransitHint(
-                namaBarang = hint.namaBarang,
-                tujuanCabang = hint.tujuanCabang,
-                tanggal = hint.tanggal
+            // `isSuccessful` DULU, sebelum menyentuh `body()`. Tanpa ini, 429
+            // dari rate limit gateway (20/menit/user) dan 403 dari gate role
+            // sama-sama menghasilkan `body() == null` lalu terbaca "tak ada
+            // barang dalam perjalanan" — jawaban yang salah, tanpa gejala.
+            if (!response.isSuccessful) return InTransitLookup.Gagal(response.code())
+            val hint = response.body()?.data?.hint ?: return InTransitLookup.TakAda
+            InTransitLookup.Ada(
+                InTransitHint(
+                    namaBarang = hint.namaBarang,
+                    tujuanCabang = hint.tujuanCabang,
+                    tanggal = hint.tanggal
+                )
             )
         } catch (e: Exception) {
-            null
+            InTransitLookup.Gagal(null)
         }
     }
 

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import com.krisoft.tridjayaelektronik.data.InTransitLookup
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.InTransitHint
@@ -107,14 +108,51 @@ class InventoryViewModel @Inject constructor(
     /** Dipanggil dari layar saat hasil search benar-benar kosong — cek apakah barangnya
      *  lagi mutasi (stok 0 di dua cabang selama jeda GS OUT→IN, lihat delivery-flow-audit.md #5).
      *  Toko yang dicek: filter toko aktif, atau toko sendiri kalau lagi lihat "semua toko". */
+    /**
+     * Kunci (cabang + kata kunci) yang SUDAH pernah dijawab server. Selama
+     * kuncinya sama, tak ada permintaan kedua.
+     *
+     * KENAPA PERLU: pemicunya `LaunchedEffect(state.filters.search, …)` yang
+     * duduk DI DALAM cabang empty-state `InventoryScreen`, jadi tiap perubahan
+     * kata kunci = key baru = relaunch. `inTransitHintLoading` cuma mencegah
+     * dua permintaan TUMPANG TINDIH, bukan pengulangan — jadi lajunya satu
+     * permintaan per round-trip selama orang terus mengetik di keadaan
+     * hasil-kosong: ±20 permintaan dalam ±20 detik mengetik.
+     *
+     * Gateway membatasi rute ini **20/menit per user** (`IN_TRANSIT_LIMIT`),
+     * jadi tanpa memo ini pemakai normal menabrak plafonnya sendiri lalu
+     * petunjuknya hilang — kelas kegagalan yang PERSIS sama dengan 403 yang
+     * baru saja ditutup, cuma berganti sebab.
+     *
+     * Debounce SAJA tidak cukup: cabang empty-state keluar-masuk komposisi,
+     * jadi efeknya relaunch walau kata kuncinya tak berubah.
+     */
+    private var kunciInTransitTerperiksa: String? = null
+
     fun checkInTransitHint() {
         val query = _uiState.value.filters.search.trim()
         val dealer = _uiState.value.filters.dealer.ifEmpty { _uiState.value.myDealer.orEmpty() }
-        if (query.isEmpty() || dealer.isEmpty() || _uiState.value.inTransitHintLoading) return
+        if (query.isEmpty() || _uiState.value.inTransitHintLoading) return
+        val kunci = "$dealer|$query"
+        if (kunci == kunciInTransitTerperiksa) return
         _uiState.update { it.copy(inTransitHintLoading = true) }
         viewModelScope.launch {
-            val hint = getInTransitHintUseCase(dealer, query)
-            _uiState.update { it.copy(inTransitHintLoading = false, inTransitHint = hint) }
+            when (val hasil = getInTransitHintUseCase(dealer, query)) {
+                // Dua-duanya jawaban server, jadi dua-duanya di-memo.
+                is InTransitLookup.Ada -> {
+                    kunciInTransitTerperiksa = kunci
+                    _uiState.update { it.copy(inTransitHintLoading = false, inTransitHint = hasil.hint) }
+                }
+                InTransitLookup.TakAda -> {
+                    kunciInTransitTerperiksa = kunci
+                    _uiState.update { it.copy(inTransitHintLoading = false, inTransitHint = null) }
+                }
+                // GAGAL TIDAK di-memo: satu 429 atau jaringan putus sesaat tak
+                // boleh mengunci kata kunci itu jadi "sudah diperiksa" selamanya.
+                is InTransitLookup.Gagal -> {
+                    _uiState.update { it.copy(inTransitHintLoading = false, inTransitHint = null) }
+                }
+            }
         }
     }
 
