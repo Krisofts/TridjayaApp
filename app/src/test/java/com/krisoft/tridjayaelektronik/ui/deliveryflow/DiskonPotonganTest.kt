@@ -31,10 +31,14 @@ class DiskonPotonganTest {
     )
 
     @Test
-    fun `baris qty 2 dipotong dua kali - inilah bug angkanya`() {
-        val d = req(unitIds = listOf("j1", "j2"))
+    fun `baris qty 2 - selisih harga dipakai APA ADANYA, tak dikali unit lagi`() {
+        // Server (`create_delivery` + `create_discount_request`) sudah menulis
+        // hargaSebelum/hargaSesudah sebagai TOTAL SE-BARIS: 2 unit x 6,5jt
+        // dipotong 2 x 500rb. Mengalikannya lagi dengan unitTerdampak
+        // menghitung qty dua kali — bug 2026-08-07 s/d 2026-08-16 yang membuat
+        // kartu HP menampilkan 2x lipat papan web untuk SPK yang sama.
+        val d = req(unitIds = listOf("j1", "j2"), sebelum = 13_000_000.0, sesudah = 12_000_000.0)
         assertEquals(2, unitTerdampak(d))
-        // `value` mentah = 500 rb; potongan sebenarnya 2 unit x 500 rb.
         assertEquals(1_000_000.0, potonganPengajuan(d), 0.01)
     }
 
@@ -45,8 +49,10 @@ class DiskonPotonganTest {
     }
 
     @Test
-    fun `pengajuan warisan tanpa baris dihitung satu unit, bukan seluruh SPK`() {
-        // deliveryJobIds = SELURUH unit SPK saat baris null (batch_job_ids).
+    fun `pengajuan warisan tanpa baris tetap dihitung satu unit di label`() {
+        // deliveryJobIds = SELURUH unit SPK saat baris null (batch_job_ids),
+        // jadi ia tak boleh dibaca sebagai "jumlah unit baris ini" di label
+        // ringkas. Potongannya sendiri kini murni dari selisih harga.
         val d = req(baris = null, unitIds = listOf("j1", "j2", "j3"))
         assertEquals(1, unitTerdampak(d))
         assertEquals(500_000.0, potonganPengajuan(d), 0.01)
@@ -60,10 +66,32 @@ class DiskonPotonganTest {
 
     @Test
     fun `total SPK menjumlah seluruh baris`() {
-        val a = req(id = "a", baris = 1, unitIds = listOf("j1", "j2"))
+        val a = req(id = "a", baris = 1, unitIds = listOf("j1", "j2"), sebelum = 13_000_000.0, sesudah = 12_000_000.0)
         val b = req(id = "b", baris = 2, unitIds = listOf("j3"), sebelum = 4_000_000.0, sesudah = 3_800_000.0)
         assertEquals(1_200_000.0, totalPotonganSpk(listOf(a, b)), 0.01)
         assertEquals(0.0, totalPotonganSpk(emptyList()), 0.01)
+    }
+
+    // ── potonganMenunggu — angka "bila disetujui" di dialog detail SPK ──────
+    //
+    // Laporan approver 2026-08-16: dialog cuma menampilkan "Diskon berjalan
+    // -Rp 0" untuk SPK yang pengajuannya justru sedang dia putuskan.
+
+    @Test
+    fun `menunggu hanya menghitung pengajuan yang belum diputus`() {
+        val pending = req(id = "p", baris = 1, status = "pending", sebelum = 4_099_000.0, sesudah = 3_799_000.0)
+        val disetujui = req(id = "a", baris = 2, status = "approved", sebelum = 1_000_000.0, sesudah = 900_000.0)
+        val ditolak = req(id = "r", baris = 3, status = "rejected", sebelum = 2_000_000.0, sesudah = 1_800_000.0)
+        val dilepas = req(id = "d", baris = 4, status = "dilepas", sebelum = 3_000_000.0, sesudah = 2_500_000.0)
+        // `approved` SUDAH terhitung di totalDiskonBerjalan — menjumlahkan
+        // keduanya berarti diskon dihitung dua kali di baris "bila disetujui".
+        assertEquals(300_000.0, potonganMenunggu(listOf(pending, disetujui, ditolak, dilepas)), 0.01)
+    }
+
+    @Test
+    fun `tak ada pengajuan menunggu = nol, bukan tebakan dari value`() {
+        assertEquals(0.0, potonganMenunggu(emptyList()), 0.01)
+        assertEquals(0.0, potonganMenunggu(listOf(req(status = "approved"))), 0.01)
     }
 
     @Test

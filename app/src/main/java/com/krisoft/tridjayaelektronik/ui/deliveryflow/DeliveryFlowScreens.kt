@@ -4245,13 +4245,29 @@ fun SpkDiskonDetailScreen(
                             }
                         }
 
+                        // Pengajuan SPK ini yang masih menunggu keputusan. Tanpa
+                        // baris turunannya, SPK yang belum punya satu pun diskon
+                        // disetujui menampilkan "Diskon berjalan −Rp 0" + harga
+                        // PENUH — approver membacanya sebagai "diskonnya tidak
+                        // masuk", bukan sebagai "keputusannya belum dibuat".
+                        val menunggu = potonganMenunggu(state.spkDiskonPengajuan)
                         Spacer(Modifier.height(12.dp))
                         InfoLine("Total OTR SPK", rupiah(detail.totalHargaOtr))
                         InfoLine("Diskon berjalan", "−${rupiah(detail.totalDiskonBerjalan)}")
                         InfoLine("Setelah diskon", rupiah(detail.totalSetelahDiskon))
+                        if (menunggu > 0.0) {
+                            Spacer(Modifier.height(6.dp))
+                            InfoLine("Sedang diajukan", "−${rupiah(menunggu)}")
+                            InfoLine("Bila disetujui", rupiah(detail.totalSetelahDiskon - menunggu))
+                        }
                         Text(
-                            "\"Diskon berjalan\" = potongan yang SUDAH disetujui & menempel. " +
-                                "Pengajuan yang sedang kamu putuskan belum termasuk.",
+                            if (menunggu > 0.0)
+                                "\"Diskon berjalan\" = potongan yang SUDAH disetujui & menempel. " +
+                                    "\"Sedang diajukan\" = yang kamu putuskan sekarang — belum menempel " +
+                                    "sampai kamu menekan Setujui."
+                            else
+                                "\"Diskon berjalan\" = potongan yang SUDAH disetujui & menempel. " +
+                                    "Tak ada pengajuan yang menunggu keputusan di SPK ini.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

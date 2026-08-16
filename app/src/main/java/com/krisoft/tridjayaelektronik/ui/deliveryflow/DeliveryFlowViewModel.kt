@@ -99,6 +99,19 @@ data class DeliveryFlowUiState(
     val spkDiskonDetailKode: String? = null,
     val spkDiskonDetail: com.krisoft.tridjayaelektronik.data.model.SpkDiscountContextDto? = null,
     val spkDiskonDetailError: String? = null,
+    /**
+     * Pengajuan diskon SPK yang sedang dibuka detailnya.
+     *
+     * TERPISAH dari [discounts] karena layar detail punya ViewModel SENDIRI
+     * (di-scope ke NavBackStackEntry oleh `hiltViewModel()`), jadi ia TIDAK
+     * mewarisi antrian approval layar sebelumnya — membacanya dari [discounts]
+     * selalu menghasilkan daftar kosong tanpa satu pun error, dan baris
+     * "bila disetujui" tak akan pernah muncul.
+     *
+     * Kosong = belum termuat ATAU memang tak ada pengajuan; keduanya sama-sama
+     * berarti "tak ada angka yang bisa ditampilkan", jadi tak perlu dibedakan.
+     */
+    val spkDiskonPengajuan: List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto> = emptyList(),
     /** Konteks cabang login sales — default selektor Cabang SPK (Input SPK). */
     val deliveryContext: com.krisoft.tridjayaelektronik.data.model.DeliveryContextDto? = null,
     /** Hasil autocomplete stok GS (Input SPK). */
@@ -649,7 +662,14 @@ class DeliveryFlowViewModel @Inject constructor(
      *  bukan `error` layar — antrian approval yang sudah termuat tak boleh
      *  tergantikan layar error karena panel pelengkap gagal dimuat. */
     fun bukaDetailSpkDiskon(spkKode: String) {
-        _state.update { it.copy(spkDiskonDetailKode = spkKode, spkDiskonDetail = null, spkDiskonDetailError = null) }
+        _state.update {
+            it.copy(
+                spkDiskonDetailKode = spkKode,
+                spkDiskonDetail = null,
+                spkDiskonDetailError = null,
+                spkDiskonPengajuan = emptyList(),
+            )
+        }
         viewModelScope.launch {
             when (val res = repository.spkDiscountContext(spkKode)) {
                 is AuthResult.Success -> _state.update {
@@ -662,10 +682,28 @@ class DeliveryFlowViewModel @Inject constructor(
                 }
             }
         }
+        // Pengajuan SPK-nya (SELURUH baris, `baris` tak dikirim) — sumber baris
+        // "sedang diajukan"/"bila disetujui". FAIL-SOFT dan TANPA
+        // `spkDiskonDetailError`: detail SPK tetap berguna tanpa angka ini,
+        // dan menutupinya dengan layar error menukar satu kekurangan dengan
+        // kekurangan yang lebih besar.
+        viewModelScope.launch {
+            val res = repository.discountHistory(spkKode)
+            if (res is AuthResult.Success) {
+                _state.update {
+                    if (it.spkDiskonDetailKode == spkKode) it.copy(spkDiskonPengajuan = res.data) else it
+                }
+            }
+        }
     }
 
     fun tutupDetailSpkDiskon() = _state.update {
-        it.copy(spkDiskonDetailKode = null, spkDiskonDetail = null, spkDiskonDetailError = null)
+        it.copy(
+            spkDiskonDetailKode = null,
+            spkDiskonDetail = null,
+            spkDiskonDetailError = null,
+            spkDiskonPengajuan = emptyList(),
+        )
     }
 
     /**

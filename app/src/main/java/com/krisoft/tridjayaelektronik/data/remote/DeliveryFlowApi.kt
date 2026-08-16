@@ -366,14 +366,20 @@ interface DeliveryFlowApi {
         @Query("sampai") sampai: String? = null
     ): Response<ApiResponse<DiscountListData>>
 
-    /** Riwayat pengajuan diskon SATU baris SPK — dipakai timeline detail SPK.
+    /** Riwayat pengajuan diskon satu SPK — dipakai timeline detail SPK dan
+     *  baris "bila disetujui" di detail SPK approval.
+     *
+     *  `baris` null = SELURUH baris SPK (server: `find_by_batch` menerima
+     *  `Option<i32>`, dan Retrofit menghilangkan query param yang null).
      *  Balasannya array langsung di `data` (bukan `{items:[...]}` seperti
      *  `discountRequests`). Terbuka untuk semua aktor pipeline, bukan cuma
-     *  approver. */
+     *  approver — itu sebabnya ia dipakai di layar detail, yang ViewModel-nya
+     *  BARU (di-scope ke NavBackStackEntry) sehingga tak mewarisi antrian
+     *  approval layar sebelumnya. */
     @GET("api/inventory/discount-requests/by-batch")
     suspend fun discountHistory(
         @Query("spkBatchKode") spkBatchKode: String,
-        @Query("baris") baris: Int
+        @Query("baris") baris: Int? = null
     ): Response<ApiResponse<List<DiscountRequestDto>>>
 
     /**

@@ -26,20 +26,47 @@ fun unitTerdampak(d: DiscountRequestDto): Int =
  * SEPARUH potongan sebenarnya — dan papan web (yang memakai selisih harga)
  * menampilkan angka lain untuk SPK yang sama.
  *
- * `hargaSebelum`/`hargaSesudah` = harga PER UNIT (`line_pricing` membaca satu
- * baris `delivery_jobs`), jadi selisihnya dikali [unitTerdampak].
- * Salah satunya null (pengajuan lama) = 0, sama seperti web — angka yang tak
- * bisa dihitung tak boleh ditebak.
+ * `hargaSebelum`/`hargaSesudah` **sudah TOTAL SE-BARIS** — server yang
+ * mengalikannya dengan qty, di KEDUA penulisnya (`delivery::create_delivery`
+ * sejak 62e4ade6 / 2026-08-02, dan `discounts::create_discount_request` sejak
+ * 2026-08-16). Selisihnya karena itu dipakai APA ADANYA; mengalikannya lagi
+ * dengan [unitTerdampak] menghitung qty DUA KALI — itu yang terjadi antara
+ * 2026-08-07 dan perbaikan ini: baris qty 2 menampilkan potongan 2x lipat dan
+ * berselisih dengan papan web untuk SPK yang sama.
+ *
+ * `value` TETAP tak dipakai (lihat catatan di atas): untuk `percent` ia bukan
+ * rupiah, dan untuk `amount` ia nilai per unit. Salah satu harga null
+ * (pengajuan lama) = 0, sama seperti web — angka yang tak bisa dihitung tak
+ * boleh ditebak.
  */
 fun potonganPengajuan(d: DiscountRequestDto): Double {
     val sebelum = d.hargaSebelum ?: return 0.0
     val sesudah = d.hargaSesudah ?: return 0.0
-    return (sebelum - sesudah) * unitTerdampak(d)
+    return sebelum - sesudah
 }
 
 /** Total potongan satu SPK = jumlah potongan seluruh pengajuannya. */
 fun totalPotonganSpk(pengajuan: List<DiscountRequestDto>): Double =
     pengajuan.sumOf { potonganPengajuan(it) }
+
+/**
+ * Potongan yang MASIH menunggu keputusan approver (`pending` saja).
+ *
+ * Dipakai dialog detail SPK untuk menjawab pertanyaan yang sebenarnya dipegang
+ * approver: "SPK ini jadi berapa kalau saya setujui". Sebelumnya dialog cuma
+ * menampilkan `totalDiskonBerjalan` (potongan yang SUDAH menempel), dan untuk
+ * keadaan yang paling sering dibuka — satu pengajuan `pending`, belum ada yang
+ * disetujui — angka itu SELALU nol. Barisnya terbaca **"Diskon berjalan
+ * −Rp 0"** dengan total harga PENUH, yang dilaporkan approver sebagai
+ * "diskonnya tidak masuk" (2026-08-16) padahal itu keadaan sebelum
+ * keputusannya sendiri.
+ *
+ * `rejected` TIDAK ikut: sudah diputus, menunggu sales merevisi atau
+ * merelakan. `approved` juga tidak — ia SUDAH terhitung di
+ * `totalDiskonBerjalan`, jadi menjumlahkan keduanya = diskon dihitung dua kali.
+ */
+fun potonganMenunggu(pengajuan: List<DiscountRequestDto>): Double =
+    pengajuan.filter { it.status == "pending" }.sumOf { potonganPengajuan(it) }
 
 /**
  * 7000000 → "7.000.000". Diekstrak dari `rupiah()` supaya baris ringkas kartu

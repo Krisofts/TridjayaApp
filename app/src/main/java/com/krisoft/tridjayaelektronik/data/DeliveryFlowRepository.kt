@@ -344,10 +344,11 @@ class DeliveryFlowRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
-    /** Riwayat diskon satu baris SPK (timeline detail). `data` = array langsung. */
+    /** Riwayat diskon SPK (timeline detail). `baris` null = seluruh baris.
+     *  `data` = array langsung. */
     suspend fun discountHistory(
         spkBatchKode: String,
-        baris: Int
+        baris: Int? = null
     ): AuthResult<List<com.krisoft.tridjayaelektronik.data.model.DiscountRequestDto>> = try {
         val response = api.discountHistory(spkBatchKode, baris)
         val data = response.body()?.data
