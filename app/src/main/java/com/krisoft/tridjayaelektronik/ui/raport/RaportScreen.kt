@@ -186,6 +186,24 @@ fun RaportScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     item { Ringkasan(state) }
+                    // Hari Minggu diberitahukan DI DEPAN, bukan setelah orang
+                    // memotret, memilih 10 foto, dan menunggu seluruh unggahan
+                    // selesai. Web sudah lama menutupnya di klien; app-lah yang
+                    // tak punya cerminannya, dan itu terukur: Minggu 16 Agustus
+                    // 2026 ada 36 berkas terunggah dengan NOL baris tercatat.
+                    if (hariMinggu(System.currentTimeMillis())) {
+                        item {
+                            Text(
+                                PESAN_HARI_MINGGU,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                            )
+                        }
+                    }
                     state.message?.let { pesan ->
                         item {
                             ExpressiveInlineError(

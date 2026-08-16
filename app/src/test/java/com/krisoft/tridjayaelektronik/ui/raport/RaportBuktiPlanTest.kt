@@ -216,4 +216,43 @@ class RaportBuktiPlanTest {
         assertTrue(formatUkuranBerkas(30L * 1024 * 1024).contains("MB"))
         assertTrue(formatUkuranBerkas(500L * 1024).contains("KB"))
     }
+
+    // ── Gerbang hari Minggu ──────────────────────────────────────────────────
+    //
+    // Server menolak POST /raport-harian pada hari Minggu tapi MEMBIARKAN
+    // /raport-harian/upload, dan app mengunggah semua berkas dulu baru
+    // mengirim. Minggu 16 Agustus 2026 itu berarti 36 berkas naik ke server
+    // dengan NOL baris raport tercatat — seluruhnya yatim.
+
+    /** Tanggal tetap, dibangun tanpa `java.time` (haram di app/src/main). */
+    private fun millis(tahun: Int, bulanNol: Int, tanggal: Int): Long =
+        java.util.Calendar.getInstance().apply {
+            clear()
+            set(tahun, bulanNol, tanggal, 12, 0, 0)
+        }.timeInMillis
+
+    @Test
+    fun `minggu dikenali, hari lain tidak`() {
+        assertTrue("16 Agustus 2026 itu Minggu", hariMinggu(millis(2026, 7, 16)))
+        assertFalse("15 Agustus 2026 itu Sabtu", hariMinggu(millis(2026, 7, 15)))
+        assertFalse("17 Agustus 2026 itu Senin", hariMinggu(millis(2026, 7, 17)))
+    }
+
+    @Test
+    fun `gerbang menolak Minggu dengan kalimat yang SAMA PERSIS dengan server`() {
+        val minggu = gerbangHariIni(millis(2026, 7, 16))
+        assertFalse(minggu.ok)
+        // Salinan literal dari kinerja-service/src/raport/service.rs. Dua
+        // kalimat berbeda untuk satu aturan membuat orang mengira ada dua
+        // aturan.
+        assertEquals("Hari Minggu tidak wajib mengisi laporan raport.", minggu.alasan)
+        assertEquals(PESAN_HARI_MINGGU, minggu.alasan)
+    }
+
+    @Test
+    fun `hari kerja lolos tanpa alasan`() {
+        val senin = gerbangHariIni(millis(2026, 7, 17))
+        assertTrue(senin.ok)
+        assertEquals(null, senin.alasan)
+    }
 }
