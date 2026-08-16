@@ -36,14 +36,22 @@ package com.krisoft.tridjayaelektronik.ui.raport
  */
 
 /**
- * Cerminan `MAX_IMAGE_FILES` di `frontend/src/pages/dashboard/KaryawanRaportPage.tsx:72`.
+ * Cerminan `MAX_IMAGE_FILES` di `frontend/src/pages/dashboard/KaryawanRaportPage.tsx`.
  *
  * Server TIDAK membatasi jumlah gambar sama sekali; pagar terakhirnya cuma
  * kolom `raport_harian.bukti_url` bertipe `text` (65.535 byte), yang kalau
  * jebol muncul sebagai 500 tanpa pesan berguna. Jadi batas ini satu-satunya
  * penjaga nyata — kalau angkanya berubah di web, ubah di sini juga.
+ *
+ * **Dinaikkan 6 → 10 pada 2026-08-16** atas permintaan user, setelah karyawan
+ * melaporkan tak bisa melampirkan bukti secukupnya. Katalog jobdesk produksi
+ * penuh target berjumlah SEPULUH ("FOTO DENGAN KONSUMEN MINIMAL 10", "UPDATE
+ * POSTING DI MEDSOS … MINIMAL 10 POSTINGAN", "UPDATE STATUS WA MINIMAL 10
+ * PRODUK"), jadi batas 6 memotong bukti pekerjaan yang sudah benar-benar
+ * selesai. Jaraknya ke pagar teknis masih jauh: 10 URL + pembungkus JSON
+ * ≈ 700 byte dari 65.535.
  */
-internal const val MAX_GAMBAR = 6
+internal const val MAX_GAMBAR = 10
 
 /** Cerminan `MAX_IMAGE_INPUT_SIZE` web (25 MB, diukur SEBELUM watermark/kompresi). */
 internal const val MAX_GAMBAR_INPUT_BYTES = 25L * 1024 * 1024

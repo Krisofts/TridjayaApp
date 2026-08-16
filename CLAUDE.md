@@ -710,7 +710,9 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
   daftar jobdesk posisi karyawan dari `GET /api/jobdesk-divisions` (dicocokkan ke `divisi`
   profil lewat `matchJobdeskPosition`, port 1:1 `getPositionMatch` web — **tak boleh** jatuh ke
   posisi pertama saat tak cocok, itu bikin orang dinilai atas jobdesk divisi lain), kirim per
-  baris ke `POST /api/raport-harian`. Bukti = foto kamera, **sampai 6 gambar dari galeri**,
+  baris ke `POST /api/raport-harian`. Bukti = foto kamera, **sampai 10 gambar dari galeri** (dinaikkan dari 6 pada
+  2026-08-16 — katalog jobdesk produksi penuh target berjumlah sepuluh; angkanya
+  hidup di `MAX_GAMBAR` dan WAJIB sama dengan `MAX_IMAGE_FILES` web),
   **satu video**, atau `mode=none` + alasan ≥10 karakter.
   **Unggah galeri + video ditambahkan 2026-08-14** (sebelumnya kamera saja). Aturannya
   di `ui/raport/RaportBuktiPlan.kt` (fungsi murni, diuji `RaportBuktiPlanTest`):
