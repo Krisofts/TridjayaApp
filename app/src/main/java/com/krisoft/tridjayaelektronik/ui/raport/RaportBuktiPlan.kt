@@ -239,3 +239,31 @@ internal fun hariMinggu(millis: Long): Boolean {
  */
 internal fun gerbangHariIni(millis: Long): BuktiGate =
     if (hariMinggu(millis)) BuktiGate(false, PESAN_HARI_MINGGU) else BuktiGate(true, null)
+
+// ── Gerbang "sudah disetujui PIC" (2026-08-16) ───────────────────────────────
+
+/**
+ * Kalimat untuk jobdesk yang sudah disetujui PIC. Seirama dengan
+ * `pesan_raport_terkunci` milik server (`kinerja-service/src/raport/domain.rs`)
+ * — dipendekkan untuk layar HP, tapi menyebut jalan keluar yang SAMA, karena
+ * dua kalimat berbeda untuk satu aturan terbaca sebagai dua aturan.
+ */
+internal const val PESAN_TERKUNCI_PIC =
+    "Jobdesk ini sudah disetujui PIC, jadi buktinya dikunci. Minta PIC Raport " +
+        "mengembalikannya ke status Menunggu dulu kalau isinya perlu diperbaiki."
+
+/**
+ * Jobdesk yang buktinya TIDAK BISA diganti lagi.
+ *
+ * Server menolak penimpaan baris ber-`review_status = 'approved'`
+ * (`boleh_timpa_raport`) karena menimpanya menghapus nilai dan komentar PIC.
+ * App tak pernah mencerminkannya: tombolnya tetap hidup, orangnya memotret,
+ * MENUNGGU SELURUH UNGGAHAN SELESAI, lalu ditolak — dan yang terbaca olehnya
+ * adalah "buktinya tidak bisa dikirim". Dengan batas 10 gambar, ongkos salah
+ * paham itu sepuluh kali unggahan.
+ *
+ * Status apa pun selain `approved` (termasuk null = belum pernah dikirim, dan
+ * `rejected` yang justru MEMANG boleh dikirim ulang) tidak dikunci.
+ */
+internal fun terkunciPic(reviewStatus: String?): Boolean =
+    reviewStatus?.trim()?.equals("approved", ignoreCase = true) == true

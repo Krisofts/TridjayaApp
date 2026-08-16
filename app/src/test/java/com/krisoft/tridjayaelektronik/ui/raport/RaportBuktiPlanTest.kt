@@ -255,4 +255,27 @@ class RaportBuktiPlanTest {
         assertTrue(senin.ok)
         assertEquals(null, senin.alasan)
     }
+
+    // ── Gerbang "sudah disetujui PIC" ────────────────────────────────────────
+
+    @Test
+    fun `hanya approved yang mengunci`() {
+        assertTrue(terkunciPic("approved"))
+        assertTrue("server membandingkan tanpa peduli huruf besar", terkunciPic("APPROVED"))
+        assertTrue(terkunciPic(" approved "))
+        // `rejected` justru ALUR REVISI — mengunci di sini akan mematikan
+        // satu-satunya jalan keluar karyawan yang buktinya ditolak.
+        assertFalse(terkunciPic("rejected"))
+        assertFalse(terkunciPic("pending"))
+        assertFalse("belum pernah dikirim", terkunciPic(null))
+        assertFalse(terkunciPic(""))
+    }
+
+    @Test
+    fun `pesan terkunci menyebut jalan keluarnya, bukan cuma larangan`() {
+        // Yang dibutuhkan orangnya bukan "tidak bisa" melainkan "harus minta
+        // siapa" — tanpa itu ia mengira aplikasinya rusak.
+        assertTrue(PESAN_TERKUNCI_PIC.contains("PIC Raport"))
+        assertTrue(PESAN_TERKUNCI_PIC.contains("Menunggu"))
+    }
 }

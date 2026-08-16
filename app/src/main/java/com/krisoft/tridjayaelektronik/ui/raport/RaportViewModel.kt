@@ -251,6 +251,13 @@ class RaportViewModel @Inject constructor(
             _state.update { it.copy(message = hari.alasan) }
             return
         }
+        // Sama alasannya dengan gerbang Minggu: server sudah pasti menolak,
+        // jadi mengunggah dulu berarti membayar penuh untuk jawaban yang sudah
+        // diketahui. Lihat `terkunciPic`.
+        if (terkunciPic(_state.value.submitted[index]?.reviewStatus)) {
+            _state.update { it.copy(message = PESAN_TERKUNCI_PIC) }
+            return
+        }
         val pilihan = pilihanUntuk(index)
         val gate = gateKirimBukti(
             jumlahGambar = pilihan.gambar.size,
@@ -367,6 +374,10 @@ class RaportViewModel @Inject constructor(
         val hari = gerbangHariIni(System.currentTimeMillis())
         if (!hari.ok) {
             _state.update { it.copy(message = hari.alasan) }
+            return
+        }
+        if (terkunciPic(_state.value.submitted[index]?.reviewStatus)) {
+            _state.update { it.copy(message = PESAN_TERKUNCI_PIC) }
             return
         }
         viewModelScope.launch {
