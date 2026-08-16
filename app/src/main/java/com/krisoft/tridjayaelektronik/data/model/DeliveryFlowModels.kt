@@ -554,6 +554,26 @@ data class MutasiHistoriListDto(
     val items: List<MutasiHistoriRowDto> = emptyList()
 )
 
+/**
+ * `GET /inventory/mutasi/in-transit-self` — pembungkus satu petunjuk.
+ *
+ * `hint` NULL adalah jawaban SAH, bukan kegagalan: akun tanpa cabang dan
+ * pemindaian yang habis waktu sama-sama dijawab 200 + null oleh server, supaya
+ * layar pencarian stok tak memerahkan sesuatu yang cuma pelengkap.
+ */
+@Serializable
+data class InTransitHintDto(
+    val hint: InTransitHintRowDto? = null
+)
+
+/** Isi `data.hint`. Nama field 1:1 dengan `mutasi_in_transit.rs`. */
+@Serializable
+data class InTransitHintRowDto(
+    val namaBarang: String = "",
+    val tujuanCabang: String = "",
+    val tanggal: String = ""
+)
+
 /** Satu baris detail barang 1 transaksi mutasi (`GET /inventory/mutasi-histori/detail`). */
 @Serializable
 data class MutasiHistoriDetailRowDto(

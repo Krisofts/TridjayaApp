@@ -159,35 +159,41 @@ class InventoryRepository @Inject constructor(
         branchStockDao.productAggregate(kode, kodeCabang)
 
     /**
-     * Barang lagi mutasi antar cabang bikin stok 0 di dua sisi selama jeda GS OUT→IN
-     * (lihat delivery-flow-audit.md item #5) — jadi gak nongol di search biasa. Cuma
-     * dipanggil saat hasil search kosong (bukan tiap keystroke): cek [limit] transaksi
-     * OUT terakhir dari cabang sendiri, buka detail satu-satu sampai ketemu barang yang
-     * namanya/kodenya cocok [query]. Fail-soft — gagal jaringan/parse cukup return null,
-     * ini cuma hint tambahan di empty-state, bukan jalur kritis.
+     * Barang yang sedang mutasi antar cabang bikin stok 0 di DUA sisi selama jeda GS
+     * OUT→IN, jadi ia tak muncul di pencarian biasa. Dipanggil HANYA saat hasil
+     * pencarian kosong, bukan tiap ketukan.
+     *
+     * **Sejak 2026-08-16 memakai `GET /inventory/mutasi/in-transit-self`** — satu
+     * panggilan, server yang memindai. Sebelumnya fungsi ini memanggil
+     * `mutasi-histori` + `mutasi-histori/detail` per transaksi, dan sejak gate role
+     * 27 Juli 2026 keduanya dijawab **403 untuk hampir semua pemakai**: 10.230
+     * permintaan, NOL yang pernah 200, 78 akun, tiga minggu berjalan. Tak seorang
+     * pun melihatnya — 403 bukan exception di Retrofit, `body()` null, lalu
+     * `.orEmpty()` mengubah kegagalan jadi "tidak ada hasil". Gate itu dulu
+     * dibenarkan dengan premis "tak ada klien yang kehilangan menu": benar untuk
+     * MENU, salah untuk FUNGSI — pemanggilnya panggilan LATAR, bukan tile.
+     *
+     * [dealerCode] dan [limit] SENGAJA dipertahankan di tanda tangan walau tak lagi
+     * dikirim: cabang kini DIPAKSA server dari profil pemanggil (anti-IDOR, itulah
+     * yang membuat endpoint barunya boleh login-only), dan jendela pindainya milik
+     * server. Membuangnya dari tanda tangan cuma memaksa menyunting pemanggil tanpa
+     * mengubah perilaku.
+     *
+     * Fail-soft dipertahankan: `hint` null adalah jawaban SAH (akun tanpa cabang,
+     * pemindaian habis waktu), bukan kegagalan — ini pelengkap di empty-state,
+     * bukan jalur kritis.
      */
     suspend fun findInTransitHint(dealerCode: String, query: String, limit: Int = 15): InTransitHint? {
         val needle = query.trim()
-        if (needle.isEmpty() || dealerCode.isEmpty()) return null
+        if (needle.isEmpty()) return null
         return try {
-            val listResponse =
-                api.mutasiHistori(dealer = dealerCode, arah = "out", from = inTransitFromDate(), limit = limit)
-            val rows = listResponse.body()?.data?.items.orEmpty()
-            for (row in rows) {
-                val detailResponse = api.mutasiHistoriDetail(noTransaksi = row.noTransaksi, arah = "out")
-                val items = detailResponse.body()?.data?.items.orEmpty()
-                val match = items.firstOrNull {
-                    it.nama.contains(needle, ignoreCase = true) || it.kodeBarang.equals(needle, ignoreCase = true)
-                }
-                if (match != null) {
-                    return InTransitHint(
-                        namaBarang = match.nama,
-                        tujuanCabang = row.lawanNama.ifEmpty { row.lawan },
-                        tanggal = row.tanggal
-                    )
-                }
-            }
-            null
+            val response = api.inTransitSelf(q = needle)
+            val hint = response.body()?.data?.hint ?: return null
+            InTransitHint(
+                namaBarang = hint.namaBarang,
+                tujuanCabang = hint.tujuanCabang,
+                tanggal = hint.tanggal
+            )
         } catch (e: Exception) {
             null
         }

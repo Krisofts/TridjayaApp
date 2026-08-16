@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.data.remote
 import com.krisoft.tridjayaelektronik.data.model.TandaiNihilRequest
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsData
+import com.krisoft.tridjayaelektronik.data.model.InTransitHintDto
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameUnitsRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
 import com.krisoft.tridjayaelektronik.data.model.CreateOpnameRequest
@@ -150,8 +151,31 @@ interface InventoryApi {
     @DELETE("api/inventory/opname/{id}")
     suspend fun deleteOpname(@Path("id") id: String): Response<ApiResponse<OpnameDeleteData>>
 
-    // ---- Mutasi histori (arsip GS, read-only) — dipakai buat cek barang "dalam perjalanan"
-    // saat search stok kosong (lihat InventoryRepository.findInTransitHint) ----
+    // ---- Petunjuk "barang dalam perjalanan" saat pencarian stok kosong ----
+    //
+    // JALUR RESMI sejak 2026-08-16: satu panggilan, cabangnya DIPAKSA server dari
+    // profil pemanggil (`resolve_user`), jadi ia login-only tanpa jadi celah IDOR.
+    //
+    // Menggantikan pasangan `mutasiHistori` + `mutasiHistoriDetail` di bawah, yang
+    // sejak gate role 27 Juli 2026 dijawab **403 untuk hampir semua pemakai**:
+    // 10.230 permintaan, NOL yang pernah 200, 78 akun, tiga minggu — dan tak
+    // seorang pun melihatnya, karena 403 bukan exception di Retrofit dan
+    // `body()` null lalu jatuh ke `.orEmpty()`. Fungsi mati tanpa gejala.
+    //
+    // Bentuk balasannya: `data.hint` = objek {namaBarang, tujuanCabang, tanggal}
+    // ATAU null. `null` BUKAN kegagalan — akun tanpa cabang dan pemindaian yang
+    // habis waktu sama-sama menjawab 200 + null, supaya layar pencarian stok tak
+    // pernah memerahkan sesuatu yang cuma petunjuk opsional.
+    @GET("api/inventory/mutasi/in-transit-self")
+    suspend fun inTransitSelf(
+        @Query("q") q: String
+    ): Response<ApiResponse<InTransitHintDto>>
+
+    // ---- Mutasi histori (arsip GS, read-only) ----
+    //
+    // DIPERTAHANKAN untuk pemanggil arsip yang memang berhak (gate role
+    // `mutasi-histori` di gateway). JANGAN dipakai lagi untuk petunjuk in-transit
+    // — itu yang membuatnya mati senyap selama tiga minggu.
 
     @GET("api/inventory/mutasi-histori")
     suspend fun mutasiHistori(

@@ -2,6 +2,7 @@ package com.krisoft.tridjayaelektronik.data
 
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitDao
 import com.krisoft.tridjayaelektronik.data.local.OpnameUnitEntity
+import com.krisoft.tridjayaelektronik.data.model.InTransitHintDto
 import com.krisoft.tridjayaelektronik.data.model.TandaiNihilRequest
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.CreateIndentRequest
@@ -886,4 +887,7 @@ internal open class StubInventoryApi : InventoryApi {
 
     override suspend fun mutasiHistoriDetail(noTransaksi: String, arah: String):
         Response<ApiResponse<MutasiHistoriDetailListDto>> = nope()
+
+    override suspend fun inTransitSelf(q: String):
+        Response<ApiResponse<InTransitHintDto>> = nope()
 }
