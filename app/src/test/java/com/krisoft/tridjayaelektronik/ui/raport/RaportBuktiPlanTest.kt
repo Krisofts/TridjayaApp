@@ -82,25 +82,41 @@ class RaportBuktiPlanTest {
     }
 
     @Test
-    fun `gabung bukti membuang duplikat dan memotong di batas enam`() {
-        val lama = (1..5).map { "/uploads/raport/l$it.jpg" }
+    fun `gabung bukti membuang duplikat dan memotong di MAX_GAMBAR`() {
+        // Sengaja diturunkan dari konstanta, bukan angka tetap: batasnya sudah
+        // sekali berubah (6 -> 10, 2026-08-16) dan test yang menghafal angkanya
+        // menuntut penyuntingan di dua tempat untuk satu keputusan.
+        val lama = (1 until MAX_GAMBAR).map { "/uploads/raport/l$it.jpg" }
         val baru = listOf("/uploads/raport/l1.jpg", "/uploads/raport/b1.jpg", "/uploads/raport/b2.jpg")
         val hasil = gabungBukti(lama, baru)
 
-        assertEquals(6, hasil.size)
+        assertEquals(MAX_GAMBAR, hasil.size)
         // Yang BARU yang dibuang saat penuh, bukan yang sudah tersimpan.
-        assertEquals(lama, hasil.take(5))
-        assertEquals("/uploads/raport/b1.jpg", hasil[5])
+        assertEquals(lama, hasil.take(MAX_GAMBAR - 1))
+        assertEquals("/uploads/raport/b1.jpg", hasil[MAX_GAMBAR - 1])
     }
 
     // ── Gerbang sebelum unggah ───────────────────────────────────────────────
 
     @Test
-    fun `batas enam gambar sama dengan web`() {
-        assertEquals(6, MAX_GAMBAR)
-        val gate = gateKirimBukti(jumlahGambar = 7, adaVideo = false, ukuranVideoBytes = 0L)
+    fun `batas sepuluh gambar sama dengan web`() {
+        // Angka LITERAL di sini disengaja: ini satu-satunya test yang menjaga
+        // kesepakatan lintas-repo dengan `MAX_IMAGE_FILES` web. Kalau seseorang
+        // mengubah konstanta app saja, test ini yang merah — itu tujuannya.
+        assertEquals(10, MAX_GAMBAR)
+        assertTrue("batas di bawah 10 memotong jobdesk bertarget 10", MAX_GAMBAR >= 10)
+        val gate = gateKirimBukti(jumlahGambar = MAX_GAMBAR + 1, adaVideo = false, ukuranVideoBytes = 0L)
         assertFalse(gate.ok)
-        assertTrue("pesannya harus menyebut angka batasnya", gate.alasan!!.contains("6"))
+        assertTrue("pesannya harus menyebut angka batasnya", gate.alasan!!.contains("$MAX_GAMBAR"))
+    }
+
+    @Test
+    fun `tepat di batas masih lolos, bukan ditolak`() {
+        // Penjaga off-by-one: `>` vs `>=` di `gateKirimBukti` adalah selisih
+        // antara "boleh 10 foto" dan "boleh 9", dan keduanya sama-sama hijau
+        // di test yang cuma menguji kasus melebihi batas.
+        val gate = gateKirimBukti(jumlahGambar = MAX_GAMBAR, adaVideo = false, ukuranVideoBytes = 0L)
+        assertTrue(gate.alasan ?: "", gate.ok)
     }
 
     @Test
@@ -187,8 +203,8 @@ class RaportBuktiPlanTest {
 
     @Test
     fun `nama berkas gambar berbeda per urutan agar tidak saling menimpa`() {
-        val nama = (0 until 6).map { namaBerkasGambar(it, 1L) }
-        assertEquals(6, nama.distinct().size)
+        val nama = (0 until MAX_GAMBAR).map { namaBerkasGambar(it, 1L) }
+        assertEquals(MAX_GAMBAR, nama.distinct().size)
     }
 
     @Test
