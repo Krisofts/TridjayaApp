@@ -240,6 +240,24 @@ class RaportViewModel @Inject constructor(
     fun kirimBukti(index: Int, resolver: ContentResolver) {
         val jobdesk = _state.value.jobdesks.getOrNull(index) ?: return
         if (_state.value.kirim != null) return
+        // Hari Minggu dihadang SEBELUM satu berkas pun naik. Server menolak di
+        // `POST /raport-harian` tapi (di biner yang beredar) MEMBIARKAN
+        // `/raport-harian/upload`, dan fungsi ini mengunggah semuanya dulu baru
+        // mengirim — jadi tanpa gerbang ini orang membayar seluruh unggahan
+        // untuk penolakan yang sudah pasti. Minggu 16 Agustus 2026: 36 berkas
+        // terunggah, nol baris tercatat. Lihat `gerbangHariIni`.
+        val hari = gerbangHariIni(System.currentTimeMillis())
+        if (!hari.ok) {
+            _state.update { it.copy(message = hari.alasan) }
+            return
+        }
+        // Sama alasannya dengan gerbang Minggu: server sudah pasti menolak,
+        // jadi mengunggah dulu berarti membayar penuh untuk jawaban yang sudah
+        // diketahui. Lihat `terkunciPic`.
+        if (terkunciPic(_state.value.submitted[index]?.reviewStatus)) {
+            _state.update { it.copy(message = PESAN_TERKUNCI_PIC) }
+            return
+        }
         val pilihan = pilihanUntuk(index)
         val gate = gateKirimBukti(
             jumlahGambar = pilihan.gambar.size,
@@ -347,6 +365,19 @@ class RaportViewModel @Inject constructor(
         val reason = alasan.trim()
         if (reason.length < MIN_REASON_LENGTH) {
             _state.update { it.copy(message = "Alasan wajib diisi minimal $MIN_REASON_LENGTH karakter") }
+            return
+        }
+        // Ikut digerbang supaya kedua tombol menjawab hal yang sama di hari yang
+        // sama. Jalur ini tak mengunggah apa pun, jadi ongkos tak-digerbang cuma
+        // satu putaran jaringan — tapi dua tombol yang berbeda vonis untuk satu
+        // aturan adalah cara termudah membuat orang mengira ini bug acak.
+        val hari = gerbangHariIni(System.currentTimeMillis())
+        if (!hari.ok) {
+            _state.update { it.copy(message = hari.alasan) }
+            return
+        }
+        if (terkunciPic(_state.value.submitted[index]?.reviewStatus)) {
+            _state.update { it.copy(message = PESAN_TERKUNCI_PIC) }
             return
         }
         viewModelScope.launch {

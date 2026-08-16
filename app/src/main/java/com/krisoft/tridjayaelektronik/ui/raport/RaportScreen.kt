@@ -186,6 +186,24 @@ fun RaportScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     item { Ringkasan(state) }
+                    // Hari Minggu diberitahukan DI DEPAN, bukan setelah orang
+                    // memotret, memilih 10 foto, dan menunggu seluruh unggahan
+                    // selesai. Web sudah lama menutupnya di klien; app-lah yang
+                    // tak punya cerminannya, dan itu terukur: Minggu 16 Agustus
+                    // 2026 ada 36 berkas terunggah dengan NOL baris tercatat.
+                    if (hariMinggu(System.currentTimeMillis())) {
+                        item {
+                            Text(
+                                PESAN_HARI_MINGGU,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                            )
+                        }
+                    }
                     state.message?.let { pesan ->
                         item {
                             ExpressiveInlineError(
@@ -301,6 +319,12 @@ private fun JobdeskRow(
     val video = pilihan?.video
     val adaStaging = gambar.isNotEmpty() || video != null
     val gate = gateKirimBukti(gambar.size, video != null, video?.ukuranBytes ?: 0L)
+    // Sudah dinilai PIC = server menolak penimpaan. Seluruh tombol sumber bukti
+    // ikut mati lewat `bolehIsi`, dan alasannya ditulis — tombol mati tanpa
+    // keterangan terbaca sebagai aplikasi rusak, dan yang dibutuhkan orangnya
+    // bukan "tidak bisa" melainkan "harus minta siapa".
+    val terkunci = terkunciPic(terkirim?.reviewStatus)
+    val bolehIsi = enabled && !terkunci
 
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -329,13 +353,22 @@ private fun JobdeskRow(
                 return@Column
             }
 
+            if (terkunci) {
+                Text(
+                    PESAN_TERKUNCI_PIC,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.size(10.dp))
+            }
+
             // Baris 1 — sumber bukti. Tombol lawan DINONAKTIFKAN, bukan
             // disembunyikan: tombol yang hilang-muncul lebih membingungkan
             // daripada tombol mati yang jelas alasannya.
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ExpressiveFilledButton(
                     onClick = onKamera,
-                    enabled = enabled && video == null && gambar.size < MAX_GAMBAR,
+                    enabled = bolehIsi && video == null && gambar.size < MAX_GAMBAR,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f),
                 ) {
@@ -345,7 +378,7 @@ private fun JobdeskRow(
                 }
                 ExpressiveOutlinedButton(
                     onClick = onGaleri,
-                    enabled = enabled && video == null && gambar.size < MAX_GAMBAR,
+                    enabled = bolehIsi && video == null && gambar.size < MAX_GAMBAR,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f),
                 ) {
@@ -355,7 +388,7 @@ private fun JobdeskRow(
                 }
                 ExpressiveOutlinedButton(
                     onClick = onVideo,
-                    enabled = enabled && gambar.isEmpty(),
+                    enabled = bolehIsi && gambar.isEmpty(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f),
                 ) {
@@ -379,12 +412,12 @@ private fun JobdeskRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ExpressiveTextButton(onClick = onTanpaBukti, enabled = enabled) { Text("Tanpa bukti") }
+                ExpressiveTextButton(onClick = onTanpaBukti, enabled = bolehIsi) { Text("Tanpa bukti") }
                 Spacer(Modifier.weight(1f))
                 if (adaStaging) {
                     ExpressiveFilledButton(
                         onClick = onKirim,
-                        enabled = enabled && gate.ok,
+                        enabled = bolehIsi && gate.ok,
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     ) {
                         Text(if (video != null) "Kirim video" else "Kirim bukti (${gambar.size})")

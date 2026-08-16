@@ -203,3 +203,75 @@ internal fun pesanGagalDekode(dariGaleri: Boolean): String =
     } else {
         "Foto gagal diproses, coba jepret ulang"
     }
+
+// ── Gerbang hari Minggu (2026-08-16) ─────────────────────────────────────────
+
+/**
+ * Pesan penolakan hari Minggu — SALINAN PERSIS milik server
+ * (`kinerja-service/src/raport/service.rs`). Sengaja identik supaya orang tak
+ * membaca dua kalimat berbeda untuk satu aturan yang sama.
+ */
+internal const val PESAN_HARI_MINGGU = "Hari Minggu tidak wajib mengisi laporan raport."
+
+/**
+ * Hari Minggu menurut jam PERANGKAT.
+ *
+ * `Calendar`, BUKAN `java.time`: `java.time` haram di `app/src/main` (minSdk 24
+ * tanpa desugaring — lihat CLAUDE.md), dan pelanggarannya tak ketahuan sampai
+ * HP Android 7 di lapangan melempar `NoClassDefFoundError`.
+ *
+ * Zona waktu dibiarkan default perangkat. Server memutuskan dengan
+ * `chrono::Local` di VPS (WIB) dan seluruh armada HP ada di WIB juga, jadi
+ * keduanya sepakat; kalau kelak ada perangkat berzona lain, servernya tetap
+ * yang berkuasa — gerbang ini cuma mendahulukan kabarnya, tak menggantikannya.
+ */
+internal fun hariMinggu(millis: Long): Boolean {
+    val kalender = java.util.Calendar.getInstance()
+    kalender.timeInMillis = millis
+    return kalender.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SUNDAY
+}
+
+/**
+ * Boleh mengirim bukti hari ini?
+ *
+ * KENAPA ADA: server MENOLAK `POST /raport-harian` pada hari Minggu, tapi
+ * `POST /raport-harian/upload` (di biner yang beredar saat ini) TIDAK — dan app
+ * mengunggah SELURUH berkas dulu baru mengirim barisnya. Hasilnya, Minggu 16
+ * Agustus 2026: **36 berkas terunggah ke server dan NOL baris raport tercatat**;
+ * seluruhnya jadi berkas yatim, dan orangnya cuma melihat penolakan setelah
+ * menunggu semua unggahan selesai. Web sudah lama menutupnya di klien
+ * (`isSundayReportDay` di `KaryawanRaportPage.tsx`); app-lah yang tak punya
+ * cerminannya.
+ *
+ * Ini MENDAHULUKAN kabar, bukan menambah aturan baru: yang menolak tetap server.
+ */
+internal fun gerbangHariIni(millis: Long): BuktiGate =
+    if (hariMinggu(millis)) BuktiGate(false, PESAN_HARI_MINGGU) else BuktiGate(true, null)
+
+// ── Gerbang "sudah disetujui PIC" (2026-08-16) ───────────────────────────────
+
+/**
+ * Kalimat untuk jobdesk yang sudah disetujui PIC. Seirama dengan
+ * `pesan_raport_terkunci` milik server (`kinerja-service/src/raport/domain.rs`)
+ * — dipendekkan untuk layar HP, tapi menyebut jalan keluar yang SAMA, karena
+ * dua kalimat berbeda untuk satu aturan terbaca sebagai dua aturan.
+ */
+internal const val PESAN_TERKUNCI_PIC =
+    "Jobdesk ini sudah disetujui PIC, jadi buktinya dikunci. Minta PIC Raport " +
+        "mengembalikannya ke status Menunggu dulu kalau isinya perlu diperbaiki."
+
+/**
+ * Jobdesk yang buktinya TIDAK BISA diganti lagi.
+ *
+ * Server menolak penimpaan baris ber-`review_status = 'approved'`
+ * (`boleh_timpa_raport`) karena menimpanya menghapus nilai dan komentar PIC.
+ * App tak pernah mencerminkannya: tombolnya tetap hidup, orangnya memotret,
+ * MENUNGGU SELURUH UNGGAHAN SELESAI, lalu ditolak — dan yang terbaca olehnya
+ * adalah "buktinya tidak bisa dikirim". Dengan batas 10 gambar, ongkos salah
+ * paham itu sepuluh kali unggahan.
+ *
+ * Status apa pun selain `approved` (termasuk null = belum pernah dikirim, dan
+ * `rejected` yang justru MEMANG boleh dikirim ulang) tidak dikunci.
+ */
+internal fun terkunciPic(reviewStatus: String?): Boolean =
+    reviewStatus?.trim()?.equals("approved", ignoreCase = true) == true
