@@ -63,7 +63,30 @@ data class AbsensiTodayDto(
      * Kompat backend versi lama (sebelum "geofence lintas cabang") yang mengirim SATU geofence
      * cabang user. VM menggabungkan: pakai [geofences] bila ada, jika kosong fallback ke [geofence].
      */
-    val geofence: AbsensiGeofenceDto? = null
+    val geofence: AbsensiGeofenceDto? = null,
+    /**
+     * Gerbang absen pulang: laporan aktivitas hari itu harus lengkap
+     * (permintaan user 2026-08-17). `true` = boleh pulang.
+     *
+     * **Default `true` DISENGAJA** — backend lama (dan panggilan yang gagal)
+     * tak mengirim field ini, dan menganggap ketiadaannya sebagai "terkunci"
+     * akan memblokir SELURUH armada begitu satu endpoint bermasalah. Server
+     * tetap penegak sebenarnya; ini cuma cermin supaya tombolnya jujur.
+     */
+    val checkoutTerbuka: Boolean = true,
+    /**
+     * Kalimat tagihan dari server, atau `null` bila tak ada yang kurang.
+     *
+     * Dikirim JUGA saat [checkoutTerbuka] `true` — itulah mode peluncuran
+     * "tagih dulu, kunci menyusul". Layar merender kartunya dari ADA-TIDAKNYA
+     * teks ini, BUKAN dari `!checkoutTerbuka`; menggantungkannya pada gerbang
+     * membuat tagihannya lenyap begitu kuncinya dilepas.
+     */
+    val peringatanAktivitas: String? = null,
+    /** Sudah terisi berapa butir hari ini. `null` = tak terhitung. */
+    val aktivitasTerisi: Int? = null,
+    /** Berapa butir yang wajib menurut divisi orang itu. `null` = tak terhitung. */
+    val aktivitasWajib: Int? = null
 )
 
 /** Titik + radius geofence cabang (dari config), dikirim di `today` agar app hitung jarak live. */

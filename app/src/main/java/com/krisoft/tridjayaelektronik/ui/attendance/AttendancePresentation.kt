@@ -8,6 +8,7 @@ import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.krisoft.tridjayaelektronik.data.model.AbsensiRecordDto
+import com.krisoft.tridjayaelektronik.data.model.AbsensiTodayDto
 import com.krisoft.tridjayaelektronik.data.model.OffRequestDto
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -181,6 +182,36 @@ sealed interface TimelineEntry {
     data class Off(val off: OffRequestDto) : TimelineEntry {
         override val tanggal: String get() = off.tanggal
     }
+}
+
+/**
+ * Hasil gerbang tombol Absen Pulang: kelengkapan laporan aktivitas
+ * (permintaan user 2026-08-17).
+ *
+ * [alasan] TIDAK berarti "tertutup". Selama peluncuran bertahap, saklar server
+ * `absensi_gate_aktivitas` default MATI: tagihannya tetap dikirim sementara
+ * [boleh] tetap `true`. Karena itu layar merender kartunya dari `alasan != null`,
+ * BUKAN dari `!boleh` — kalau tidak, menyalakan/mematikan kunci ikut
+ * menghapus tagihannya dari layar.
+ */
+data class GatePulang(val boleh: Boolean, val alasan: String? = null)
+
+/**
+ * Cermin gerbang server (`AbsensiService::pastikan_aktivitas_lengkap`).
+ *
+ * **FAIL-OPEN saat data tak ada.** [today] `null` = panggilan `/absensi/today`
+ * gagal, offline, atau backend lama yang belum punya field ini — bukan berarti
+ * aktivitasnya kurang. Server tetap penegak sebenarnya (ia yang menolak
+ * check-out-nya); klien yang mengunci saat ragu akan memblokir absen pulang
+ * SELURUH armada begitu satu endpoint bermasalah. Itu persis bentuk insiden
+ * 2026-07-31, dan ia tak boleh lahir ulang dari cermin yang terlalu percaya diri.
+ *
+ * Kalimatnya datang APA ADANYA dari server — satu-satunya sumbernya di sana,
+ * supaya teks di layar dan pesan error 400 saat menekan tombol tak berselisih.
+ */
+fun gateAbsenPulang(today: AbsensiTodayDto?): GatePulang {
+    if (today == null) return GatePulang(true)
+    return GatePulang(today.checkoutTerbuka, today.peringatanAktivitas?.takeIf { it.isNotBlank() })
 }
 
 /**

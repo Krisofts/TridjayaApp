@@ -343,13 +343,19 @@ private fun AbsenCard(
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             when {
                 state.hasCheckedOut -> DoneSection(state)
+                // Gerbang aktivitas HANYA berlaku untuk absen pulang. Absen
+                // MASUK dapat `GatePulang(true)` mati-matian: aktivitas justru
+                // baru bisa diisi setelah orangnya masuk kerja, jadi menguncinya
+                // di sini akan menahan orang sebelum ia sempat bekerja.
                 state.hasCheckedIn -> PunchSection(
                     state, isCheckIn = false, onRefreshLocation, onTakeSelfie, onCheckOut,
+                    gate = state.gatePulang,
                 )
                 // Yang mengunci absen masuk adalah GEOFENCE, dan itu dinilai
                 // `state.gateMasuk` di dalam `PunchSection`.
                 else -> PunchSection(
                     state, isCheckIn = true, onRefreshLocation, onTakeSelfie, onCheckIn,
+                    gate = GatePulang(true),
                 )
             }
         }
@@ -364,6 +370,7 @@ private fun ColumnScope.PunchSection(
     onRefreshLocation: () -> Unit,
     onTakeSelfie: () -> Unit,
     onSubmit: () -> Unit,
+    gate: GatePulang,
 ) {
     val title = if (isCheckIn) "Absen Masuk" else "Absen Pulang"
     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -394,13 +401,15 @@ private fun ColumnScope.PunchSection(
     SelfieBox(state, onTakeSelfie)
     Spacer(modifier = Modifier.height(16.dp))
 
-    // `siapKirim` = syarat yang bisa dipenuhi DI LAYAR INI (selfie + lokasi).
+    // `siapKirim` = syarat yang bisa dipenuhi DI LAYAR INI (selfie + lokasi);
+    // dipisah dari `gate` supaya petunjuk di bawah tombol tak salah menuduh
+    // "menunggu lokasi…" padahal yang mengunci adalah kelengkapan aktivitas.
     val siapKirim = state.hasLocation && state.selfie != null && !state.submitting
     // Gate geofence HANYA untuk absen masuk: `check_out` di server sengaja tak
     // dipagari area, jadi mengunci tombol pulang di sini akan menahan orang yang
     // server-nya sendiri akan menerima.
     val gateMasuk = if (isCheckIn) state.gateMasuk else GateMasuk(true)
-    val canSubmit = siapKirim && gateMasuk.boleh
+    val canSubmit = siapKirim && gate.boleh && gateMasuk.boleh
     ExpressiveFilledButton(onClick = onSubmit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) {
         if (state.submitting) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
@@ -438,6 +447,26 @@ private fun ColumnScope.PunchSection(
             // Merah hanya saat benar-benar menahan; peringatan yang tak memblokir
             // tapi berwarna error mengajari orang mengabaikan merah.
             color = if (gateMasuk.boleh) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+    }
+    // Tagihan kelengkapan aktivitas. Dirender saat ada ALASAN, BUKAN saat
+    // tertutup: selama peluncuran bertahap saklarnya mati, jadi kekurangannya
+    // ditagih tanpa mengunci — dan menggantungkan kartu ini pada `!gate.boleh`
+    // akan membuat tagihannya ikut hilang.
+    gate.alasan?.let { alasan ->
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            // Kalimatnya milik SERVER — jangan menyusun teks sendiri di sini,
+            // supaya layar dan pesan error 400 saat menekan tombol tak pernah
+            // berselisih isi.
+            alasan,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (gate.boleh) {
                 MaterialTheme.colorScheme.onSurfaceVariant
             } else {
                 MaterialTheme.colorScheme.error

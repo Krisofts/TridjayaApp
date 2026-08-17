@@ -10,6 +10,7 @@ import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.OffRepository
 import com.krisoft.tridjayaelektronik.data.model.AbsensiGeofenceDto
 import com.krisoft.tridjayaelektronik.data.model.AbsensiRecordDto
+import com.krisoft.tridjayaelektronik.data.model.AbsensiTodayDto
 import com.krisoft.tridjayaelektronik.data.model.OffRequestDto
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +30,11 @@ import javax.inject.Inject
 data class AttendanceUiState(
     val loading: Boolean = true,
     val today: AbsensiRecordDto? = null,
+    /**
+     * Payload `/absensi/today` apa adanya — dipakai menurunkan [gatePulang].
+     * `null` = belum/gagal dimuat, dan gerbangnya fail-open.
+     */
+    val todayDto: AbsensiTodayDto? = null,
     val history: List<AbsensiRecordDto> = emptyList(),
     val loadError: String? = null,
 
@@ -68,6 +74,8 @@ data class AttendanceUiState(
     val offError: String? = null,
 
 ) {
+    /** Gerbang tombol Absen Pulang — cermin server, fail-open. */
+    val gatePulang: GatePulang get() = gateAbsenPulang(todayDto)
     val hasCheckedIn: Boolean get() = today?.checkInAt != null
     val hasCheckedOut: Boolean get() = today?.checkOutAt != null
     val hasLocation: Boolean get() = lat != null && lng != null
@@ -159,6 +167,10 @@ class AttendanceViewModel @Inject constructor(
                     it.copy(
                         loading = false,
                         today = today ?: it.today,
+                        // Gagal = `null` (bukan nilai lama): status tadi bisa
+                        // sudah tak berlaku, dan menahan gerbang atas data basi
+                        // persis yang dilarang doc [gateAbsenPulang].
+                        todayDto = todayData,
                         history = history ?: it.history,
                         loadError = error,
                         geofences = geofences ?: it.geofences,
