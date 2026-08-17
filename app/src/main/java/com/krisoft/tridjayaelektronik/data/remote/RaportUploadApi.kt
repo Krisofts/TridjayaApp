@@ -18,7 +18,7 @@ import retrofit2.http.Part
  * terhubung ke server", yang membuat orang menyalahkan sinyal atau server
  * padahal batas waktunya milik kita sendiri.
  *
- * Pola persis [AktivitasChatUploadApi], yang lahir dari alasan yang sama untuk
+ * Pola client-unggah-terpisah, yang lahir dari alasan yang sama untuk
  * video bukti chat.
  */
 interface RaportUploadApi {

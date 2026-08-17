@@ -226,35 +226,6 @@ class ActivityPlanTest {
         assertEquals("07:58", sudahMasuk.first().detail)
     }
 
-    /**
-     * 2026-08-02: `wajib = false` (Minggu, libur nasional, belum check-in, atau
-     * peran yang dibebaskan) dulu MENYEMBUNYIKAN kartu ini. Akibatnya kartu
-     * lenyap tiap Minggu dan tiap pagi sebelum check-in, dan itu dilaporkan
-     * sebagai "menu bukti chat hilang" (akun uji 11111111). Sekarang kartunya
-     * tetap ada, ditandai opsional, dan tak ikut jadi penyebut progres.
-     */
-    @Test
-    fun `kartu bukti chat tetap tampil saat tidak wajib`() {
-        val items = listOf(item("bukti_chat"))
-        val tasks = buildDailyTasks(
-            items,
-            checkInAt = null,
-            checkOutAt = null,
-            leadsToday = 0,
-            chatToday = com.krisoft.tridjayaelektronik.data.model.AktivitasChatTodayDto(
-                wajib = false,
-                alasanTidakWajib = "Hari ini bukan hari kerja.",
-            ),
-        )
-        val kartu = tasks.single()
-        assertEquals("bukti_chat", kartu.item.id)
-        assertTrue(kartu.opsional)
-        assertFalse(kartu.done)
-        assertEquals("tidak wajib hari ini", kartu.detail)
-        // Tak menghukum progres: penyebutnya nol, bukan 0/1.
-        assertEquals("0/0", dailyProgressLabel(tasks))
-    }
-
     @Test
     fun `prospek selesai bila ada lead hari ini`() {
         val items = listOf(item("prospek"))

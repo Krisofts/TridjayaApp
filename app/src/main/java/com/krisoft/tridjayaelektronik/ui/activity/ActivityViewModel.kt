@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.STATUS_DRAFT
 import com.krisoft.tridjayaelektronik.data.AbsensiRepository
-import com.krisoft.tridjayaelektronik.data.AktivitasChatRepository
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.CrmRepository
@@ -61,7 +60,6 @@ class ActivityViewModel @Inject constructor(
     private val crmRepository: CrmRepository,
     private val raportRepository: RaportRepository,
     private val homeServiceRepository: HomeServiceRepository,
-    private val aktivitasChatRepository: AktivitasChatRepository,
     private val listIndentUseCase: ListIndentUseCase,
     private val opnameRepository: OpnameRepository,
     private val spkTodayCounter: SpkTodayCounter,
@@ -138,7 +136,6 @@ class ActivityViewModel @Inject constructor(
         /** `null` = tak ada SPK gantung yang lewat tenggat (atau tak diambil). */
         var gantungAlert: String? = null
         /** `null` = status bukti chat tak diketahui — lihat `buildDailyTasks`. */
-        var chatToday: com.krisoft.tridjayaelektronik.data.model.AktivitasChatTodayDto? = null
 
         coroutineScope {
             val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
@@ -150,27 +147,6 @@ class ActivityViewModel @Inject constructor(
                         checkOutAt = r.data.record?.checkOutAt
                     }
                     is AuthResult.Failure -> failed += ActivitySource.ABSENSI_TODAY
-                }
-            }
-
-            if (ActivitySource.CHAT_ACTIVITY_TODAY in sources) jobs += async {
-                when (val r = aktivitasChatRepository.today()) {
-                    is AuthResult.Success -> chatToday = r.data
-                    is AuthResult.Failure -> failed += ActivitySource.CHAT_ACTIVITY_TODAY
-                }
-            }
-
-            // Antrian kepala cabang. `.total` (bukan `items.size`) — server memotong
-            // `items` ke `limit`, badge tak boleh ikut terpotong (pola DISCOUNT_PENDING).
-            if (ActivitySource.CHAT_REVIEW_PENDING in sources) jobs += async {
-                when (
-                    val r = aktivitasChatRepository.list(
-                        tanggal = todayIso,
-                        status = "pending_review",
-                    )
-                ) {
-                    is AuthResult.Success -> counts[ActivitySource.CHAT_REVIEW_PENDING] = r.data.total
-                    is AuthResult.Failure -> failed += ActivitySource.CHAT_REVIEW_PENDING
                 }
             }
 
@@ -263,7 +239,7 @@ class ActivityViewModel @Inject constructor(
             antrianKomplain(ActivitySource.HS_TUGAS_DRIVER, HsMode.DRIVER)
 
             // Antrian PIC. `.total` (bukan `items.size`) — server memotong `items`
-            // ke `limit`, badge tak boleh ikut terpotong (pola CHAT_REVIEW_PENDING).
+            // ke `limit`, badge tak boleh ikut terpotong (pola DISCOUNT_PENDING).
             if (ActivitySource.RAPORT_REVIEW_PENDING in sources) jobs += async {
                 when (val r = raportRepository.antrianReview(tanggal = todayIso)) {
                     is AuthResult.Success -> counts[ActivitySource.RAPORT_REVIEW_PENDING] = r.data.total
@@ -354,8 +330,6 @@ class ActivityViewModel @Inject constructor(
             raportFailed = ActivitySource.RAPORT_TODAY in failed,
             raportExpected = raportExpected,
             prospekTarget = prospekTarget,
-            chatToday = chatToday,
-            chatFailed = ActivitySource.CHAT_ACTIVITY_TODAY in failed,
         )
 
         // Ada load() yang lebih baru sudah dipanggil sejak kita mulai (atau sedang

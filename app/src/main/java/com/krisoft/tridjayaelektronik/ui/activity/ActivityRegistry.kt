@@ -36,10 +36,6 @@ enum class ActivityKind {
 enum class ActivitySource {
     NONE,
     ABSENSI_TODAY,
-    /** `GET /aktivitas-chat/today` — status bukti chat harian milik sendiri. */
-    CHAT_ACTIVITY_TODAY,
-    /** `GET /aktivitas-chat?tanggal=hari-ini&status=pending_review` — antrian kepala cabang. */
-    CHAT_REVIEW_PENDING,
     LEADS_CACHE,
     RAPORT_TODAY,
     /** `GET /raport-harian?tanggal=hari-ini&status=pending` — antrian PIC raport.
@@ -142,8 +138,8 @@ internal val RAPORT_REVIEW_ROLES = setOf(
  * menyatakan sendiri "belum ada role literal `cs` di sistem; sampai ada,
  * orangnya diberi salah satu role di daftar ini" — jadi ejaan itu tak akan
  * pernah cocok dengan role siapa pun dan cuma jadi baris yang tampak seperti
- * jaring pengaman padahal mati (dijaga `ActivityRegistryTest`, alasan yang sama
- * dengan `"kepala_cabang"` di [CHAT_REVIEW_ROLES]). Petugas CS sungguhan tetap
+ * jaring pengaman padahal mati (dijaga `ActivityRegistryTest`). Petugas CS
+ * sungguhan tetap
  * lolos lewat peta kemampuan server, yang memang sumber utamanya.
  */
 // [HS_LAPOR_ROLES] PINDAH ke `ui/home/QuickAccessMenus.kt` (lihat impor di atas).
@@ -190,16 +186,6 @@ internal val PDI_QUEUE_ROLES = setOf("pdi", "admin", "superadmin")
 /** `kasir.queue` — `confirm_spk` (ROLE_KASIR/admin). */
 internal val KASIR_QUEUE_ROLES = setOf("kasir", "admin", "superadmin")
 
-/**
- * `aktivitas_chat.review` — `REVIEW_ROLES` (kinerja-service `chat_activity`).
- * Kepala cabang yang memeriksa anak buahnya; admin/manager ikut supaya bukti tak
- * mandek saat kepala cabangnya cuti (dan merekalah yang menerima keluhannya).
- *
- * `"kepala_cabang"` (garis bawah) SENGAJA tak ditulis: ejaan itu tak ada di
- * `KNOWN_ROLES`, jadi ia tak akan pernah cocok dengan role siapa pun — cuma
- * menambah baris yang terlihat seperti jaring pengaman padahal mati.
- */
-internal val CHAT_REVIEW_ROLES = setOf("kepala-cabang", "manager", "admin", "superadmin")
 
 /**
  * `spk.create` — `can_create_spk` (inventory-service `delivery.rs`, kini
@@ -238,26 +224,6 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "kinerja-service absensi.rs STAFF_ROLES",
         source = ActivitySource.ABSENSI_TODAY,
         navKey = "absen",
-    ),
-    ActivityItem(
-        // PERSIS setelah `absen_pulang`: bukti chat adalah SYARAT absen pulang
-        // (server menolak check-out selama belum beres), jadi tugas yang membuka
-        // tombol itu harus duduk di sebelahnya — bukan tercecer di bawah daftar.
-        id = "bukti_chat",
-        label = "Bukti chat",
-        subtitle = "Video bukti chat harian",
-        kind = ActivityKind.TUGAS_HARIAN,
-        // `.open`, BUKAN `.submit` (2026-08-02): `.submit` = WAJIB mengirim, dan
-        // memakainya sebagai gate kartu membuat pembebasan peran manajemen
-        // 2026-07-31 sekaligus melenyapkan kartunya. Sekarang dua kunci: yang
-        // ini soal boleh-membuka, kewajibannya tetap `.submit` (dipakai `wajib`
-        // di `/today`). Server juga tak lagi menolak kiriman sukarela mereka,
-        // jadi kartu ini bukan jalan buntu.
-        capability = "aktivitas_chat.open",
-        allowedRoles = STAFF_MENU_ROLES,
-        backendGuard = "rust-shared capabilities.rs AKTIVITAS_CHAT_ACCESS_ROLES",
-        source = ActivitySource.CHAT_ACTIVITY_TODAY,
-        navKey = "bukti_chat",
     ),
     ActivityItem(
         id = "prospek",
@@ -386,17 +352,6 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "kinerja-service raport.rs REVIEW_ROLES (capabilities::RAPORT_REVIEW_ROLES)",
         source = ActivitySource.RAPORT_REVIEW_PENDING,
         navKey = "raport_review",
-    ),
-    ActivityItem(
-        id = "review_bukti_chat",
-        label = "Periksa Bukti Chat",
-        subtitle = "Bukti chat anak buah menunggu",
-        kind = ActivityKind.ANTRIAN,
-        capability = "aktivitas_chat.review",
-        allowedRoles = CHAT_REVIEW_ROLES,
-        backendGuard = "kinerja-service chat_activity REVIEW_ROLES",
-        source = ActivitySource.CHAT_REVIEW_PENDING,
-        navKey = "review_bukti_chat",
     ),
     ActivityItem(
         id = "antrian_pdi",

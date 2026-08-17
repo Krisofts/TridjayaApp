@@ -14,8 +14,6 @@ import com.krisoft.tridjayaelektronik.data.local.SyncMetaDao
 import com.krisoft.tridjayaelektronik.data.remote.ApkApi
 import com.krisoft.tridjayaelektronik.data.remote.AuthApi
 import com.krisoft.tridjayaelektronik.data.remote.AbsensiApi
-import com.krisoft.tridjayaelektronik.data.remote.AktivitasChatApi
-import com.krisoft.tridjayaelektronik.data.remote.AktivitasChatUploadApi
 import com.krisoft.tridjayaelektronik.data.remote.DeadstockApi
 import com.krisoft.tridjayaelektronik.data.remote.DeliveryFlowApi
 import com.krisoft.tridjayaelektronik.data.remote.CrmApi
@@ -85,17 +83,6 @@ object AppModule {
     @Singleton
     fun provideAbsensiApi(tokenStore: TokenStore): AbsensiApi =
         NetworkModule.createAbsensiApi(tokenStore)
-
-    @Provides
-    @Singleton
-    fun provideAktivitasChatApi(tokenStore: TokenStore): AktivitasChatApi =
-        NetworkModule.createAktivitasChatApi(tokenStore)
-
-    /** Client sendiri (timeout unggah panjang) — lihat NetworkModule.createAktivitasChatUploadApi. */
-    @Provides
-    @Singleton
-    fun provideAktivitasChatUploadApi(tokenStore: TokenStore): AktivitasChatUploadApi =
-        NetworkModule.createAktivitasChatUploadApi(tokenStore)
 
     @Provides
     @Singleton

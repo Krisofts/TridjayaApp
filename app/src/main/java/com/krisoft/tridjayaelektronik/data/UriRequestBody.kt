@@ -21,7 +21,7 @@ import okio.source
  * tak terbaca akan memblokir video yang sebenarnya sah.
  *
  * Dipakai bersama oleh bukti chat dan bukti raport — dulu `private` di
- * `AktivitasChatRepository`, dinaikkan ke berkas sendiri 2026-08-14 supaya
+ * repository unggah, dinaikkan ke berkas sendiri 2026-08-14 supaya
  * jalur unggah kedua tak perlu menyalin implementasinya. Menyalinnya berarti
  * dua jalur streaming yang bisa menyimpang diam-diam.
  */

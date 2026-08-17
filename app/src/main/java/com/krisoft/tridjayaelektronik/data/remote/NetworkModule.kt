@@ -94,36 +94,6 @@ object NetworkModule {
     fun createAbsensiApi(tokenStore: TokenStore): AbsensiApi =
         authenticatedRetrofit(tokenStore).create(AbsensiApi::class.java)
 
-    fun createAktivitasChatApi(tokenStore: TokenStore): AktivitasChatApi =
-        authenticatedRetrofit(tokenStore).create(AktivitasChatApi::class.java)
-
-    /**
-     * Client TERPISAH untuk unggah video bukti chat. Client bersama ber-write/readTimeout
-     * 20 detik — video sampai 50MB (batas naik dari 20MB pada 2026-07-31) di jaringan cabang
-     * butuh MENIT, jadi lewat client itu unggahan besar SELALU mati timeout dan di layar
-     * terlihat seperti "server error". Kenaikan batas TIDAK menuntut angka di bawah diubah:
-     * `callTimeout(0)` tak membatasi durasi menyeluruh dan write timeout dihitung PER-BLOK,
-     * jadi berkas 2,5× lebih besar tetap lolos selama datanya mengalir.
-     *
-     * Diturunkan lewat `newBuilder()` dari client bersama (BUKAN client baru dari nol) supaya
-     * AuthHeaderInterceptor + TokenRefreshAuthenticator IKUT — tanpa itu request unggah
-     * berangkat tanpa header Authorization dan selalu 401. `callTimeout(0)` = tanpa batas
-     * menyeluruh; batas nyata tetap dipegang write/read timeout per-blok, yang justru bisa
-     * membedakan "jaringan lambat tapi jalan" dari "jaringan mati".
-     */
-    fun createAktivitasChatUploadApi(tokenStore: TokenStore): AktivitasChatUploadApi {
-        val base = authenticatedRetrofit(tokenStore)
-        val uploadClient = (base.callFactory() as OkHttpClient).newBuilder()
-            .writeTimeout(300, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .callTimeout(0, TimeUnit.SECONDS)
-            .build()
-        return base.newBuilder()
-            .client(uploadClient)
-            .build()
-            .create(AktivitasChatUploadApi::class.java)
-    }
-
     fun createEventApi(tokenStore: TokenStore): EventApi =
         authenticatedRetrofit(tokenStore).create(EventApi::class.java)
 
@@ -134,12 +104,10 @@ object NetworkModule {
         authenticatedRetrofit(tokenStore).create(RaportApi::class.java)
 
     /**
-     * Client khusus unggah bukti raport — alasan timeout-nya sama persis dengan
-     * [createAktivitasChatUploadApi]: badan sampai 30 MB tak akan selesai dalam
-     * 20 detik milik client bersama.
+     * Client khusus unggah bukti raport: badan sampai 30 MB tak akan selesai
+     * dalam 20 detik milik client bersama, jadi ia butuh timeout sendiri.
      *
-     * `HttpLoggingInterceptor` DIBUANG di sini (hanya untuk client ini, bukan
-     * untuk client chat): pada level `BODY` — yang aktif di build debug — ia
+     * `HttpLoggingInterceptor` DIBUANG di sini: pada level `BODY` — yang aktif di build debug — ia
      * memanggil `requestBody.writeTo(Buffer())` untuk memeriksa isinya, jadi
      * seluruh video masuk heap dulu HANYA supaya bisa dicetak sebagai "binary
      * body omitted". Itu membatalkan seluruh gunanya [UriRequestBody] justru

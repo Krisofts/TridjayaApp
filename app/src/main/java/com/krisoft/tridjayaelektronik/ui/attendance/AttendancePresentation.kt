@@ -8,7 +8,6 @@ import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.krisoft.tridjayaelektronik.data.model.AbsensiRecordDto
-import com.krisoft.tridjayaelektronik.data.model.AktivitasChatTodayDto
 import com.krisoft.tridjayaelektronik.data.model.OffRequestDto
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -185,44 +184,11 @@ sealed interface TimelineEntry {
 }
 
 /**
- * Hasil gate tombol Absen Pulang.
- *
- * [alasan] tidak lagi berarti "tertutup": sejak saklar `blokirPulang` server ada
- * (2026-07-31, default MATI), ia bisa terisi SEKALIGUS [boleh] `true` — artinya
- * bukti chat masih kurang tapi absen pulangnya tidak ditahan. Karena itu layar
- * merender kartunya berdasarkan `alasan != null`, BUKAN `!boleh`; kalau tidak,
- * melepas kunci ikut menghapus tagihannya dari layar.
- */
-data class GatePulang(val boleh: Boolean, val alasan: String? = null)
-
-/**
- * Cermin gate server (`AbsensiService::check_out` di kinerja-service): sejak bukti
- * chat harian jadi syarat, check-out ditolak selama buktinya belum beres.
- *
- * **FAIL-OPEN saat data tak ada.** [today] `null` berarti panggilan
- * `GET /aktivitas-chat/today` gagal, sedang offline, atau backendnya memang belum
- * punya fitur ini — bukan berarti buktinya belum beres. Server tetap penegak
- * sebenarnya (dia menolak check-out-nya), sedangkan klien yang mengunci saat ragu
- * akan memblokir absen pulang SELURUH armada begitu satu endpoint bermasalah.
- *
- * Kalimat penolakannya datang APA ADANYA dari server — satu-satunya sumbernya di
- * sana, supaya teks di layar dan pesan error saat menekan tombol tak berselisih.
- */
-fun gateAbsenPulang(today: AktivitasChatTodayDto?): GatePulang {
-    if (today == null) return GatePulang(true)
-    if (today.checkoutTerbuka) {
-        // Terbuka, tapi mungkin masih ada tagihan yang harus tetap terlihat.
-        return GatePulang(true, today.peringatanBuktiChat?.takeIf { it.isNotBlank() })
-    }
-    return GatePulang(false, today.alasanCheckoutTertutup ?: "Bukti chat harian belum beres.")
-}
-
-/**
  * Hasil gate tombol Absen Masuk (geofence).
  *
- * Sengaja terpisah dari [GatePulang]: aturannya berlawanan. Absen MASUK ditolak
- * server kalau di luar area, absen PULANG tidak (`check_out` sengaja tak dipagari
- * supaya driver/sales yang masih di lapangan sore hari tetap bisa pulang).
+ * Absen MASUK ditolak server kalau di luar area, absen PULANG tidak
+ * (`check_out` sengaja tak dipagari supaya driver/sales yang masih di lapangan
+ * sore hari tetap bisa pulang).
  */
 data class GateMasuk(val boleh: Boolean, val alasan: String? = null)
 

@@ -17,7 +17,7 @@ import javax.inject.Singleton
  * Event lapangan + prospek yang dicatat sales di sana. Tanpa cache lokal: event dibuka/ditutup
  * manajemen kapan saja, jadi daftar basi lebih berbahaya daripada daftar kosong — sales bisa
  * mengetik data ke event yang sudah ditutup lalu ditolak 400 di ujung. Pola sama
- * [AktivitasChatRepository].
+ * repository lain di paket ini.
  */
 @Singleton
 class EventRepository @Inject constructor(

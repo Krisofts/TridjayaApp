@@ -72,7 +72,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
  * `PicRaportDashboardPage`: PIC menilai satu orang sekaligus, dan daftar rata
  * membuat jobdesk milik orang yang sama tercecer di antara karyawan lain.
  *
- * Tanpa pemutar video di dalam app (sama seperti `ChatReviewScreen`): baris
+ * Tanpa pemutar video di dalam app: baris
  * ber-`mode=video` menampilkan penanda "bukti video" dan menyerahkan
  * pemeriksaannya ke web — endpoint videonya butuh header `Authorization`,
  * jadi URL polos tak bisa diserahkan ke pemutar.

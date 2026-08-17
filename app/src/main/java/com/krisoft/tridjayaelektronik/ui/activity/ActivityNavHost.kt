@@ -17,8 +17,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.krisoft.tridjayaelektronik.ui.attendance.AttendanceScreen
-import com.krisoft.tridjayaelektronik.ui.chatactivity.ChatActivityScreen
-import com.krisoft.tridjayaelektronik.ui.chatactivity.ChatReviewScreen
 import com.krisoft.tridjayaelektronik.ui.deadstock.DeadstockScreen
 import com.krisoft.tridjayaelektronik.ui.event.EventLeadScreen
 import com.krisoft.tridjayaelektronik.ui.indent.IndentListScreen
@@ -85,8 +83,6 @@ private const val ROUTE_HS_DRIVER = "home_hs_driver"
 private const val ROUTE_HS_DETAIL = "home_hs_detail/{id}"
 
 private fun hsDetailRoute(id: String) = "home_hs_detail/${Uri.encode(id)}"
-private const val ROUTE_BUKTI_CHAT = "home_bukti_chat"
-private const val ROUTE_REVIEW_BUKTI_CHAT = "home_review_bukti_chat"
 private const val ROUTE_GAJI = "home_gaji"
 private const val ROUTE_KPI = "home_kpi"
 private const val ROUTE_HARGA_GS = "home_harga_gs"
@@ -182,8 +178,6 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "hs_tarik" -> ROUTE_HS_TARIK
     "hs_driver" -> ROUTE_HS_DRIVER
     // Bukti chat harian: layar karyawan (kirim) vs antrian kepala cabang (periksa).
-    "bukti_chat" -> ROUTE_BUKTI_CHAT
-    "review_bukti_chat" -> ROUTE_REVIEW_BUKTI_CHAT
     "indent" -> ROUTE_INDENT
     // Daftar sesi opname cabang (petugas yang ikut menghitung). Route-nya SUDAH
     // ter-mount sejak lama sebagai anak tab Operasional — kartu Activity cuma
@@ -369,15 +363,7 @@ fun ActivityNavHost(
             OpnameValidasiScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_ABSEN) {
-            AttendanceScreen(
-                onBack = { navController.popBackStack() },
-                // Absen pulang terkunci sampai bukti chat beres — jalan pintasnya
-                // dari layar yang mematikan tombolnya, bukan menyuruh user mencari
-                // sendiri kartunya di layar pertama.
-                onUploadBuktiChat = {
-                    navController.navigate(ROUTE_BUKTI_CHAT) { launchSingleTop = true }
-                },
-            )
+            AttendanceScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_RAPORT) {
             RaportScreen(onBack = { navController.popBackStack() })
@@ -414,12 +400,6 @@ fun ActivityNavHost(
             arguments = listOf(navArgument("id") { type = NavType.StringType })
         ) {
             HomeServiceDetailScreen(onBack = { navController.popBackStack() })
-        }
-        composable(ROUTE_BUKTI_CHAT) {
-            ChatActivityScreen(onBack = { navController.popBackStack() })
-        }
-        composable(ROUTE_REVIEW_BUKTI_CHAT) {
-            ChatReviewScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_GAJI) {
             PayrollScreen(onBack = { navController.popBackStack() })

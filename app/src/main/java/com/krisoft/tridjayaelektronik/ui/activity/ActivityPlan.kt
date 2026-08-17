@@ -1,9 +1,7 @@
 package com.krisoft.tridjayaelektronik.ui.activity
 
-import com.krisoft.tridjayaelektronik.data.model.AktivitasChatTodayDto
 import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
 import com.krisoft.tridjayaelektronik.data.model.parseTimestampMillis
-import com.krisoft.tridjayaelektronik.ui.chatactivity.statusLabel
 
 /**
  * Penyusun tampilan layar Activity — SENGAJA fungsi murni tanpa Android/Compose
@@ -163,22 +161,8 @@ internal fun buildDailyTasks(
      * perilaku lama, JANGAN divonis belum selesai. Lihat [prospekTaskDetail].
      */
     prospekTarget: ProspekTargetDto? = null,
-    /**
-     * Status bukti chat harian dari server. `null` = TIDAK DIKETAHUI (gagal /
-     * offline / backend belum punya fiturnya) — sama prinsipnya dengan
-     * [prospekTarget]: jangan memvonis, lihat [chatFailed].
-     */
-    chatToday: AktivitasChatTodayDto? = null,
-    /** true = panggilan bukti chat gagal — alasan sama dgn [absensiFailed]. */
-    chatFailed: Boolean = false,
 ): List<DailyTask> = items
     .filter { it.kind == ActivityKind.TUGAS_HARIAN }
-    // `wajib = false` (hari libur, saklar server mati, belum check-in, atau
-    // peran yang dibebaskan) TIDAK LAGI menyembunyikan kartunya (2026-08-02,
-    // permintaan user). Menyembunyikannya membuat kartu lenyap tiap Minggu dan
-    // setiap pagi sebelum check-in, dan itu terbaca sebagai "menu bukti chat
-    // hilang" — laporan nyata dari akun uji 11111111. Sekarang kartunya tetap
-    // ada, ditandai `opsional` supaya tak ikut jadi penyebut progres.
     // Absen pulang tak relevan sebelum check-in — menampilkannya sejak pagi
     // membuat progres harian selalu terlihat gagal. Gagal-muat dikecualikan
     // dari aturan ini (di bawah): kita tak TAHU status check-in-nya, jadi
@@ -209,30 +193,6 @@ internal fun buildDailyTasks(
                     detail = prospekTaskDetail(srv, leadsToday),
                 )
             }
-            chatFailed && item.id == "bukti_chat" ->
-                DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
-            // Tidak wajib hari ini: kartu tetap bisa dibuka (layar Bukti Chat
-            // menjelaskan alasannya lewat `alasanTidakWajib`), tapi tak dihitung
-            // sebagai tugas yang belum beres.
-            item.id == "bukti_chat" && chatToday?.wajib == false -> DailyTask(
-                item,
-                done = false,
-                detail = "tidak wajib hari ini",
-                opsional = true,
-            )
-            item.id == "bukti_chat" -> {
-                val status = chatToday?.bukti?.status.orEmpty()
-                DailyTask(
-                    item,
-                    // "Menunggu diperiksa" BUKAN selesai: absen pulangnya masih
-                    // terkunci, jadi mencentangnya di sini akan bertentangan dgn
-                    // tombol yang mati di layar absensi.
-                    done = status in BUKTI_CHAT_SELESAI,
-                    // `statusLabel` dipakai ulang apa adanya supaya teks kartu ini
-                    // identik dgn layar Bukti Chat yang dibuka saat ditekan.
-                    detail = statusLabel(status),
-                )
-            }
             raportFailed && item.id == "raport" ->
                 DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
             item.id == "raport" -> DailyTask(
@@ -255,7 +215,6 @@ internal fun buildDailyTasks(
  * `checkoutTerbuka` di server (`auto_approved` = ambang tercapai tanpa perlu
  * diperiksa manusia).
  */
-internal val BUKTI_CHAT_SELESAI = setOf("approved", "auto_approved")
 
 /**
  * Teks kanan kartu "Input Aktivitas": "3/7 jobdesk" kalau penyebutnya benar-

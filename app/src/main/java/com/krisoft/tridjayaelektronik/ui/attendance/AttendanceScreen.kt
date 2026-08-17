@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
@@ -105,8 +104,6 @@ import java.util.Locale
 @Composable
 fun AttendanceScreen(
     onBack: () -> Unit,
-    /** Tombol "Upload Bukti Chat" saat absen pulang terkunci — lihat [gateAbsenPulang]. */
-    onUploadBuktiChat: () -> Unit = {},
     viewModel: AttendanceViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -193,7 +190,6 @@ fun AttendanceScreen(
                                 onTakeSelfie = { cameraLauncher.launch(selfieUri) },
                                 onCheckIn = viewModel::checkIn,
                                 onCheckOut = viewModel::checkOut,
-                                onUploadBuktiChat = onUploadBuktiChat
                             )
                         }
                         item(key = "aturan") { WorkRuleInfo() }
@@ -342,27 +338,18 @@ private fun AbsenCard(
     onTakeSelfie: () -> Unit,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
-    onUploadBuktiChat: () -> Unit
 ) {
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             when {
                 state.hasCheckedOut -> DoneSection(state)
-                // Gate bukti chat HANYA berlaku untuk check-out. Check-in dapat
-                // GatePulang(true) mati-matian: absen MASUK tak pernah boleh
-                // terkunci oleh bukti chat (yang justru baru bisa dikumpulkan
-                // setelah orangnya masuk kerja).
                 state.hasCheckedIn -> PunchSection(
                     state, isCheckIn = false, onRefreshLocation, onTakeSelfie, onCheckOut,
-                    gate = state.gatePulang, onUploadBuktiChat = onUploadBuktiChat
                 )
-                // Absen MASUK tak pernah dikunci bukti chat (`GatePulang(true)`) —
-                // buktinya justru baru bisa dikumpulkan setelah orangnya masuk
-                // kerja. Yang mengunci absen masuk adalah GEOFENCE, dan itu
-                // dinilai `state.gateMasuk` di dalam `PunchSection`.
+                // Yang mengunci absen masuk adalah GEOFENCE, dan itu dinilai
+                // `state.gateMasuk` di dalam `PunchSection`.
                 else -> PunchSection(
                     state, isCheckIn = true, onRefreshLocation, onTakeSelfie, onCheckIn,
-                    gate = GatePulang(true), onUploadBuktiChat = onUploadBuktiChat
                 )
             }
         }
@@ -377,8 +364,6 @@ private fun ColumnScope.PunchSection(
     onRefreshLocation: () -> Unit,
     onTakeSelfie: () -> Unit,
     onSubmit: () -> Unit,
-    gate: GatePulang,
-    onUploadBuktiChat: () -> Unit
 ) {
     val title = if (isCheckIn) "Absen Masuk" else "Absen Pulang"
     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -409,15 +394,13 @@ private fun ColumnScope.PunchSection(
     SelfieBox(state, onTakeSelfie)
     Spacer(modifier = Modifier.height(16.dp))
 
-    // `siapKirim` = syarat yang bisa dipenuhi DI LAYAR INI (selfie + lokasi);
-    // dipisah dari `gate` supaya petunjuk di bawah tombol tak salah menuduh
-    // "menunggu lokasi…" padahal yang mengunci adalah bukti chat.
+    // `siapKirim` = syarat yang bisa dipenuhi DI LAYAR INI (selfie + lokasi).
     val siapKirim = state.hasLocation && state.selfie != null && !state.submitting
     // Gate geofence HANYA untuk absen masuk: `check_out` di server sengaja tak
     // dipagari area, jadi mengunci tombol pulang di sini akan menahan orang yang
     // server-nya sendiri akan menerima.
     val gateMasuk = if (isCheckIn) state.gateMasuk else GateMasuk(true)
-    val canSubmit = siapKirim && gate.boleh && gateMasuk.boleh
+    val canSubmit = siapKirim && gateMasuk.boleh
     ExpressiveFilledButton(onClick = onSubmit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) {
         if (state.submitting) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
@@ -444,9 +427,9 @@ private fun ColumnScope.PunchSection(
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
-    // Alasan geofence. Pola sama dengan kartu bukti chat di bawah: dirender saat
-    // ada ALASAN, bukan saat tertutup — tanpa daftar cabang lengkap kita tak
-    // mengunci tapi tetap wajib memberi tahu (lihat [gateAbsenMasuk]).
+    // Alasan geofence dirender saat ada ALASAN, bukan saat tertutup — tanpa
+    // daftar cabang lengkap kita tak mengunci tapi tetap wajib memberi tahu
+    // (lihat [gateAbsenMasuk]).
     gateMasuk.alasan?.let { alasan ->
         Spacer(modifier = Modifier.height(10.dp))
         Text(
@@ -461,34 +444,6 @@ private fun ColumnScope.PunchSection(
             },
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
-    }
-    // Dirender saat ada ALASAN, bukan saat tertutup: sejak saklar `blokirPulang`
-    // server ada, bukti yang masih kurang bisa cuma ditagih tanpa mengunci —
-    // dan menggantungkan kartu ini pada `!gate.boleh` akan membuat tagihannya
-    // ikut hilang begitu kuncinya dilepas.
-    gate.alasan?.let { alasan ->
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            // Kalimatnya milik SERVER — jangan menyusun teks sendiri di sini,
-            // supaya layar dan pesan error 400 saat menekan tombol tak pernah
-            // berselisih isi.
-            alasan,
-            style = MaterialTheme.typography.bodySmall,
-            // Merah HANYA saat benar-benar menahan. Peringatan yang tak
-            // memblokir tapi berwarna error mengajari orang mengabaikan merah.
-            color = if (gate.boleh) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.error
-            },
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        ExpressiveOutlinedButton(onClick = onUploadBuktiChat, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Upload Bukti Chat")
-        }
     }
 }
 

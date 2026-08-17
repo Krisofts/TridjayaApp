@@ -13,7 +13,7 @@ import android.provider.OpenableColumns
  * seluruh kegagalan query — jawabannya `"" to 0L`, bukan lemparan.
  *
  * Dipakai bersama bukti chat dan bukti raport; dulu `private` di
- * `ChatActivityScreen`, dinaikkan ke `util/` 2026-08-14.
+ * layar unggah, dinaikkan ke `util/` 2026-08-14.
  */
 internal fun bacaInfoBerkas(resolver: ContentResolver, uri: Uri): Pair<String, Long> {
     val kolom = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)

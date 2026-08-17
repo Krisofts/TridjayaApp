@@ -30,8 +30,8 @@ import java.io.File
  * subdirektori cache/files harus dideklarasikan, titik. Mendeklarasikan satu
  * baris XML tambahan ongkosnya nol; melewatkannya ongkosnya fitur yang mati
  * senyap di lapangan. Korelasi per-berkas juga tak bisa diandalkan — direktori
- * bisa ditulis di satu berkas (`ChatActivityViewModel`) lalu dibagikan lewat
- * `getUriForFile` di berkas lain (`ChatReviewScreen`).
+ * bisa ditulis di satu berkas lalu dibagikan lewat `getUriForFile` di
+ * berkas lain.
  */
 class FileProviderPathsTest {
 

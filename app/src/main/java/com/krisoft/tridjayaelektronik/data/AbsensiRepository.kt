@@ -83,11 +83,8 @@ class AbsensiRepository @Inject constructor(
         }
         // `errors[0]` DULU, `message` cuma cadangan — alasan `ApiError::Validation`
         // ada di `errors`, `message`-nya selalu "Input tidak valid" (rust-shared
-        // `error.rs`). Yang paling penting di modul ini: gate absen pulang
-        // (bukti aktivitas chat) menolak lewat jalur itu. Layar sudah punya
-        // pra-gate `gateAbsenPulang`, TAPI pra-gate itu fail-open saat
-        // `/aktivitas-chat/today` gagal dimuat — justru di keadaan itulah
-        // penolakan server muncul, dan tanpa ini bunyinya "Input tidak valid".
+        // `error.rs`). Tanpa ini, penolakan server yang punya alasan jelas
+        // muncul di layar sebagai "Input tidak valid".
         val detail = parsed?.errors?.firstOrNull()?.takeIf { it.isNotBlank() }
         return AuthResult.Failure(
             parsed?.code ?: "http_${response.code()}",
