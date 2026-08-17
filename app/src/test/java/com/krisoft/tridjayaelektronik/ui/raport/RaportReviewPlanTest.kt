@@ -99,7 +99,7 @@ class RaportReviewPlanTest {
     // ── Pengelompokan ────────────────────────────────────────────────────────
 
     @Test
-    fun `baris dikelompokkan per karyawan dan jobdesk terurut`() {
+    fun `baris dikelompokkan per karyawan dan aktivitas terurut`() {
         val grup = grupPerKaryawan(
             listOf(
                 RaportItemDto(id = "1", employeeId = "A", employeeName = "Andi", jobdeskIndex = 2),

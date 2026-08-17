@@ -424,7 +424,7 @@ class CrmRepository @Inject constructor(
      * ISI permintaannya, mis. nomor WhatsApp di luar 7–15 angka) itu keliru dua
      * kali: percobaannya tak akan pernah berhasil, dan sales-nya diberi tahu
      * prospeknya "antre" padahal server tak pernah menerimanya — jadi prospek itu
-     * tak ikut menghitung target harian dan jobdesk raportnya tak pernah otomatis
+     * tak ikut menghitung target harian dan aktivitas raportnya tak pernah otomatis
      * disetujui. Terukur di nginx: 390 penolakan 400 dalam tujuh hari (8–14 Agt
      * 2026), naik 40/hari → 93/hari seiring baris macet menumpuk.
      *

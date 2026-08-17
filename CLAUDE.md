@@ -723,13 +723,21 @@ Force-update / optional-update / "Cek Pembaruan" (Settings) driven by **Firebase
 - Settings: profile display, nomor WA bisa diubah, semua role terlihat, logout dikonfirmasi,
   cabang, cek pembaruan (`ui/settings/SettingsFormat.kt` memformat nilai tampilan)
 - Input Aktivitas / raport harian (`ui/raport/`, **BETA** — kartu di Activity berlabel BETA):
-  daftar jobdesk posisi karyawan dari `GET /api/jobdesk-divisions` (dicocokkan ke `divisi`
-  profil lewat `matchJobdeskPosition`, port 1:1 `getPositionMatch` web — **tak boleh** jatuh ke
-  posisi pertama saat tak cocok, itu bikin orang dinilai atas jobdesk divisi lain), kirim per
+  daftar aktivitas posisi karyawan dari `GET /api/jobdesk-divisions` (dicocokkan ke `divisi`
+  profil lewat `matchAktivitasPosition`, port 1:1 `getPositionMatch` web — **tak boleh** jatuh ke
+  posisi pertama saat tak cocok, itu bikin orang dinilai atas aktivitas divisi lain), kirim per
   baris ke `POST /api/raport-harian`. Bukti = foto kamera, **sampai 10 gambar dari galeri** (dinaikkan dari 6 pada
-  2026-08-16 — katalog jobdesk produksi penuh target berjumlah sepuluh; angkanya
+  2026-08-16 — katalog aktivitas produksi penuh target berjumlah sepuluh; angkanya
   hidup di `MAX_GAMBAR` dan WAJIB sama dengan `MAX_IMAGE_FILES` web),
   **satu video**, atau `mode=none` + alasan ≥10 karakter.
+  **Istilah "jobdesk" diganti "aktivitas" pada 2026-08-17** — di layar DAN di nama simbol
+  Kotlin. Yang SENGAJA tetap mengeja "jobdesk" dan jangan "dirapikan": nama properti DTO
+  (`AktivitasPositionDto.jobdesks`, `RaportItemDto.jobdeskIndex`/`.jobdeskText`,
+  `SubmitRaportItem.jobdeskIndex`/`.jobdeskText`) — repo ini nol `@SerialName`, jadi nama
+  properti Kotlin ADALAH nama di kabel dan menggantinya bikin field hilang senyap (kotlinx
+  mengisi default, tak melempar); rute `api/jobdesk-divisions` + kunci `app_settings`
+  `jobdesk_divisions`; dan nama berkas cache `raport/jobdesk_<i>_g<n>.jpg` / `_k<n>.jpg`
+  (path FileProvider, `res/xml/file_paths.xml`).
   **Unggah galeri + video ditambahkan 2026-08-14** (sebelumnya kamera saja). Aturannya
   di `ui/raport/RaportBuktiPlan.kt` (fungsi murni, diuji `RaportBuktiPlanTest`):
   * **Bentuk `evidenceUrl`: 1 gambar → string POLOS, ≥2 → JSON array; video selalu polos.**

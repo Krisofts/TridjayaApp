@@ -3,7 +3,7 @@ package com.krisoft.tridjayaelektronik.data
 import android.content.ContentResolver
 import android.net.Uri
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
-import com.krisoft.tridjayaelektronik.data.model.JobdeskPositionDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
 import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
 import com.krisoft.tridjayaelektronik.data.model.RaportListData
 import com.krisoft.tridjayaelektronik.data.model.ReviewRaportBody
@@ -34,12 +34,12 @@ class RaportRepository @Inject constructor(
 ) {
     private val errorJson = Json { ignoreUnknownKeys = true }
 
-    /** Master jobdesk semua posisi — pemilihan posisi milik user dilakukan UI. */
-    suspend fun jobdeskPositions(): AuthResult<List<JobdeskPositionDto>> = try {
+    /** Master aktivitas semua posisi — pemilihan posisi milik user dilakukan UI. */
+    suspend fun aktivitasPositions(): AuthResult<List<AktivitasPositionDto>> = try {
         val response = api.divisions()
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data.divisions)
-        else parseError(response, "Gagal memuat master jobdesk")
+        else parseError(response, "Gagal memuat master aktivitas")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
@@ -50,7 +50,7 @@ class RaportRepository @Inject constructor(
      * ULANG di sini: `list_raport` hanya memaksa scope diri sendiri saat role
      * PRIMARY user = `karyawan`, jadi user multi-role (mis. primary `sales` +
      * extra `karyawan`) bisa menerima baris karyawan lain — dan angka "sudah
-     * berapa jobdesk hari ini" di layar Activity akan ikut salah.
+     * berapa aktivitas hari ini" di layar Activity akan ikut salah.
      */
     suspend fun raportOfDay(tanggal: String, karyawanId: String?): AuthResult<List<RaportItemDto>> = try {
         val response = api.list(tanggal = tanggal, karyawanId = karyawanId?.takeIf { it.isNotBlank() })
@@ -172,13 +172,16 @@ class RaportRepository @Inject constructor(
     }
 
     /**
-     * Kirim SATU jobdesk. Server-nya upsert per (karyawan, tanggal,
-     * jobdeskIndex) — mengirim ulang jobdesk yang sama menimpa bukti lama dan
-     * mengembalikan statusnya ke `pending` (persis perilaku web).
+     * Kirim SATU aktivitas. Server-nya upsert per (karyawan, tanggal,
+     * `jobdeskIndex`) — mengirim ulang aktivitas yang sama menimpa bukti lama
+     * dan mengembalikan statusnya ke `pending` (persis perilaku web).
+     *
+     * Nama field kiriman tetap `jobdeskIndex`/`jobdeskText`: itu nama DI KABEL
+     * (repo ini nol `@SerialName`), bukan istilah layar.
      */
     suspend fun submitItem(
-        jobdeskIndex: Int,
-        jobdeskText: String,
+        aktivitasIndex: Int,
+        aktivitasText: String,
         mode: String,
         evidenceUrl: String? = null,
         employeeNote: String? = null,
@@ -187,8 +190,8 @@ class RaportRepository @Inject constructor(
             SubmitRaportBody(
                 items = listOf(
                     SubmitRaportItem(
-                        jobdeskIndex = jobdeskIndex,
-                        jobdeskText = jobdeskText,
+                        jobdeskIndex = aktivitasIndex,
+                        jobdeskText = aktivitasText,
                         mode = mode,
                         evidenceUrl = evidenceUrl,
                         employeeNote = employeeNote,

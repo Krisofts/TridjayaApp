@@ -1,6 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.raport
 
-import com.krisoft.tridjayaelektronik.data.model.JobdeskPositionDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
 import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
 
 /**
@@ -9,19 +9,19 @@ import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
  */
 
 /**
- * Posisi jobdesk milik seorang karyawan berdasarkan `divisi`-nya. Port 1:1 dari
- * `getPositionMatch` di web (`KaryawanRaportPage.tsx`) supaya daftar jobdesk di
- * HP sama persis dengan yang dinilai PIC di web.
+ * Posisi aktivitas milik seorang karyawan berdasarkan `divisi`-nya. Port 1:1
+ * dari `getPositionMatch` di web (`KaryawanRaportPage.tsx`) supaya daftar
+ * aktivitas di HP sama persis dengan yang dinilai PIC di web.
  *
  * `null` saat tak ada yang cocok — SENGAJA tak jatuh ke posisi pertama: karyawan
- * yang divisinya tak ada di master akan dinilai (dan didenda) memakai jobdesk
+ * yang divisinya tak ada di master akan dinilai (dan didenda) memakai aktivitas
  * divisi lain. Cocokkan longgar (`contains`) menutup divisi multi-nilai CSV
  * ("admin,driver") hasil divisi-driven-access.
  */
-internal fun matchJobdeskPosition(
+internal fun matchAktivitasPosition(
     divisi: String,
-    positions: List<JobdeskPositionDto>,
-): JobdeskPositionDto? {
+    positions: List<AktivitasPositionDto>,
+): AktivitasPositionDto? {
     val normalized = divisi.lowercase().trim()
     if (normalized.isBlank()) return null
     return positions.firstOrNull { it.id.lowercase() == normalized }
@@ -36,7 +36,7 @@ internal fun matchJobdeskPosition(
 
 enum class RaportRowStatus { BELUM, MENUNGGU, DISETUJUI, DITOLAK }
 
-/** Status satu baris jobdesk dari raport yang sudah terkirim hari itu. */
+/** Status satu baris aktivitas dari raport yang sudah terkirim hari itu. */
 internal fun rowStatus(item: RaportItemDto?): RaportRowStatus = when {
     item == null -> RaportRowStatus.BELUM
     item.reviewStatus == "approved" -> RaportRowStatus.DISETUJUI
@@ -45,8 +45,9 @@ internal fun rowStatus(item: RaportItemDto?): RaportRowStatus = when {
 }
 
 /**
- * Baris terkirim di-index by `jobdeskIndex`. Server mengizinkan index apa pun
- * (raport lama bisa memakai master jobdesk versi sebelumnya) — baris yang
+ * Baris terkirim di-index by `jobdeskIndex` (nama field di KABEL, ejaan lama
+ * sengaja dipertahankan). Server mengizinkan index apa pun (raport lama bisa
+ * memakai master aktivitas versi sebelumnya) — baris yang
  * indexnya di luar daftar sekarang tetap dipegang di peta, tinggal tak punya
  * baris untuk ditempeli.
  */

@@ -65,12 +65,12 @@ import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
 
 /**
- * Antrian penilaian PIC raport — laporan aktivitas karyawan (jobdesk harian)
- * disetujui/ditolak di sini.
+ * Antrian penilaian PIC raport — aktivitas harian karyawan disetujui/ditolak
+ * di sini.
  *
  * Barisnya DIKELOMPOKKAN per karyawan (bukan daftar rata) mengikuti alur web
  * `PicRaportDashboardPage`: PIC menilai satu orang sekaligus, dan daftar rata
- * membuat jobdesk milik orang yang sama tercecer di antara karyawan lain.
+ * membuat aktivitas milik orang yang sama tercecer di antara karyawan lain.
  *
  * Tanpa pemutar video di dalam app: baris
  * ber-`mode=video` menampilkan penanda "bukti video" dan menyerahkan
@@ -320,13 +320,13 @@ private fun KartuKaryawan(
             Text(
                 listOf(grup.divisi, grup.cabang).filter { it.isNotBlank() }
                     .joinToString(" · ")
-                    .ifBlank { "${grup.baris.size} jobdesk" },
+                    .ifBlank { "${grup.baris.size} aktivitas" },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             grup.baris.forEach { baris ->
                 Spacer(Modifier.height(12.dp))
-                BarisJobdesk(
+                BarisAktivitas(
                     item = baris,
                     token = token,
                     sibuk = memutuskanId == baris.id,
@@ -339,7 +339,7 @@ private fun KartuKaryawan(
 }
 
 @Composable
-private fun BarisJobdesk(
+private fun BarisAktivitas(
     item: RaportItemDto,
     token: String?,
     sibuk: Boolean,
@@ -349,7 +349,7 @@ private fun BarisJobdesk(
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                item.jobdeskText.ifBlank { "Jobdesk #${item.jobdeskIndex + 1}" },
+                item.jobdeskText.ifBlank { "Aktivitas #${item.jobdeskIndex + 1}" },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),

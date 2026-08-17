@@ -288,7 +288,7 @@ class ActivityPlanTest {
     }
 
     @Test
-    fun `raport BETA ikut dihitung dan selesai begitu ada jobdesk terkirim`() {
+    fun `raport BETA ikut dihitung dan selesai begitu ada aktivitas terkirim`() {
         val items = listOf(item("absen_masuk"), item("raport"))
         val belum = buildDailyTasks(items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0)
         // Sudah bisa dikerjakan (bukan `comingSoon` lagi) → masuk penyebut.
@@ -301,13 +301,13 @@ class ActivityPlanTest {
         assertEquals("2/2", dailyProgressLabel(terkirim))
         val raport = terkirim.first { it.item.id == "raport" }
         assertTrue(raport.done)
-        assertEquals("3 jobdesk terkirim", raport.detail)
+        assertEquals("3 aktivitas terkirim", raport.detail)
     }
 
     @Test
-    fun `penyebut jobdesk tak diketahui tidak pernah dirender sebagai pecahan`() {
-        // Q5: mayoritas karyawan aktif divisinya tak ada di master jobdesk →
-        // `matchJobdeskPosition` balikin null. "0/0" akan memvonis mereka belum
+    fun `penyebut aktivitas tak diketahui tidak pernah dirender sebagai pecahan`() {
+        // Q5: mayoritas karyawan aktif divisinya tak ada di master aktivitas →
+        // `matchAktivitasPosition` balikin null. "0/0" akan memvonis mereka belum
         // mengerjakan sesuatu yang memang tak bisa dihitung.
         val items = listOf(item("raport"))
         for (expected in listOf(null, 0)) {
@@ -318,29 +318,29 @@ class ActivityPlanTest {
             val ada = buildDailyTasks(
                 items, null, null, leadsToday = 0, raportToday = 3, raportExpected = expected
             )
-            assertEquals("3 jobdesk terkirim", ada.single().detail)
+            assertEquals("3 aktivitas terkirim", ada.single().detail)
             assertTrue(ada.single().done)
         }
     }
 
     @Test
-    fun `penyebut jobdesk diketahui tampil sebagai x per y`() {
+    fun `penyebut aktivitas diketahui tampil sebagai x per y`() {
         val items = listOf(item("raport"))
         val sebagian = buildDailyTasks(
             items, null, null, leadsToday = 0, raportToday = 3, raportExpected = 7
         )
-        assertEquals("3/7 jobdesk", sebagian.single().detail)
-        // Centang TETAP "ada minimal satu jobdesk terkirim" — bukan "3 == 7".
+        assertEquals("3/7 aktivitas", sebagian.single().detail)
+        // Centang TETAP "ada minimal satu aktivitas terkirim" — bukan "3 == 7".
         assertTrue(sebagian.single().done)
 
         val kosong = buildDailyTasks(items, null, null, leadsToday = 0, raportExpected = 7)
-        assertEquals("0/7 jobdesk", kosong.single().detail)
+        assertEquals("0/7 aktivitas", kosong.single().detail)
         assertFalse(kosong.single().done)
     }
 
     @Test
-    fun `penyebut jobdesk tak menutupi kegagalan memuat raport`() {
-        // Penyebut datang dari panggilan LAIN (master jobdesk) — kalau raport hari
+    fun `penyebut aktivitas tak menutupi kegagalan memuat raport`() {
+        // Penyebut datang dari panggilan LAIN (master aktivitas) — kalau raport hari
         // ini sendiri gagal dimuat, angka pembilangnya tak bisa dipercaya.
         val tasks = buildDailyTasks(
             listOf(item("raport")), null, null, leadsToday = 0,

@@ -91,7 +91,8 @@ internal fun buktiVideo(item: RaportItemDto): Boolean =
 /**
  * Baris dikelompokkan per karyawan supaya PIC menilai satu orang sekaligus —
  * urutan karyawan mengikuti kemunculan pertamanya dari server (sudah terurut
- * waktu kirim), dan jobdesk di dalam tiap grup naik menurut `jobdeskIndex`.
+ * waktu kirim), dan aktivitas di dalam tiap grup naik menurut `jobdeskIndex`
+ * (nama field di kabel, ejaan lama sengaja dipertahankan).
  */
 internal fun grupPerKaryawan(items: List<RaportItemDto>): List<GrupRaport> =
     items.groupBy { it.employeeId }

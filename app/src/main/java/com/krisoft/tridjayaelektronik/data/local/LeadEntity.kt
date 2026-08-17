@@ -44,7 +44,7 @@ data class LeadEntity(
      * selamanya, terus dikirim ulang tiap create/refresh/buka-app, dan di layar
      * tetap berlabel "ANTRE". Sales-nya mengira prospeknya tersimpan, padahal
      * server tak pernah menerimanya — jadi prospek itu tidak ikut menghitung
-     * target harian dan jobdesk raportnya tak pernah otomatis disetujui.
+     * target harian dan aktivitas raportnya tak pernah otomatis disetujui.
      * Terukur di nginx: 390 penolakan 400 pada `POST /api/prospek-harian` dalam
      * tujuh hari (8-14 Agt 2026), seluruhnya dari app (okhttp), naik 40/hari
      * menjadi 93/hari seiring baris macet menumpuk.

@@ -3,23 +3,30 @@ package com.krisoft.tridjayaelektronik.data.model
 import kotlinx.serialization.Serializable
 
 /**
- * Raport harian (laporan aktivitas jobdesk) — kinerja-service `raport.rs` +
+ * Raport harian (laporan aktivitas harian) — kinerja-service `raport.rs` +
  * `jobdesk.rs` lewat gateway `/api/raport-harian` & `/api/jobdesk-divisions`.
  * Semua field camelCase, sama persis dengan yang dipakai web
  * (`store/picRaportStore.ts`).
+ *
+ * **Istilahnya diganti "jobdesk" → "aktivitas" (2026-08-17), TAPI hanya nama
+ * KELAS.** Repo ini nol `@SerialName`, jadi nama PROPERTI di bawah ADALAH nama
+ * di kabel: mengganti `jobdesks`/`jobdeskIndex`/`jobdeskText` = field hilang
+ * senyap (kotlinx.serialization mengisi nilai default, bukan melempar), dan
+ * yang terlihat di lapangan cuma daftar kosong / index 0.
  */
 
-/** Satu posisi/jabatan + daftar jobdesk hariannya (master `app_settings`). */
+/** Satu posisi/jabatan + daftar aktivitas hariannya (master `app_settings`). */
 @Serializable
-data class JobdeskPositionDto(
+data class AktivitasPositionDto(
     val id: String = "",
     val posisi: String = "",
+    /** NAMA KABEL — jangan ikut di-rename jadi `aktivitas`, lihat KDoc berkas. */
     val jobdesks: List<String> = emptyList(),
 )
 
 @Serializable
-data class JobdeskDivisionsData(
-    val divisions: List<JobdeskPositionDto> = emptyList(),
+data class AktivitasDivisionsData(
+    val divisions: List<AktivitasPositionDto> = emptyList(),
 )
 
 /**
@@ -38,7 +45,9 @@ data class RaportItemDto(
     val divisiName: String = "",
     val tanggal: String = "",
     val submittedAt: String? = null,
+    /** NAMA KABEL — tetap ejaan lama, lihat KDoc berkas. */
     val jobdeskIndex: Int = 0,
+    /** NAMA KABEL — tetap ejaan lama, lihat KDoc berkas. */
     val jobdeskText: String = "",
     val mode: String = "none",
     val evidenceUrl: String? = null,
@@ -90,7 +99,9 @@ data class RaportUploadData(val url: String = "")
 
 @Serializable
 data class SubmitRaportItem(
+    /** NAMA KABEL — tetap ejaan lama, lihat KDoc berkas. */
     val jobdeskIndex: Int,
+    /** NAMA KABEL — tetap ejaan lama, lihat KDoc berkas. */
     val jobdeskText: String,
     /** `none` | `image` | `video` — divalidasi ulang server. */
     val mode: String,

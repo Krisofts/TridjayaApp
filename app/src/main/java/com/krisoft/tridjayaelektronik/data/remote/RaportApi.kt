@@ -1,7 +1,7 @@
 package com.krisoft.tridjayaelektronik.data.remote
 
 import com.krisoft.tridjayaelektronik.data.model.ApiResponse
-import com.krisoft.tridjayaelektronik.data.model.JobdeskDivisionsData
+import com.krisoft.tridjayaelektronik.data.model.AktivitasDivisionsData
 import com.krisoft.tridjayaelektronik.data.model.RaportListData
 import com.krisoft.tridjayaelektronik.data.model.RaportUploadData
 import com.krisoft.tridjayaelektronik.data.model.ReviewRaportBody
@@ -27,9 +27,14 @@ import retrofit2.http.Query
  */
 interface RaportApi {
 
-    /** Master jobdesk per posisi (`app_settings` `jobdesk_divisions`). */
+    /**
+     * Master aktivitas per posisi (`app_settings` `jobdesk_divisions`).
+     *
+     * Rute & kunci settings SENGAJA tetap mengeja "jobdesk": keduanya kontrak
+     * yang hidup di gateway dan basis data, bukan istilah yang dipakai di layar.
+     */
     @GET("api/jobdesk-divisions")
-    suspend fun divisions(): Response<ApiResponse<JobdeskDivisionsData>>
+    suspend fun divisions(): Response<ApiResponse<AktivitasDivisionsData>>
 
     /**
      * `karyawan_id` (snake_case, sama dengan web) SENGAJA dikirim walau server
@@ -44,7 +49,7 @@ interface RaportApi {
         @Query("limit") limit: Int = 200,
         /** `pending|approved|rejected|all` — nilai lain dijawab 422 oleh server. */
         @Query("status") status: String? = null,
-        /** Cari nama karyawan / jobdesk / cabang / divisi (LIKE di server). */
+        /** Cari nama karyawan / aktivitas / cabang / divisi (LIKE di server). */
         @Query("q") q: String? = null,
     ): Response<ApiResponse<RaportListData>>
 

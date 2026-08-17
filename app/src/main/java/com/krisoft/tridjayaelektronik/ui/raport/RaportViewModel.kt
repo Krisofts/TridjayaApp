@@ -38,7 +38,7 @@ data class GambarBukti(
 
 data class VideoBukti(val uri: Uri, val nama: String, val ukuranBytes: Long)
 
-/** Berkas yang dipilih untuk satu baris jobdesk, belum tentu terkirim. */
+/** Berkas yang dipilih untuk satu baris aktivitas, belum tentu terkirim. */
 data class PilihanBukti(
     val gambar: List<GambarBukti> = emptyList(),
     val video: VideoBukti? = null,
@@ -53,9 +53,9 @@ data class RaportUiState(
     val error: String? = null,
     val posisi: String = "",
     val divisi: String = "",
-    val jobdesks: List<String> = emptyList(),
+    val aktivitas: List<String> = emptyList(),
     val submitted: Map<Int, RaportItemDto> = emptyMap(),
-    /** Berkas terpilih per index jobdesk, belum dikirim. */
+    /** Berkas terpilih per index aktivitas, belum dikirim. */
     val pilihan: Map<Int, PilihanBukti> = emptyMap(),
     /** Baris yang sedang diunggah/dikirim, beserta labelnya. */
     val kirim: KirimProgres? = null,
@@ -66,7 +66,7 @@ data class RaportUiState(
      */
     val message: String? = null,
 ) {
-    val terkirim: Int get() = jobdesks.indices.count { it in submitted }
+    val terkirim: Int get() = aktivitas.indices.count { it in submitted }
 
     /**
      * Turunan dari [kirim]. Kunci tetap GLOBAL (satu baris sibuk = seluruh
@@ -80,7 +80,7 @@ data class RaportUiState(
 /**
  * Input Aktivitas (raport harian) — BETA.
  *
- * Satu jobdesk dikirim satu per satu (server-nya memang upsert per baris).
+ * Satu aktivitas dikirim satu per satu (server-nya memang upsert per baris).
  * Bukti boleh: foto kamera, sampai [MAX_GAMBAR] gambar dari galeri, satu video,
  * atau "tanpa bukti + alasan". Foto — dari kamera MAUPUN galeri — selalu
  * di-watermark; judulnya dibedakan untuk galeri (lihat [watermarkTitleBukti]).
@@ -110,7 +110,7 @@ class RaportViewModel @Inject constructor(
 
             // Dua panggilan tak saling bergantung — jalankan bareng.
             val (positionsResult, todayResult) = coroutineScope {
-                val positions = async { repository.jobdeskPositions() }
+                val positions = async { repository.aktivitasPositions() }
                 val terkirim = async { repository.raportOfDay(today, user?.id) }
                 positions.await() to terkirim.await()
             }
@@ -121,14 +121,15 @@ class RaportViewModel @Inject constructor(
                     return@launch
                 }
                 is AuthResult.Success -> {
-                    val posisi = matchJobdeskPosition(divisi, positionsResult.data)
+                    val posisi = matchAktivitasPosition(divisi, positionsResult.data)
                     _state.update {
                         it.copy(
                             isLoading = false,
                             error = null,
                             divisi = divisi,
                             posisi = posisi?.posisi.orEmpty(),
-                            jobdesks = posisi?.jobdesks.orEmpty(),
+                            // `.jobdesks` = nama field DI KABEL, ejaan lama.
+                            aktivitas = posisi?.jobdesks.orEmpty(),
                             // Gagal memuat yang sudah terkirim TIDAK mengunci layar:
                             // user tetap boleh mengirim (server upsert, aman diulang).
                             submitted = (todayResult as? AuthResult.Success)
@@ -167,7 +168,7 @@ class RaportViewModel @Inject constructor(
     fun tambahFotoKamera(index: Int, file: File) {
         setPilihan(index) { p ->
             if (p.gambar.size >= MAX_GAMBAR) {
-                _state.update { it.copy(message = "Maksimal $MAX_GAMBAR gambar per jobdesk.") }
+                _state.update { it.copy(message = "Maksimal $MAX_GAMBAR gambar per aktivitas.") }
                 p
             } else {
                 p.copy(gambar = p.gambar + GambarBukti(file = file, dariGaleri = false), video = null)
@@ -198,7 +199,7 @@ class RaportViewModel @Inject constructor(
         val total = diabaikan + takMuat
         if (total > 0) {
             _state.update {
-                it.copy(message = "$total gambar diabaikan — maksimal $MAX_GAMBAR gambar per jobdesk.")
+                it.copy(message = "$total gambar diabaikan — maksimal $MAX_GAMBAR gambar per aktivitas.")
             }
         }
     }
@@ -238,7 +239,7 @@ class RaportViewModel @Inject constructor(
      * lengkap lebih buruk daripada kegagalan yang terlihat.
      */
     fun kirimBukti(index: Int, resolver: ContentResolver) {
-        val jobdesk = _state.value.jobdesks.getOrNull(index) ?: return
+        val aktivitas = _state.value.aktivitas.getOrNull(index) ?: return
         if (_state.value.kirim != null) return
         // Hari Minggu dihadang SEBELUM satu berkas pun naik. Server menolak di
         // `POST /raport-harian` tapi (di biner yang beredar) MEMBIARKAN
@@ -271,12 +272,12 @@ class RaportViewModel @Inject constructor(
 
         viewModelScope.launch {
             val video = pilihan.video
-            if (video != null) kirimVideo(index, jobdesk, video, resolver)
-            else kirimGambar(index, jobdesk, pilihan.gambar)
+            if (video != null) kirimVideo(index, aktivitas, video, resolver)
+            else kirimGambar(index, aktivitas, pilihan.gambar)
         }
     }
 
-    private suspend fun kirimGambar(index: Int, jobdesk: String, awal: List<GambarBukti>) {
+    private suspend fun kirimGambar(index: Int, aktivitas: String, awal: List<GambarBukti>) {
         val user = authRepository.cachedUser
         val subtitle = listOfNotNull(user?.name, user?.cabangName)
             .filter { it.isNotBlank() }.joinToString(" · ")
@@ -323,12 +324,12 @@ class RaportViewModel @Inject constructor(
             return
         }
         setProgres(index, "Menyimpan laporan…")
-        send(index, jobdesk, mode = "image", evidenceUrl = evidenceUrl)
+        send(index, aktivitas, mode = "image", evidenceUrl = evidenceUrl)
     }
 
     private suspend fun kirimVideo(
         index: Int,
-        jobdesk: String,
+        aktivitas: String,
         video: VideoBukti,
         resolver: ContentResolver,
     ) {
@@ -350,7 +351,7 @@ class RaportViewModel @Inject constructor(
             is AuthResult.Success -> {
                 setProgres(index, "Menyimpan laporan…")
                 // POLOS, bukan array — sama seperti web (`KaryawanRaportPage.tsx`).
-                send(index, jobdesk, mode = "video", evidenceUrl = hasil.data)
+                send(index, aktivitas, mode = "video", evidenceUrl = hasil.data)
             }
         }
     }
@@ -360,7 +361,7 @@ class RaportViewModel @Inject constructor(
      * juga di sini supaya user tak menunggu satu putaran jaringan untuk tahu.
      */
     fun submitWithoutEvidence(index: Int, alasan: String) {
-        val jobdesk = _state.value.jobdesks.getOrNull(index) ?: return
+        val aktivitas = _state.value.aktivitas.getOrNull(index) ?: return
         if (_state.value.kirim != null) return
         val reason = alasan.trim()
         if (reason.length < MIN_REASON_LENGTH) {
@@ -390,7 +391,7 @@ class RaportViewModel @Inject constructor(
                     kirim = KirimProgres(index, "Menyimpan laporan…"),
                 )
             }
-            send(index, jobdesk, mode = "none", employeeNote = reason)
+            send(index, aktivitas, mode = "none", employeeNote = reason)
         }
     }
 
@@ -407,12 +408,12 @@ class RaportViewModel @Inject constructor(
 
     private suspend fun send(
         index: Int,
-        jobdesk: String,
+        aktivitas: String,
         mode: String,
         evidenceUrl: String? = null,
         employeeNote: String? = null,
     ) {
-        when (val result = repository.submitItem(index, jobdesk, mode, evidenceUrl, employeeNote)) {
+        when (val result = repository.submitItem(index, aktivitas, mode, evidenceUrl, employeeNote)) {
             is AuthResult.Failure -> finish(index, result.message)
             is AuthResult.Success -> {
                 // Muat ulang baris hari ini supaya status (menunggu/disetujui) dan

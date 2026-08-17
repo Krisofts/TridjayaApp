@@ -71,7 +71,7 @@ import java.io.File
 /**
  * Input Aktivitas (raport harian) — BETA.
  *
- * Satu baris per jobdesk posisi karyawan. Buktinya: foto kamera, sampai
+ * Satu baris per aktivitas posisi karyawan. Buktinya: foto kamera, sampai
  * [MAX_GAMBAR] gambar dari galeri, satu video, atau "tanpa bukti + alasan".
  * Kirim per baris (server upsert per baris), jadi sinyal putus di tengah tak
  * membatalkan baris yang sudah masuk.
@@ -121,6 +121,8 @@ fun RaportScreen(
                 gagal++
                 return@mapNotNull null
             }
+            // Nama berkasnya PATH FileProvider, bukan teks layar — ejaan
+            // "jobdesk" sengaja tak ikut diganti (lihat `res/xml/file_paths.xml`).
             val target = File(context.cacheDir, "raport/jobdesk_${index}_g${slot++}.jpg")
                 .apply { parentFile?.mkdirs() }
             runCatching {
@@ -147,14 +149,14 @@ fun RaportScreen(
     TridjayaCollapsibleHeader(title = "Input Aktivitas", onBack = onBack) { contentModifier ->
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         TridjayaPullRefresh(
-            isRefreshing = state.isLoading && state.jobdesks.isNotEmpty(),
+            isRefreshing = state.isLoading && state.aktivitas.isNotEmpty(),
             // Selagi satu baris sedang mengunggah, refresh() akan menimpa `submitted`
             // dan membuat baris itu tampak mundur — abaikan tariknya sampai selesai.
             onRefresh = { if (state.busyIndex == null) viewModel.refresh() },
             modifier = contentModifier
         ) {
             when {
-                state.isLoading && state.jobdesks.isEmpty() -> Column(modifier = Modifier.padding(top = 4.dp)) {
+                state.isLoading && state.aktivitas.isEmpty() -> Column(modifier = Modifier.padding(top = 4.dp)) {
                     repeat(5) { SkeletonCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 }
 
@@ -165,7 +167,7 @@ fun RaportScreen(
                     )
                 }
 
-                state.jobdesks.isEmpty() -> ScrollableCenter {
+                state.aktivitas.isEmpty() -> ScrollableCenter {
                     ExpressiveEmptyState(
                         icon = {
                             Icon(
@@ -174,8 +176,8 @@ fun RaportScreen(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
-                        title = "Jobdesk belum diatur",
-                        subtitle = "Divisi \"${state.divisi.ifBlank { "-" }}\" belum punya daftar jobdesk " +
+                        title = "Aktivitas belum diatur",
+                        subtitle = "Divisi \"${state.divisi.ifBlank { "-" }}\" belum punya daftar aktivitas " +
                             "di master raport. Minta PIC Raport menambahkannya."
                     )
                 }
@@ -213,10 +215,10 @@ fun RaportScreen(
                             )
                         }
                     }
-                    itemsIndexed(state.jobdesks) { index, jobdesk ->
-                        JobdeskRow(
+                    itemsIndexed(state.aktivitas) { index, aktivitas ->
+                        AktivitasRow(
                             nomor = index + 1,
-                            jobdesk = jobdesk,
+                            aktivitas = aktivitas,
                             terkirim = state.submitted[index],
                             pilihan = state.pilihan[index],
                             progres = state.kirim?.takeIf { it.index == index },
@@ -225,6 +227,8 @@ fun RaportScreen(
                                 // Nama ber-slot: satu baris kini boleh punya beberapa
                                 // jepretan, dan nama tetap membuat jepretan kedua
                                 // menimpa yang pertama tanpa tanda apa pun di layar.
+                                // Ejaan "jobdesk" di sini PATH FileProvider, bukan
+                                // teks layar — sengaja tak ikut diganti.
                                 val file = File(context.cacheDir, "raport/jobdesk_${index}_k${slot++}.jpg")
                                     .apply { parentFile?.mkdirs() }
                                 pending = index to file
@@ -290,7 +294,7 @@ private fun Ringkasan(state: RaportUiState) {
             }
         }
         Text(
-            text = "${state.terkirim}/${state.jobdesks.size} jobdesk terkirim hari ini · " +
+            text = "${state.terkirim}/${state.aktivitas.size} aktivitas terkirim hari ini · " +
                 "bukti: foto kamera/galeri (maks $MAX_GAMBAR) atau satu video",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -299,9 +303,9 @@ private fun Ringkasan(state: RaportUiState) {
 }
 
 @Composable
-private fun JobdeskRow(
+private fun AktivitasRow(
     nomor: Int,
-    jobdesk: String,
+    aktivitas: String,
     terkirim: RaportItemDto?,
     pilihan: PilihanBukti?,
     progres: KirimProgres?,
@@ -329,7 +333,7 @@ private fun JobdeskRow(
     ClayCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(
-                text = "$nomor. $jobdesk",
+                text = "$nomor. $aktivitas",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -607,7 +611,7 @@ private fun AlasanDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
         text = {
             Column {
                 Text(
-                    "Jobdesk tanpa bukti biasanya dinilai 0 oleh PIC. Jelaskan alasannya.",
+                    "Aktivitas tanpa bukti biasanya dinilai 0 oleh PIC. Jelaskan alasannya.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

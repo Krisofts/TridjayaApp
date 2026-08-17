@@ -3,7 +3,7 @@ package com.krisoft.tridjayaelektronik.ui.raport
 /**
  * Aturan murni bukti Input Aktivitas — bentuk `evidenceUrl`, batas jumlah/ukuran,
  * dan pasangan ekstensi↔MIME video. Dipisah dari [RaportPlan] (yang isinya
- * pencocokan jobdesk) supaya kontrak lintas-repo di bawah terbaca utuh, dan
+ * pencocokan aktivitas) supaya kontrak lintas-repo di bawah terbaca utuh, dan
  * dipisah dari ViewModel supaya bisa diuji tanpa perangkat.
  *
  * ## Kenapa satu gambar TIDAK dibungkus array
@@ -44,7 +44,7 @@ package com.krisoft.tridjayaelektronik.ui.raport
  * penjaga nyata — kalau angkanya berubah di web, ubah di sini juga.
  *
  * **Dinaikkan 6 → 10 pada 2026-08-16** atas permintaan user, setelah karyawan
- * melaporkan tak bisa melampirkan bukti secukupnya. Katalog jobdesk produksi
+ * melaporkan tak bisa melampirkan bukti secukupnya. Katalog aktivitas produksi
  * penuh target berjumlah SEPULUH ("FOTO DENGAN KONSUMEN MINIMAL 10", "UPDATE
  * POSTING DI MEDSOS … MINIMAL 10 POSTINGAN", "UPDATE STATUS WA MINIMAL 10
  * PRODUK"), jadi batas 6 memotong bukti pekerjaan yang sudah benar-benar
@@ -105,13 +105,13 @@ internal fun gateKirimBukti(
     ukuranVideoBytes: Long,
 ): BuktiGate = when {
     adaVideo && jumlahGambar > 0 ->
-        BuktiGate(false, "Satu jobdesk hanya boleh foto ATAU video, tidak keduanya.")
+        BuktiGate(false, "Satu aktivitas hanya boleh foto ATAU video, tidak keduanya.")
 
     !adaVideo && jumlahGambar == 0 ->
         BuktiGate(false, "Pilih bukti dulu (kamera, galeri, atau video).")
 
     jumlahGambar > MAX_GAMBAR ->
-        BuktiGate(false, "Maksimal $MAX_GAMBAR gambar per jobdesk.")
+        BuktiGate(false, "Maksimal $MAX_GAMBAR gambar per aktivitas.")
 
     ukuranVideoBytes > MAX_VIDEO_BUKTI_BYTES ->
         BuktiGate(
@@ -251,17 +251,17 @@ internal fun gerbangHariIni(millis: Long): BuktiGate =
 // ── Gerbang "sudah disetujui PIC" (2026-08-16) ───────────────────────────────
 
 /**
- * Kalimat untuk jobdesk yang sudah disetujui PIC. Seirama dengan
+ * Kalimat untuk aktivitas yang sudah disetujui PIC. Seirama dengan
  * `pesan_raport_terkunci` milik server (`kinerja-service/src/raport/domain.rs`)
  * — dipendekkan untuk layar HP, tapi menyebut jalan keluar yang SAMA, karena
  * dua kalimat berbeda untuk satu aturan terbaca sebagai dua aturan.
  */
 internal const val PESAN_TERKUNCI_PIC =
-    "Jobdesk ini sudah disetujui PIC, jadi buktinya dikunci. Minta PIC Raport " +
+    "Aktivitas ini sudah disetujui PIC, jadi buktinya dikunci. Minta PIC Raport " +
         "mengembalikannya ke status Menunggu dulu kalau isinya perlu diperbaiki."
 
 /**
- * Jobdesk yang buktinya TIDAK BISA diganti lagi.
+ * Aktivitas yang buktinya TIDAK BISA diganti lagi.
  *
  * Server menolak penimpaan baris ber-`review_status = 'approved'`
  * (`boleh_timpa_raport`) karena menimpanya menghapus nilai dan komentar PIC.

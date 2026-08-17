@@ -19,7 +19,7 @@ import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
 import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
 import com.krisoft.tridjayaelektronik.ui.homeservice.saringStatus
-import com.krisoft.tridjayaelektronik.ui.raport.matchJobdeskPosition
+import com.krisoft.tridjayaelektronik.ui.raport.matchAktivitasPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -129,7 +129,7 @@ class ActivityViewModel @Inject constructor(
         val sources = sourcesToFetch(items)
         var checkInAt: String? = null
         var checkOutAt: String? = null
-        /** `null` = penyebut jobdesk tak diketahui — lihat `raportJobdeskDetail`. */
+        /** `null` = penyebut aktivitas tak diketahui — lihat `raportAktivitasDetail`. */
         var raportExpected: Int? = null
         /** `null` = target prospek tak diketahui — lihat `prospekTaskDetail`. */
         var prospekTarget: ProspekTargetDto? = null
@@ -254,18 +254,19 @@ class ActivityViewModel @Inject constructor(
                         is AuthResult.Failure -> failed += ActivitySource.RAPORT_TODAY
                     }
                 }
-                // Penyebut "x/y jobdesk". Panggilan TERPISAH dari yang di atas dan
+                // Penyebut "x/y aktivitas". Panggilan TERPISAH dari yang di atas dan
                 // sengaja TIDAK menandai RAPORT_TODAY gagal saat ia sendiri gagal:
                 // jumlah yang sudah terkirim tetap benar, cuma penyebutnya yang tak
                 // diketahui — dan kartu bertanda "gagal muat" gara-gara master
-                // jobdesk tak terambil justru menyembunyikan angka yang valid.
-                // `matchJobdeskPosition` dipakai ulang apa adanya (BUKAN matcher
-                // baru) supaya penyebut di kartu ini identik dengan daftar jobdesk
+                // aktivitas tak terambil justru menyembunyikan angka yang valid.
+                // `matchAktivitasPosition` dipakai ulang apa adanya (BUKAN matcher
+                // baru) supaya penyebut di kartu ini identik dengan daftar aktivitas
                 // yang user lihat begitu kartunya dibuka.
                 jobs += async {
-                    val r = raportRepository.jobdeskPositions()
+                    val r = raportRepository.aktivitasPositions()
                     if (r is AuthResult.Success) {
-                        raportExpected = matchJobdeskPosition(user?.divisi.orEmpty(), r.data)
+                        raportExpected = matchAktivitasPosition(user?.divisi.orEmpty(), r.data)
+                            // `.jobdesks` = nama field DI KABEL, ejaan lama.
                             ?.jobdesks?.size
                     }
                 }

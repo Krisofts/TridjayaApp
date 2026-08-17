@@ -13,7 +13,7 @@ import org.junit.Test
  * dan layar tetap berlabel "ANTRE". Untuk kegagalan sementara itu benar; untuk
  * vonis permanen itu berarti sales diberi tahu prospeknya tersimpan padahal
  * server tak pernah menerimanya, jadi prospek itu tak ikut menghitung target
- * harian dan jobdesk raportnya tak pernah otomatis disetujui. Terukur di nginx
+ * harian dan aktivitas raportnya tak pernah otomatis disetujui. Terukur di nginx
  * produksi: 390 penolakan 400 pada `POST /api/prospek-harian` dalam tujuh hari
  * (8–14 Agt 2026), seluruhnya dari app, naik 40/hari → 93/hari.
  */

@@ -104,7 +104,7 @@ class RaportBuktiPlanTest {
         // kesepakatan lintas-repo dengan `MAX_IMAGE_FILES` web. Kalau seseorang
         // mengubah konstanta app saja, test ini yang merah — itu tujuannya.
         assertEquals(10, MAX_GAMBAR)
-        assertTrue("batas di bawah 10 memotong jobdesk bertarget 10", MAX_GAMBAR >= 10)
+        assertTrue("batas di bawah 10 memotong aktivitas bertarget 10", MAX_GAMBAR >= 10)
         val gate = gateKirimBukti(jumlahGambar = MAX_GAMBAR + 1, adaVideo = false, ukuranVideoBytes = 0L)
         assertFalse(gate.ok)
         assertTrue("pesannya harus menyebut angka batasnya", gate.alasan!!.contains("$MAX_GAMBAR"))
@@ -120,7 +120,7 @@ class RaportBuktiPlanTest {
     }
 
     @Test
-    fun `foto dan video tidak boleh bercampur dalam satu jobdesk`() {
+    fun `foto dan video tidak boleh bercampur dalam satu aktivitas`() {
         // Server hanya punya SATU `mode` per baris.
         val gate = gateKirimBukti(jumlahGambar = 2, adaVideo = true, ukuranVideoBytes = 1L)
         assertFalse(gate.ok)

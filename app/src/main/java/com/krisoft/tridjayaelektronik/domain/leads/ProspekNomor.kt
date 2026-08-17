@@ -12,7 +12,7 @@ package com.krisoft.tridjayaelektronik.domain.leads
  * sekadar pesan yang kurang rapi: prospeknya diterima layar, disimpan ke Room,
  * ditandai "ANTRE", lalu ditolak server SELAMANYA tanpa satu pun tanda di HP
  * penginputnya. Prospek itu tak pernah ikut menghitung target harian, jadi
- * jobdesk raportnya tak pernah otomatis disetujui — dan orangnya tak punya cara
+ * aktivitas raportnya tak pernah otomatis disetujui — dan orangnya tak punya cara
  * menebak sebabnya.
  *
  * Terukur di nginx produksi: **390 penolakan 400 pada `POST /api/prospek-harian`
