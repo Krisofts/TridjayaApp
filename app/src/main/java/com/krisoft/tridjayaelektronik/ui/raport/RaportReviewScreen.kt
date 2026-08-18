@@ -384,26 +384,29 @@ private fun BarisAktivitas(
                 // memaksa penilai memilih antara mempercayainya buta atau
                 // mengabaikannya — dua-duanya membuat penandanya tak berguna.
                 // Bukti disajikan terautentikasi, jadi harus lewat AuthedEvidence.
+                // `asliUrl` KOSONG untuk penilai berbatas cabang — server
+                // mencabutnya beserta identitas pemiliknya. `evidenceImageUrl`
+                // menjawab null, jadi tak ada gambar yang dicoba dimuat: tanpa
+                // ini yang tampil kotak abu "Bukti gagal dimuat" atas berkas
+                // yang memang tak boleh mereka lihat.
                 evidenceImageUrl(d.asliUrl)?.let { urlAsli ->
                     Box(Modifier.fillMaxWidth(0.35f)) {
-                        AuthedEvidence(url = urlAsli, token = token)
+                        AuthedEvidence(
+                            url = urlAsli,
+                            token = token,
+                            contentDescription = "Bukti unggahan terdahulu yang isinya sama",
+                        )
                     }
                     Spacer(Modifier.height(2.dp))
                 }
                 Text(
-                    buildString {
-                        append("Bukti sama dengan unggahan ")
-                        if (d.asliKaryawanId.isNotBlank() && d.asliKaryawanId != item.employeeId) {
-                            append(d.asliKaryawanNama.ifBlank { "karyawan lain" })
-                            append(" (karyawan lain)")
-                        } else {
-                            append("sebelumnya")
-                        }
-                        // Tanggal ikut: tuduhan tanpa penunjuk tak bisa
-                        // diperiksa sendiri oleh yang menerimanya.
-                        d.asliDiunggahAt.takeIf { it.isNotBlank() }?.let { append(" · ${it.replace('T', ' ')}") }
-                        if (d.asliDisetujui) append(" · sudah disetujui")
-                    },
+                    kalimatDuplikatBukti(
+                        asliKaryawanId = d.asliKaryawanId,
+                        asliKaryawanNama = d.asliKaryawanNama,
+                        asliDiunggahAt = d.asliDiunggahAt,
+                        asliDisetujui = d.asliDisetujui,
+                        pemilikBarisId = item.employeeId,
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.error,
@@ -454,7 +457,11 @@ private fun BarisAktivitas(
 
 /** Bukti raport di-serve terautentikasi — pola `AuthedImage` (Deadstock/Indent). */
 @Composable
-private fun AuthedEvidence(url: String, token: String?) {
+private fun AuthedEvidence(
+    url: String,
+    token: String?,
+    contentDescription: String = "Bukti aktivitas",
+) {
     val context = LocalContext.current
     val request = remember(url, token) {
         ImageRequest.Builder(context)
@@ -469,7 +476,7 @@ private fun AuthedEvidence(url: String, token: String?) {
     ) {
         SubcomposeAsyncImage(
             model = request,
-            contentDescription = "Bukti aktivitas",
+            contentDescription = contentDescription,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         ) {
