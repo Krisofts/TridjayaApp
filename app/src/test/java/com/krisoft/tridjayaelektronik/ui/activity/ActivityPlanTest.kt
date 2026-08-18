@@ -183,6 +183,50 @@ class ActivityPlanTest {
     }
 
     @Test
+    fun `tugas tarik unit disembunyikan saat kosong untuk non-driver`() {
+        // BOCOR SAMPAI 2026-08-18: `buildQueueCards` hanya menyaring
+        // `DLV_AS_DRIVER`, sehingga kartu ini tampil untuk SETIAP akun yang
+        // lolos `spk.pipeline` — yaitu semua kecuali `ai-engineer` — walau ia
+        // tak pernah ditugaskan menarik unit sekali pun. Di produksi saat itu
+        // NOL tiket berjenis tarik_unit dan NOL tiket punya `tarik_driver_id`,
+        // jadi kartunya berangka 0 untuk semua orang, permanen.
+        val items = listOf(item("tugas_tarik_unit"))
+        val itProgrammer = buildQueueCards(
+            items, mapOf(ActivitySource.HS_TUGAS_DRIVER to 0), emptySet(), setOf("karyawan", "it-programmer"),
+        )
+        assertTrue("akun tanpa tugas tarik tak boleh melihat kartunya", itProgrammer.isEmpty())
+
+        val punyaTugas = buildQueueCards(
+            items, mapOf(ActivitySource.HS_TUGAS_DRIVER to 1), emptySet(), setOf("karyawan", "it-programmer"),
+        )
+        assertEquals("begitu benar-benar ditugaskan, kartunya harus muncul", 1, punyaTugas.size)
+
+        val driver = buildQueueCards(items, mapOf(ActivitySource.HS_TUGAS_DRIVER to 0), emptySet(), setOf("driver"))
+        assertEquals("driver tetap melihatnya walau kosong — 'hari ini bersih'", 1, driver.size)
+    }
+
+    @Test
+    fun `manager owner admin tak pernah melihat tugas tarik unit walau count besar`() {
+        val items = listOf(item("tugas_tarik_unit"))
+        for (role in listOf("manager", "owner", "admin", "superadmin")) {
+            val cards = buildQueueCards(items, mapOf(ActivitySource.HS_TUGAS_DRIVER to 200), emptySet(), setOf(role))
+            assertTrue("role '$role' semestinya tak melihat kartu tugas tarik unit", cards.isEmpty())
+        }
+    }
+
+    @Test
+    fun `tugas tarik unit yang gagal dimuat tetap tampil walau bukan driver`() {
+        // Gagal != nol, sama seperti Tugas Antar: angka yang tak diketahui tak
+        // boleh membuat kartunya hilang diam-diam.
+        val items = listOf(item("tugas_tarik_unit"))
+        val cards = buildQueueCards(
+            items, emptyMap(), setOf(ActivitySource.HS_TUGAS_DRIVER), setOf("karyawan"),
+        )
+        assertEquals(1, cards.size)
+        assertTrue(cards.single().failed)
+    }
+
+    @Test
     fun `manager owner admin tak pernah melihat tugas antar walau count besar`() {
         // C2 audit 2026-07-28: `list_delivery` cabang `is_manager || is_admin`
         // mengembalikan SELURUH job perusahaan (mengabaikan asDriver), bukan job
