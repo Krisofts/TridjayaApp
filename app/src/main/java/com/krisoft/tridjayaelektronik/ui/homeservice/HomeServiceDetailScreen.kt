@@ -59,6 +59,7 @@ import coil.request.ImageRequest
 import com.krisoft.tridjayaelektronik.data.model.DriverDto
 import com.krisoft.tridjayaelektronik.data.model.HsTicketDetailDto
 import com.krisoft.tridjayaelektronik.data.model.HsVisitDto
+import com.krisoft.tridjayaelektronik.data.model.formatWaktuId
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
@@ -310,15 +311,83 @@ private fun RingkasanTiket(tiket: HsTicketDetailDto) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Baris("Barang", tiket.namaBarang?.takeIf { it.isNotBlank() } ?: tiket.kodeBarang.orEmpty())
-            Baris("Transaksi", tiket.noTransaksi)
-            tiket.serialNumber?.takeIf { it.isNotBlank() }?.let { Baris("Serial", it) }
-            tiket.tanggalBeli?.takeIf { it.isNotBlank() }?.let { Baris("Tanggal beli", it) }
-            // Garansi DIHITUNG SERVER — ditampilkan apa adanya, tak dihitung ulang.
-            when (tiket.dalamGaransi) {
-                true -> Baris("Garansi", "Masih garansi")
-                false -> Baris("Garansi", "Di luar garansi")
-                null -> Unit
+            // KELENGKAPAN data ≠ `terverifikasi`. Server SENGAJA tidak pernah
+            // menaikkan `terverifikasi` saat CS mengisi barang/tanggal beli dari
+            // foto kwitansi — kolom itu menjawab "cocok dengan mirror penjualan?"
+            // — dan yang menandai "sudah diperiksa orang" adalah `dilengkapiAt`
+            // (migrasi 222). Memakai `terverifikasi` sebagai proksi kelengkapan
+            // akan MENYEMBUNYIKAN barang & vonis garansi yang baru saja
+            // ditegakkan CS, persis kebalikan dari yang mau dicegah.
+            val sudahDilengkapi = !tiket.dilengkapiAt.isNullOrBlank()
+            if (!tiket.terverifikasi) {
+                Baris(
+                    "Status data",
+                    if (sudahDilengkapi) {
+                        "Dilengkapi CS${tiket.dilengkapiNama?.takeIf { it.isNotBlank() }?.let { " oleh $it" } ?: ""}" +
+                            " · ${formatWaktuId(tiket.dilengkapiAt)}"
+                    } else {
+                        "Belum terverifikasi, CS melengkapi dari foto kwitansi"
+                    },
+                )
+            }
+            if (!tiket.terverifikasi && !sudahDilengkapi) {
+                // Belum ada yang memeriksa: barang/tanggal beli memang kosong dan
+                // `dalamGaransi=false` berarti "belum terbukti", BUKAN "tidak
+                // bergaransi" — menampilkan vonis negatifnya membuat teknisi
+                // menagih biaya ke konsumen yang mungkin masih bergaransi.
+                Baris("Barang", "— belum diisi —")
+            } else {
+                // Tiket boleh memuat beberapa barang. Kolom tunggal di bawah
+                // adalah SNAPSHOT BARANG PERTAMA saja (migrasi 214), jadi tiket
+                // multi-barang harus dirinci — teknisi yang membaca satu baris
+                // berangkat membawa persiapan untuk satu unit.
+                if (tiket.items.size > 1) {
+                    Baris("Barang", "${tiket.items.size} barang")
+                    tiket.items.forEach { item ->
+                        Baris(
+                            "· ${item.urutan}",
+                            buildString {
+                                append(item.namaBarang?.takeIf { it.isNotBlank() } ?: item.kodeBarang.orEmpty())
+                                item.serialNumber?.takeIf { it.isNotBlank() }?.let { append(" · SN $it") }
+                                // Tanggal beli per barang ikut: pada tiket
+                                // multi-barang inilah satu-satunya angka yang
+                                // menerangkan kenapa dua unit di kwitansi yang
+                                // sama bisa berbeda vonis garansinya.
+                                item.tanggalBeli?.takeIf { it.isNotBlank() }?.let { append(" · beli $it") }
+                                append(if (item.dalamGaransi) " · masih garansi" else " · di luar garansi")
+                            },
+                        )
+                    }
+                } else {
+                    Baris(
+                        "Barang",
+                        tiket.namaBarang?.takeIf { it.isNotBlank() }
+                            ?: tiket.kodeBarang?.takeIf { it.isNotBlank() }
+                            ?: "— belum diisi —",
+                    )
+                }
+                // Tiket tanpa transaksi menyimpan string KOSONG, bukan null —
+                // barisnya akan terbaca sebagai label tanpa nilai.
+                tiket.noTransaksi.takeIf { it.isNotBlank() }?.let { Baris("Transaksi", it) }
+                if (tiket.items.size <= 1) {
+                    tiket.serialNumber?.takeIf { it.isNotBlank() }?.let { Baris("Serial", it) }
+                    tiket.tanggalBeli?.takeIf { it.isNotBlank() }?.let { Baris("Tanggal beli", it) }
+                    // Garansi DIHITUNG SERVER — ditampilkan apa adanya, TAPI
+                    // hanya kalau ada dasarnya. `dalamGaransi` bertipe non-Option
+                    // di server: tanpa tanggal beli ia bernilai `false` yang
+                    // artinya "belum terbukti", bukan "tidak bergaransi", dan
+                    // mencetak vonis negatifnya membuat teknisi menagih biaya ke
+                    // konsumen yang mungkin masih bergaransi.
+                    if (tiket.tanggalBeli.isNullOrBlank()) {
+                        Baris("Garansi", "Belum terbukti — tanggal beli belum diisi")
+                    } else {
+                        when (tiket.dalamGaransi) {
+                            true -> Baris("Garansi", "Masih garansi")
+                            false -> Baris("Garansi", "Di luar garansi")
+                            null -> Unit
+                        }
+                    }
+                }
             }
             Baris("Konsumen", tiket.customerNama?.takeIf { it.isNotBlank() } ?: "—")
             tiket.customerHp?.takeIf { it.isNotBlank() }?.let { KontakKonsumen(it) }

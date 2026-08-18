@@ -68,6 +68,36 @@ data class HsTicketDto(
      */
     val umurJam: Int? = null,
     val melewatiSla: Boolean = false,
+    /** Siapa & kapan CS melengkapi tiket tak-terverifikasi (migrasi 222).
+     *  Terisi = barang/tanggal beli/garansinya sudah punya dasar. `terverifikasi`
+     *  SENGAJA tidak ikut naik di server, jadi INILAH penanda kelengkapannya. */
+    val dilengkapiNama: String? = null,
+    val dilengkapiAt: String? = null,
+    /**
+     * Barang tiket, boleh lebih dari satu (server 2026-08-13). Kunci `items`
+     * DIHILANGKAN server bila kosong (`skip_serializing_if`), jadi tiket lama
+     * tetap terbaca — default `emptyList()` di sini yang menanganinya, bukan
+     * penanganan galat.
+     *
+     * Kolom tunggal `kodeBarang`/`namaBarang`/`serialNumber`/`tanggalBeli`/
+     * `dalamGaransi` di atas adalah SNAPSHOT BARANG PERTAMA saja (migrasi 214),
+     * bukan ringkasan seluruh tiket — jangan pakai untuk menyimpulkan apa pun
+     * tentang barang ke-2 dan seterusnya.
+     */
+    val items: List<HsTicketItemDto> = emptyList(),
+)
+
+/** Satu barang pada tiket. Tiap barang punya serial, tanggal beli, dan vonis
+ *  garansinya SENDIRI — server menghitungnya per barang. */
+@Serializable
+data class HsTicketItemDto(
+    val urutan: Int = 0,
+    val barisTransaksi: Int = 0,
+    val kodeBarang: String? = null,
+    val namaBarang: String? = null,
+    val serialNumber: String? = null,
+    val tanggalBeli: String? = null,
+    val dalamGaransi: Boolean = false,
 )
 
 /** Satu kunjungan teknisi (riwayat penanganan sebuah tiket). */
@@ -136,6 +166,23 @@ data class HsTicketDetailDto(
     val umurJam: Int? = null,
     val melewatiSla: Boolean = false,
     val visits: List<HsVisitDto> = emptyList(),
+    /**
+     * Tiket yang cocok dengan data penjualan (mirror GS).
+     *
+     * JANGAN dipakai sebagai "datanya sudah lengkap?" — server SENGAJA tidak
+     * pernah menaikkannya saat CS melengkapi tiket dari foto kwitansi
+     * (`lengkapi_tiket`: "kolom itu menjawab 'cocok dengan mirror penjualan?',
+     * bukan 'datanya sudah lengkap?'"), dan `PATCH` justru MENOLAK tiket yang
+     * `terverifikasi`. Yang menjawab kelengkapan adalah [dilengkapiAt].
+     */
+    val terverifikasi: Boolean = false,
+    /** Siapa & kapan CS melengkapi tiket tak-terverifikasi (migrasi 222).
+     *  Terisi = barang/tanggal beli/garansinya sudah punya dasar. */
+    val dilengkapiOleh: String? = null,
+    val dilengkapiNama: String? = null,
+    val dilengkapiAt: String? = null,
+    /** Barang tiket — lihat [HsTicketItemDto]. Absen (bukan []) pada tiket lama. */
+    val items: List<HsTicketItemDto> = emptyList(),
 )
 
 @Serializable
@@ -181,13 +228,28 @@ data class HsTransaksiItemDto(
     val customerHp: String? = null,
 )
 
-/** Kontak + serial hasil pengayaan SPK. Serial TIDAK ada di item transaksi. */
+/**
+ * Kontak + serial hasil pengayaan SPK. Serial TIDAK ada di item transaksi.
+ *
+ * Nama propertinya WAJIB `customer*` — berkas ini tidak memakai `@SerialName`
+ * sama sekali (bandingkan `AuthModels.kt`/`DeliveryFlowModels.kt` yang
+ * memakainya), jadi selama itu dipertahankan nama properti Kotlin ADALAH nama
+ * di kabel. Server menyerialkan
+ * `KontakKonsumen` sebagai camelCase `customerNama`/`customerHp`/
+ * `customerAlamat`/`customerMapUrl` (kinerja-service `home_service/domain.rs`).
+ * Sebelum 2026-08-18 field-field ini bernama `nama`/`hp`/`alamat`/`mapUrl`:
+ * `ignoreUnknownKeys = true` menelannya tanpa satu pun galat, jadi seluruh
+ * pengisian otomatis kontak MATI DIAM-DIAM sejak fitur ini lahir — layar cuma
+ * terlihat "kebetulan kosong". Hanya `serialNumber` yang kebetulan cocok, dan
+ * itulah satu-satunya yang selama ini benar-benar tampil.
+ */
 @Serializable
 data class HsKontakDto(
-    val nama: String? = null,
-    val hp: String? = null,
-    val alamat: String? = null,
-    val mapUrl: String? = null,
+    val deliveryJobId: String? = null,
+    val customerNama: String? = null,
+    val customerHp: String? = null,
+    val customerAlamat: String? = null,
+    val customerMapUrl: String? = null,
     val serialNumber: String? = null,
 )
 
@@ -204,12 +266,45 @@ data class HsUploadData(val url: String = "")
 
 // ── Payload aksi ────────────────────────────────────────────────────────────
 
+/**
+ * Satu barang yang dikomplainkan (`items[]`).
+ *
+ * SENGAJA tanpa nilai default. `Json` jaringan dibangun dengan
+ * `encodeDefaults = false` (NetworkModule.kt), jadi field yang nilainya sama
+ * dengan default-nya lenyap dari JSON — dan `baris` bernilai **0 itu nomor
+ * baris yang SAH** di data GS (`sync_sales.rs` menulis `unwrap_or(0)`), bukan
+ * sentinel "belum dipilih". Memberi field ini default apa pun akan membuat
+ * baris 0 terkirim sebagai `{}`.
+ */
+@Serializable
+data class HsCreateTicketItem(val barisTransaksi: Int)
+
 @Serializable
 data class HsCreateTicketBody(
+    /** Kosong = MINTA tiket bertanda belum terverifikasi. Bukan null: server
+     *  membedakan field yang hilang dari string kosong hanya lewat trim, dan
+     *  `explicitNulls = false` membuat null ikut hilang dari JSON. */
     val noTransaksi: String,
     val fotoKwitansiUrl: String,
     val deskripsi: String,
+    /**
+     * Barang yang dikomplainkan. Bila terisi, ia MENIMPA `barisTransaksi` /
+     * `kodeBarang` tunggal di server.
+     *
+     * Keduanya tetap dikirim berdampingan (persis seperti web) dan itu
+     * disengaja: server yang BELUM mengenal `items` akan mengabaikannya diam-
+     * diam — tanpa `barisTransaksi` ia lalu jatuh ke default "barang pertama
+     * transaksi" dan tiket menunjuk unit yang salah tanpa satu pun galat.
+     *
+     * Kosong pada jalur tanpa verifikasi; `encodeDefaults = false` membuatnya
+     * hilang dari JSON, yang memang yang diminta server (`Vec` non-Option:
+     * mengirim `null` justru ditolak 422).
+     */
+    val items: List<HsCreateTicketItem> = emptyList(),
     val barisTransaksi: Int? = null,
+    /** JANGAN pernah mengirim string kosong: server memakainya mentah tanpa
+     *  trim, jadi `""` dicari sebagai kode barang sungguhan dan selalu gagal
+     *  400. `null` (= hilang dari JSON) yang benar. */
     val kodeBarang: String? = null,
     val prioritas: String? = null,
     /** Penanda asal laporan; app selalu mengirim `android`. */
