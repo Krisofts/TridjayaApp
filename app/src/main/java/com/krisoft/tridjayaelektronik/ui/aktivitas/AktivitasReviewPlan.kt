@@ -1,11 +1,11 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import com.krisoft.tridjayaelektronik.BuildConfig
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 
 /**
  * Bagian murni layar Nilai Aktivitas (PIC raport) — tanpa Android/Compose,
- * supaya bisa diuji JUnit biasa. Pola sama [RaportPlan.kt].
+ * supaya bisa diuji JUnit biasa. Pola sama [AktivitasPlan.kt].
  */
 
 data class ReviewGate(val ok: Boolean, val alasan: String? = null)
@@ -43,7 +43,7 @@ internal fun skorReview(status: String): Int? = when (status) {
 
 /**
  * `evidenceUrl` bisa berisi SATU url atau string JSON array (baris lama web
- * multi-bukti) — web mem-parsingnya (`parseEvidenceUrls` di `picRaportStore.ts`)
+ * multi-bukti) — web mem-parsingnya (`parseEvidenceUrls` di `picAktivitasStore.ts`)
  * dan app harus sama, kalau tidak bukti multi-foto tampil sebagai satu teks
  * `["/uploads/…"]` yang tak bisa dimuat.
  *
@@ -85,7 +85,7 @@ internal fun evidenceImageUrl(
 }
 
 /** `true` = buktinya video, jadi tak boleh dirender sebagai gambar. */
-internal fun buktiVideo(item: RaportItemDto): Boolean =
+internal fun buktiVideo(item: AktivitasItemDto): Boolean =
     item.mode.equals("video", ignoreCase = true)
 
 /**
@@ -94,10 +94,10 @@ internal fun buktiVideo(item: RaportItemDto): Boolean =
  * waktu kirim), dan aktivitas di dalam tiap grup naik menurut `jobdeskIndex`
  * (nama field di kabel, ejaan lama sengaja dipertahankan).
  */
-internal fun grupPerKaryawan(items: List<RaportItemDto>): List<GrupRaport> =
+internal fun grupPerKaryawan(items: List<AktivitasItemDto>): List<GrupAktivitas> =
     items.groupBy { it.employeeId }
         .map { (id, baris) ->
-            GrupRaport(
+            GrupAktivitas(
                 employeeId = id,
                 nama = baris.firstOrNull { it.employeeName.isNotBlank() }?.employeeName
                     ?: "(tanpa nama)",
@@ -107,12 +107,12 @@ internal fun grupPerKaryawan(items: List<RaportItemDto>): List<GrupRaport> =
             )
         }
 
-data class GrupRaport(
+data class GrupAktivitas(
     val employeeId: String,
     val nama: String,
     val divisi: String,
     val cabang: String,
-    val baris: List<RaportItemDto>,
+    val baris: List<AktivitasItemDto>,
 )
 
 /** Label status untuk chip di kartu — sama istilah dengan layar karyawan. */

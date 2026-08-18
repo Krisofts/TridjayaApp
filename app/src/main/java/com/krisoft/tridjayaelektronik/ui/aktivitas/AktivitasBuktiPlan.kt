@@ -1,8 +1,8 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 /**
  * Aturan murni bukti Input Aktivitas — bentuk `evidenceUrl`, batas jumlah/ukuran,
- * dan pasangan ekstensi↔MIME video. Dipisah dari [RaportPlan] (yang isinya
+ * dan pasangan ekstensi↔MIME video. Dipisah dari [AktivitasPlan] (yang isinya
  * pencocokan aktivitas) supaya kontrak lintas-repo di bawah terbaca utuh, dan
  * dipisah dari ViewModel supaya bisa diuji tanpa perangkat.
  *
@@ -24,7 +24,7 @@ package com.krisoft.tridjayaelektronik.ui.raport
  * lihat-semua, tak lewat lookup itu).
  *
  * Web SELALU membungkus array untuk mode image
- * (`KaryawanRaportPage.tsx:532`), jadi baris multi-gambar dari web sudah lama
+ * (`KaryawanAktivitasPage.tsx:532`), jadi baris multi-gambar dari web sudah lama
  * terkena hal ini. Kalau app ikut membungkus, jalur PALING RAMAI — satu foto
  * kamera — ikut rusak, dan gejalanya "bukti saya hilang setelah update
  * aplikasi" tanpa satu pun error di server. Karena itu: 1 URL → polos, ≥2 →
@@ -36,7 +36,7 @@ package com.krisoft.tridjayaelektronik.ui.raport
  */
 
 /**
- * Cerminan `MAX_IMAGE_FILES` di `frontend/src/pages/dashboard/KaryawanRaportPage.tsx`.
+ * Cerminan `MAX_IMAGE_FILES` di `frontend/src/pages/dashboard/KaryawanAktivitasPage.tsx`.
  *
  * Server TIDAK membatasi jumlah gambar sama sekali; pagar terakhirnya cuma
  * kolom `raport_harian.bukti_url` bertipe `text` (65.535 byte), yang kalau
@@ -73,7 +73,7 @@ internal data class BuktiGate(val ok: Boolean, val alasan: String? = null)
  * oleh parser itu: kutip ganda, tanpa spasi, tanpa escape.
  *
  * - `image`: 1 URL → polos, ≥2 → JSON array (alasan panjang di KDoc berkas)
- * - `video`: selalu polos — web pun begitu (`KaryawanRaportPage.tsx:545`)
+ * - `video`: selalu polos — web pun begitu (`KaryawanAktivitasPage.tsx:545`)
  * - `none` : selalu null; server menolak `none` yang membawa evidenceUrl
  *   (`raport/service.rs:248`)
  */
@@ -240,7 +240,7 @@ internal fun hariMinggu(millis: Long): Boolean {
  * Agustus 2026: **36 berkas terunggah ke server dan NOL baris raport tercatat**;
  * seluruhnya jadi berkas yatim, dan orangnya cuma melihat penolakan setelah
  * menunggu semua unggahan selesai. Web sudah lama menutupnya di klien
- * (`isSundayReportDay` di `KaryawanRaportPage.tsx`); app-lah yang tak punya
+ * (`isSundayReportDay` di `KaryawanAktivitasPage.tsx`); app-lah yang tak punya
  * cerminannya.
  *
  * Ini MENDAHULUKAN kabar, bukan menambah aturan baru: yang menolak tetap server.
@@ -257,7 +257,7 @@ internal fun gerbangHariIni(millis: Long): BuktiGate =
  * dua kalimat berbeda untuk satu aturan terbaca sebagai dua aturan.
  */
 internal const val PESAN_TERKUNCI_PIC =
-    "Aktivitas ini sudah disetujui PIC, jadi buktinya dikunci. Minta PIC Raport " +
+    "Aktivitas ini sudah disetujui PIC, jadi buktinya dikunci. Minta PIC Aktivitas " +
         "mengembalikannya ke status Menunggu dulu kalau isinya perlu diperbaiki."
 
 /**

@@ -1,6 +1,6 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Bagian murni layar Nilai Aktivitas (PIC raport). */
-class RaportReviewPlanTest {
+class AktivitasReviewPlanTest {
 
     private val base = "https://tridjaya.com/"
 
@@ -42,7 +42,7 @@ class RaportReviewPlanTest {
      * itu justru perilaku yang DIBUANG, jadi ia diganti, bukan ditambah.
      *
      * Angka di sini cuma cerminan optimistis untuk layar. Yang menentukan tetap
-     * server: `RaportService::review` menurunkan nilainya dari `status` dan
+     * server: `AktivitasService::review` menurunkan nilainya dari `status` dan
      * MENGABAIKAN `score` kiriman klien, jadi app tak bisa lagi menitipkan 85
      * walau seseorang memanggil fungsi ini dengan angka.
      */
@@ -90,10 +90,10 @@ class RaportReviewPlanTest {
 
     @Test
     fun `mode video tidak dianggap gambar`() {
-        assertTrue(buktiVideo(RaportItemDto(mode = "video")))
-        assertTrue(buktiVideo(RaportItemDto(mode = "VIDEO")))
-        assertFalse(buktiVideo(RaportItemDto(mode = "image")))
-        assertFalse(buktiVideo(RaportItemDto(mode = "none")))
+        assertTrue(buktiVideo(AktivitasItemDto(mode = "video")))
+        assertTrue(buktiVideo(AktivitasItemDto(mode = "VIDEO")))
+        assertFalse(buktiVideo(AktivitasItemDto(mode = "image")))
+        assertFalse(buktiVideo(AktivitasItemDto(mode = "none")))
     }
 
     // ── Pengelompokan ────────────────────────────────────────────────────────
@@ -102,9 +102,9 @@ class RaportReviewPlanTest {
     fun `baris dikelompokkan per karyawan dan aktivitas terurut`() {
         val grup = grupPerKaryawan(
             listOf(
-                RaportItemDto(id = "1", employeeId = "A", employeeName = "Andi", jobdeskIndex = 2),
-                RaportItemDto(id = "2", employeeId = "B", employeeName = "Budi", jobdeskIndex = 0),
-                RaportItemDto(id = "3", employeeId = "A", employeeName = "Andi", jobdeskIndex = 0),
+                AktivitasItemDto(id = "1", employeeId = "A", employeeName = "Andi", jobdeskIndex = 2),
+                AktivitasItemDto(id = "2", employeeId = "B", employeeName = "Budi", jobdeskIndex = 0),
+                AktivitasItemDto(id = "3", employeeId = "A", employeeName = "Andi", jobdeskIndex = 0),
             )
         )
         assertEquals(listOf("A", "B"), grup.map { it.employeeId })
@@ -117,8 +117,8 @@ class RaportReviewPlanTest {
         // boleh membuat seluruh grupnya jadi "(tanpa nama)".
         val grup = grupPerKaryawan(
             listOf(
-                RaportItemDto(id = "1", employeeId = "A", employeeName = ""),
-                RaportItemDto(id = "2", employeeId = "A", employeeName = "Andi", divisiName = "Sales"),
+                AktivitasItemDto(id = "1", employeeId = "A", employeeName = ""),
+                AktivitasItemDto(id = "2", employeeId = "A", employeeName = "Andi", divisiName = "Sales"),
             )
         )
         assertEquals("Andi", grup.single().nama)
@@ -127,7 +127,7 @@ class RaportReviewPlanTest {
 
     @Test
     fun `karyawan tanpa nama sama sekali tetap punya label`() {
-        val grup = grupPerKaryawan(listOf(RaportItemDto(id = "1", employeeId = "A")))
+        val grup = grupPerKaryawan(listOf(AktivitasItemDto(id = "1", employeeId = "A")))
         assertEquals("(tanpa nama)", grup.single().nama)
     }
 }

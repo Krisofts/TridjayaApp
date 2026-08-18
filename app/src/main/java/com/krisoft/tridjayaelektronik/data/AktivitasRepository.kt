@@ -4,15 +4,15 @@ import android.content.ContentResolver
 import android.net.Uri
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
-import com.krisoft.tridjayaelektronik.data.model.RaportListData
-import com.krisoft.tridjayaelektronik.data.model.ReviewRaportBody
-import com.krisoft.tridjayaelektronik.data.model.ReviewRaportResult
-import com.krisoft.tridjayaelektronik.data.model.SubmitRaportBody
-import com.krisoft.tridjayaelektronik.data.model.SubmitRaportItem
-import com.krisoft.tridjayaelektronik.data.model.SubmitRaportResult
-import com.krisoft.tridjayaelektronik.data.remote.RaportApi
-import com.krisoft.tridjayaelektronik.data.remote.RaportUploadApi
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasListData
+import com.krisoft.tridjayaelektronik.data.model.ReviewAktivitasBody
+import com.krisoft.tridjayaelektronik.data.model.ReviewAktivitasResult
+import com.krisoft.tridjayaelektronik.data.model.SubmitAktivitasBody
+import com.krisoft.tridjayaelektronik.data.model.SubmitAktivitasItem
+import com.krisoft.tridjayaelektronik.data.model.SubmitAktivitasResult
+import com.krisoft.tridjayaelektronik.data.remote.AktivitasApi
+import com.krisoft.tridjayaelektronik.data.remote.AktivitasUploadApi
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -28,9 +28,9 @@ import javax.inject.Singleton
  * lebih berbahaya daripada satu panggilan jaringan.
  */
 @Singleton
-class RaportRepository @Inject constructor(
-    private val api: RaportApi,
-    private val uploadApi: RaportUploadApi,
+class AktivitasRepository @Inject constructor(
+    private val api: AktivitasApi,
+    private val uploadApi: AktivitasUploadApi,
 ) {
     private val errorJson = Json { ignoreUnknownKeys = true }
 
@@ -45,14 +45,14 @@ class RaportRepository @Inject constructor(
     }
 
     /**
-     * Raport yang sudah terkirim pada [tanggal] (`YYYY-MM-DD`) milik
+     * Aktivitas yang sudah terkirim pada [tanggal] (`YYYY-MM-DD`) milik
      * [karyawanId]. Selain dikirim sebagai filter server, hasilnya disaring
      * ULANG di sini: `list_raport` hanya memaksa scope diri sendiri saat role
      * PRIMARY user = `karyawan`, jadi user multi-role (mis. primary `sales` +
      * extra `karyawan`) bisa menerima baris karyawan lain — dan angka "sudah
      * berapa aktivitas hari ini" di layar Activity akan ikut salah.
      */
-    suspend fun raportOfDay(tanggal: String, karyawanId: String?): AuthResult<List<RaportItemDto>> = try {
+    suspend fun raportOfDay(tanggal: String, karyawanId: String?): AuthResult<List<AktivitasItemDto>> = try {
         val response = api.list(tanggal = tanggal, karyawanId = karyawanId?.takeIf { it.isNotBlank() })
         val data = response.body()?.data
         if (response.isSuccessful && data != null) {
@@ -69,7 +69,7 @@ class RaportRepository @Inject constructor(
      *
      * Sengaja TIDAK memakai [raportOfDay]: fungsi itu menyaring ulang ke satu
      * `karyawanId`, yang untuk PIC berarti daftar kosong. Yang dikembalikan
-     * seluruh `RaportListData` (bukan `items` saja) karena badge antrian harus
+     * seluruh `AktivitasListData` (bukan `items` saja) karena badge antrian harus
      * memakai `total` — `items` dipotong server ke `limit`.
      */
     suspend fun antrianReview(
@@ -77,7 +77,7 @@ class RaportRepository @Inject constructor(
         status: String = "pending",
         cari: String? = null,
         limit: Int = 200,
-    ): AuthResult<RaportListData> = try {
+    ): AuthResult<AktivitasListData> = try {
         val response = api.list(
             tanggal = tanggal,
             karyawanId = null,
@@ -102,10 +102,10 @@ class RaportRepository @Inject constructor(
         status: String,
         skor: Int? = null,
         komentar: String? = null,
-    ): AuthResult<ReviewRaportResult> = try {
+    ): AuthResult<ReviewAktivitasResult> = try {
         val response = api.review(
             id = id,
-            body = ReviewRaportBody(
+            body = ReviewAktivitasBody(
                 status = status,
                 score = skor,
                 comment = komentar?.trim()?.takeIf { it.isNotBlank() },
@@ -149,7 +149,7 @@ class RaportRepository @Inject constructor(
      * [mimeType] dan ekstensi pada [namaFile] WAJIB sepasang — server memeriksa
      * keduanya bersama magic bytes, dan pasangan yang meleset ditolak 400
      * SETELAH seluruh berkas terkirim. Pakai `ekstensiVideo`/`mimeVideo`
-     * (`ui/raport/RaportBuktiPlan.kt`), jangan menebak sendiri.
+     * (`ui/raport/AktivitasBuktiPlan.kt`), jangan menebak sendiri.
      *
      * [ukuranBytes] hanya untuk header `Content-Length`; `0` = biarkan OkHttp
      * mengirim chunked (kolom `SIZE` tak selalu terbaca dari penyedia galeri).
@@ -185,11 +185,11 @@ class RaportRepository @Inject constructor(
         mode: String,
         evidenceUrl: String? = null,
         employeeNote: String? = null,
-    ): AuthResult<SubmitRaportResult> = try {
+    ): AuthResult<SubmitAktivitasResult> = try {
         val response = api.submit(
-            SubmitRaportBody(
+            SubmitAktivitasBody(
                 items = listOf(
-                    SubmitRaportItem(
+                    SubmitAktivitasItem(
                         jobdeskIndex = aktivitasIndex,
                         jobdeskText = aktivitasText,
                         mode = mode,

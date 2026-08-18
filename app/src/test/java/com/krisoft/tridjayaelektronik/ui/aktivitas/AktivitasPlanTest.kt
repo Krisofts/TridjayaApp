@@ -1,7 +1,7 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -11,7 +11,7 @@ import org.junit.Test
  * (dan didenda) PIC. Salah cocok = karyawan dinilai atas aktivitas divisi lain,
  * jadi aturannya diuji, bukan diasumsikan.
  */
-class RaportPlanTest {
+class AktivitasPlanTest {
 
     private val master = listOf(
         AktivitasPositionDto(id = "sales-elektronik", posisi = "SALES ELEKTRONIK", jobdesks = listOf("a", "b")),
@@ -43,18 +43,18 @@ class RaportPlanTest {
 
     @Test
     fun `status baris mengikuti review server`() {
-        assertEquals(RaportRowStatus.BELUM, rowStatus(null))
-        assertEquals(RaportRowStatus.MENUNGGU, rowStatus(RaportItemDto(reviewStatus = "pending")))
-        assertEquals(RaportRowStatus.DISETUJUI, rowStatus(RaportItemDto(reviewStatus = "approved")))
-        assertEquals(RaportRowStatus.DITOLAK, rowStatus(RaportItemDto(reviewStatus = "rejected")))
+        assertEquals(AktivitasRowStatus.BELUM, rowStatus(null))
+        assertEquals(AktivitasRowStatus.MENUNGGU, rowStatus(AktivitasItemDto(reviewStatus = "pending")))
+        assertEquals(AktivitasRowStatus.DISETUJUI, rowStatus(AktivitasItemDto(reviewStatus = "approved")))
+        assertEquals(AktivitasRowStatus.DITOLAK, rowStatus(AktivitasItemDto(reviewStatus = "rejected")))
     }
 
     @Test
     fun `baris terkirim dipetakan berdasarkan jobdeskIndex`() {
         val peta = submittedByIndex(
             listOf(
-                RaportItemDto(id = "1", jobdeskIndex = 0, jobdeskText = "a"),
-                RaportItemDto(id = "2", jobdeskIndex = 2, jobdeskText = "c"),
+                AktivitasItemDto(id = "1", jobdeskIndex = 0, jobdeskText = "a"),
+                AktivitasItemDto(id = "2", jobdeskIndex = 2, jobdeskText = "c"),
             )
         )
         assertEquals("1", peta[0]?.id)

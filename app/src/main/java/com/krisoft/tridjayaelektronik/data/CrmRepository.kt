@@ -683,7 +683,7 @@ class CrmRepository @Inject constructor(
      *   nasib baris antrean dari situ ([parseError] membuangnya).
      * - Kalimat yang dibaca sales diambil dari `errors[0]` dulu ("Nomor
      *   WhatsApp tidak valid"), baru `message` ("Input tidak valid" — benar
-     *   tapi tak memberi tahu apa pun). Pola sama `RaportRepository.parseError`.
+     *   tapi tak memberi tahu apa pun). Pola sama `AktivitasRepository.parseError`.
      */
     private fun kegagalanProspek(response: Response<*>): AuthResult.Failure {
         val raw = response.errorBody()?.string()

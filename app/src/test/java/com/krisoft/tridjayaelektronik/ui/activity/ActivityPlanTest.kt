@@ -289,17 +289,17 @@ class ActivityPlanTest {
 
     @Test
     fun `raport BETA ikut dihitung dan selesai begitu ada aktivitas terkirim`() {
-        val items = listOf(item("absen_masuk"), item("raport"))
+        val items = listOf(item("absen_masuk"), item("aktivitas"))
         val belum = buildDailyTasks(items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0)
         // Sudah bisa dikerjakan (bukan `comingSoon` lagi) → masuk penyebut.
         assertEquals("1/2", dailyProgressLabel(belum))
-        assertEquals("belum", belum.first { it.item.id == "raport" }.detail)
+        assertEquals("belum", belum.first { it.item.id == "aktivitas" }.detail)
 
         val terkirim = buildDailyTasks(
-            items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0, raportToday = 3
+            items, checkInAt = "2026-07-28 08:00:00", checkOutAt = null, leadsToday = 0, aktivitasToday = 3
         )
         assertEquals("2/2", dailyProgressLabel(terkirim))
-        val raport = terkirim.first { it.item.id == "raport" }
+        val raport = terkirim.first { it.item.id == "aktivitas" }
         assertTrue(raport.done)
         assertEquals("3 aktivitas terkirim", raport.detail)
     }
@@ -309,14 +309,14 @@ class ActivityPlanTest {
         // Q5: mayoritas karyawan aktif divisinya tak ada di master aktivitas →
         // `matchAktivitasPosition` balikin null. "0/0" akan memvonis mereka belum
         // mengerjakan sesuatu yang memang tak bisa dihitung.
-        val items = listOf(item("raport"))
+        val items = listOf(item("aktivitas"))
         for (expected in listOf(null, 0)) {
-            val belum = buildDailyTasks(items, null, null, leadsToday = 0, raportExpected = expected)
+            val belum = buildDailyTasks(items, null, null, leadsToday = 0, aktivitasExpected = expected)
             assertEquals("belum", belum.single().detail)
             assertFalse(belum.single().done)
 
             val ada = buildDailyTasks(
-                items, null, null, leadsToday = 0, raportToday = 3, raportExpected = expected
+                items, null, null, leadsToday = 0, aktivitasToday = 3, aktivitasExpected = expected
             )
             assertEquals("3 aktivitas terkirim", ada.single().detail)
             assertTrue(ada.single().done)
@@ -325,15 +325,15 @@ class ActivityPlanTest {
 
     @Test
     fun `penyebut aktivitas diketahui tampil sebagai x per y`() {
-        val items = listOf(item("raport"))
+        val items = listOf(item("aktivitas"))
         val sebagian = buildDailyTasks(
-            items, null, null, leadsToday = 0, raportToday = 3, raportExpected = 7
+            items, null, null, leadsToday = 0, aktivitasToday = 3, aktivitasExpected = 7
         )
         assertEquals("3/7 aktivitas", sebagian.single().detail)
         // Centang TETAP "ada minimal satu aktivitas terkirim" — bukan "3 == 7".
         assertTrue(sebagian.single().done)
 
-        val kosong = buildDailyTasks(items, null, null, leadsToday = 0, raportExpected = 7)
+        val kosong = buildDailyTasks(items, null, null, leadsToday = 0, aktivitasExpected = 7)
         assertEquals("0/7 aktivitas", kosong.single().detail)
         assertFalse(kosong.single().done)
     }
@@ -343,8 +343,8 @@ class ActivityPlanTest {
         // Penyebut datang dari panggilan LAIN (master aktivitas) — kalau raport hari
         // ini sendiri gagal dimuat, angka pembilangnya tak bisa dipercaya.
         val tasks = buildDailyTasks(
-            listOf(item("raport")), null, null, leadsToday = 0,
-            raportFailed = true, raportExpected = 7,
+            listOf(item("aktivitas")), null, null, leadsToday = 0,
+            aktivitasFailed = true, aktivitasExpected = 7,
         )
         assertEquals("gagal muat", tasks.single().detail)
         assertTrue(tasks.single().loadFailed)
@@ -352,8 +352,8 @@ class ActivityPlanTest {
 
     @Test
     fun `raport gagal dimuat tampil gagal muat dan tak menghukum progres`() {
-        val items = listOf(item("raport"))
-        val tasks = buildDailyTasks(items, null, null, leadsToday = 0, raportFailed = true)
+        val items = listOf(item("aktivitas"))
+        val tasks = buildDailyTasks(items, null, null, leadsToday = 0, aktivitasFailed = true)
         assertEquals("gagal muat", tasks.single().detail)
         assertTrue(tasks.single().loadFailed)
         assertEquals("0/0", dailyProgressLabel(tasks))

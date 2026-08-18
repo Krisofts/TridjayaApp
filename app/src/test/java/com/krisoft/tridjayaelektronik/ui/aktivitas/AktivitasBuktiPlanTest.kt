@@ -1,4 +1,4 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,14 +8,14 @@ import org.junit.Test
 
 /**
  * Kontrak bukti Input Aktivitas — stringly-typed lintas TIGA tempat tanpa satu
- * pun pemeriksa kompiler: app ini, `KaryawanRaportPage.tsx` (web), dan
+ * pun pemeriksa kompiler: app ini, `KaryawanAktivitasPage.tsx` (web), dan
  * modul `raport` di `kinerja-service` (server).
  *
  * Nilainya ditulis sebagai LITERAL di sini, bukan dirujuk dari konstantanya —
  * test yang membandingkan konstanta dengan dirinya sendiri selalu hijau (pola
  * `OpnameKondisiTest`).
  */
-class RaportBuktiPlanTest {
+class AktivitasBuktiPlanTest {
 
     // ── Bentuk evidenceUrl ───────────────────────────────────────────────────
 
@@ -291,7 +291,7 @@ class RaportBuktiPlanTest {
     fun `pesan terkunci menyebut jalan keluarnya, bukan cuma larangan`() {
         // Yang dibutuhkan orangnya bukan "tidak bisa" melainkan "harus minta
         // siapa" — tanpa itu ia mengira aplikasinya rusak.
-        assertTrue(PESAN_TERKUNCI_PIC.contains("PIC Raport"))
+        assertTrue(PESAN_TERKUNCI_PIC.contains("PIC Aktivitas"))
         assertTrue(PESAN_TERKUNCI_PIC.contains("Menunggu"))
     }
 }

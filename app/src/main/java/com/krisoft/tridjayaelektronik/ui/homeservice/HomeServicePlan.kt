@@ -7,7 +7,7 @@ import com.krisoft.tridjayaelektronik.data.model.HsTicketDto
 
 /**
  * Bagian murni layar Komplain (Home Service) — tanpa Android/Compose supaya
- * bisa diuji JUnit biasa. Pola sama `ui/raport/RaportReviewPlan.kt`.
+ * bisa diuji JUnit biasa. Pola sama `ui/raport/AktivitasReviewPlan.kt`.
  */
 
 // ── Status ──────────────────────────────────────────────────────────────────

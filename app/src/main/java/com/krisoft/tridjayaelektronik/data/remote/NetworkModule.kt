@@ -100,8 +100,8 @@ object NetworkModule {
     fun createOffApi(tokenStore: TokenStore): OffApi =
         authenticatedRetrofit(tokenStore).create(OffApi::class.java)
 
-    fun createRaportApi(tokenStore: TokenStore): RaportApi =
-        authenticatedRetrofit(tokenStore).create(RaportApi::class.java)
+    fun createAktivitasApi(tokenStore: TokenStore): AktivitasApi =
+        authenticatedRetrofit(tokenStore).create(AktivitasApi::class.java)
 
     /**
      * Client khusus unggah bukti raport: badan sampai 30 MB tak akan selesai
@@ -113,7 +113,7 @@ object NetworkModule {
      * body omitted". Itu membatalkan seluruh gunanya [UriRequestBody] justru
      * di build yang dipakai menguji fitur ini di HP.
      */
-    fun createRaportUploadApi(tokenStore: TokenStore): RaportUploadApi {
+    fun createAktivitasUploadApi(tokenStore: TokenStore): AktivitasUploadApi {
         val base = authenticatedRetrofit(tokenStore)
         val uploadClient = (base.callFactory() as OkHttpClient).newBuilder()
             .writeTimeout(300, TimeUnit.SECONDS)
@@ -124,7 +124,7 @@ object NetworkModule {
         return base.newBuilder()
             .client(uploadClient)
             .build()
-            .create(RaportUploadApi::class.java)
+            .create(AktivitasUploadApi::class.java)
     }
 
     fun createHomeServiceApi(tokenStore: TokenStore): HomeServiceApi =
