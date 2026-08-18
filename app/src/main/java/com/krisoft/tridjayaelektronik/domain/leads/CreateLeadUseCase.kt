@@ -37,14 +37,32 @@ class CreateLeadUseCase @Inject constructor(
         lokasi: String,
         catatan: String,
         estimatedValue: Double?,
-        assignedTo: String? = null
+        assignedTo: String? = null,
+        buktiUrl: String? = null
     ): CreateLeadOutcome {
+        val profil = authRepository.cachedUser
+        val wajibBukti = wajibBuktiProspek(peranEfektif(profil?.role, profil?.roles.orEmpty()))
         val missing = buildList {
             if (nama.isBlank()) add("Nama")
             if (phone.isBlank()) add("No WhatsApp")
             if (minatBarang.isBlank()) add("Minat Barang")
             if (kategoriProduk.isBlank()) add("Kategori Produk")
             if (pipelineId == null) add("Pipeline")
+            // Bukti WAJIB untuk trainee. Dipasang di SINI (daftar field wajib),
+            // bukan di layar, supaya jalur ANTREAN OFFLINE ikut terjaga: prospek
+            // yang lolos ke Room tanpa bukti akan dijawab 400 selamanya oleh
+            // server sambil tetap berlabel "Antre" di layar — persis kelas
+            // kegagalan yang sudah dijelaskan panjang di `ProspekNomor.kt`.
+            //
+            // SENGAJA TIDAK menunggu saklar `app_settings.prospek_bukti_wajib`
+            // (yang default MATI), sama seperti web. Saklar itu ada untuk
+            // melindungi APK LAMA yang belum punya field bukti sama sekali;
+            // begitu versi ini terpasang, alasannya gugur untuk versi ini.
+            // Meminta bukti sejak sekarang justru MENGUNTUNGKAN trainee:
+            // kelulusannya dinilai dari `closing_terverifikasi`, yang hanya
+            // menghitung closing BERBUKTI — prospek yang tersimpan tanpa bukti
+            // hari ini tak akan pernah bisa dihitung kelak.
+            if (wajibBukti && buktiUrl.isNullOrBlank()) add("Bukti percakapan")
         }
         if (missing.isNotEmpty()) {
             return CreateLeadOutcome.ValidationError("Lengkapi dulu: ${missing.joinToString(", ")}")
@@ -68,7 +86,8 @@ class CreateLeadUseCase @Inject constructor(
             estimatedValue = estimatedValue?.takeIf { it > 0 },
             source = sumber.trim().ifBlank { null },
             lokasi = lokasi.trim().ifBlank { null },
-            catatan = catatan.trim().ifBlank { null }
+            catatan = catatan.trim().ifBlank { null },
+            buktiUrl = buktiUrl?.trim()?.ifBlank { null }
         )
         return when (val result = crmRepository.createLead(draft)) {
             is AuthResult.Success -> CreateLeadOutcome.Success(result.data.id)
