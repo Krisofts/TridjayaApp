@@ -275,7 +275,7 @@ class HomeServicePlanTest {
     @Test
     fun `kontak transaksi mengisi kolom yang belum disentuh pelapor`() {
         val hasil = kontakSetelahLookup(
-            disunting = false,
+            disunting = KontakDisunting.NIHIL,
             sekarang = kosong,
             kontakNama = "BUDI",
             kontakHp = "0812",
@@ -292,7 +292,7 @@ class HomeServicePlanTest {
         // adalah yang barusan diketik pelapor. Server MEWAJIBKAN alamat, jadi
         // membiarkan ketiganya kosong berarti tombol mati tanpa bahan.
         val hasil = kontakSetelahLookup(
-            disunting = false,
+            disunting = KontakDisunting.NIHIL,
             sekarang = kosong,
             kontakNama = null,
             kontakHp = "   ",
@@ -310,7 +310,7 @@ class HomeServicePlanTest {
         // kemudian kalau aturannya menimpa tanpa syarat.
         val diketik = KontakIsian("BUDI SANTOSO", "0812", "Jl. Melati 7 RT03")
         val hasil = kontakSetelahLookup(
-            disunting = true,
+            disunting = KontakDisunting(nama = true, hp = true, alamat = true),
             sekarang = diketik,
             kontakNama = "BUDI",
             kontakHp = "0800",
@@ -329,7 +329,7 @@ class HomeServicePlanTest {
         // mengirim teknisi ke rumah orang lain.
         val tertinggal = KontakIsian("BUDI", "0812", "Jl. Mawar 1")
         val hasil = kontakSetelahLookup(
-            disunting = false,
+            disunting = KontakDisunting.NIHIL,
             sekarang = tertinggal,
             kontakNama = "SITI",
             kontakHp = "0899",
@@ -346,12 +346,53 @@ class HomeServicePlanTest {
         val warisan = KontakIsian("BUDI", "0812", "Jl. Mawar 1")
         assertEquals(
             KontakIsian("SITI", "0899", ""),
-            kontakSetelahLookup(false, warisan, null, null, null, "SITI", "0899"),
+            kontakSetelahLookup(KontakDisunting.NIHIL, warisan, null, null, null, "SITI", "0899"),
         )
         assertEquals(
             warisan,
-            kontakSetelahLookup(true, warisan, null, null, null, "SITI", "0899"),
+            kontakSetelahLookup(
+                KontakDisunting(nama = true, hp = true, alamat = true),
+                warisan, null, null, null, "SITI", "0899",
+            ),
         )
+    }
+
+    /**
+     * Menyentuh SATU kolom tidak boleh menolak data server untuk dua kolom lain.
+     *
+     * Kelas bug yang dijaga: satu bendera `disunting` untuk bertiga. Seluruh
+     * form sudah terender saat rincian transaksi masih dimuat, jadi pelapor
+     * yang mengetik NAMA lebih dulu menyalakan bendera itu untuk ketiganya —
+     * alamat dari SPK yang mendarat sedetik kemudian ditolak, dan kolom alamat
+     * tinggal kosong. Alamat WAJIB di kedua jalur, jadi akibatnya tombol kirim
+     * mati tanpa alasan yang terlihat, atau teknisi berangkat tanpa alamat.
+     */
+    @Test
+    fun `mengetik nama tidak membuang alamat dari SPK`() {
+        val hasil = kontakSetelahLookup(
+            disunting = KontakDisunting(nama = true),
+            sekarang = KontakIsian("BUDI SANTOSO", "", ""),
+            kontakNama = "BUDI",
+            kontakHp = "0812",
+            kontakAlamat = "Jl. Mawar 1",
+            cariNama = "budi",
+            cariHp = "",
+        )
+        assertEquals(KontakIsian("BUDI SANTOSO", "0812", "Jl. Mawar 1"), hasil)
+    }
+
+    @Test
+    fun `alamat yang diketik tetap menang walau nama dan hp datang dari SPK`() {
+        val hasil = kontakSetelahLookup(
+            disunting = KontakDisunting(alamat = true),
+            sekarang = KontakIsian("", "", "Jl. Melati 7 RT03 (rumah belakang)"),
+            kontakNama = "SITI",
+            kontakHp = "0899",
+            kontakAlamat = "Jl. Kenanga 9",
+            cariNama = "",
+            cariHp = "",
+        )
+        assertEquals(KontakIsian("SITI", "0899", "Jl. Melati 7 RT03 (rumah belakang)"), hasil)
     }
 
     // ── Format kirim ─────────────────────────────────────────────────────────

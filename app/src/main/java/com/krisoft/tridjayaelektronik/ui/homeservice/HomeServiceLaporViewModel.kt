@@ -74,7 +74,7 @@ data class HsLaporUiState(
     /** Pelapor sudah menyentuh salah satu kolom kontak sejak transaksi ini
      *  dipilih. Sentuhan manusia menang atas data server — lihat
      *  [kontakSetelahLookup]. */
-    val kontakDisunting: Boolean = false,
+    val kontakDisunting: KontakDisunting = KontakDisunting.NIHIL,
 
     val mengirim: Boolean = false,
     val error: String? = null,
@@ -108,9 +108,12 @@ class HomeServiceLaporViewModel @Inject constructor(
     fun ketikHp(v: String) = _state.update { it.copy(cariHp = v) }
     fun ketikDeskripsi(v: String) = _state.update { it.copy(deskripsi = v) }
     fun pilihPrioritas(v: String) = _state.update { it.copy(prioritas = v) }
-    fun ketikCustomerNama(v: String) = _state.update { it.copy(customerNama = v, kontakDisunting = true) }
-    fun ketikCustomerHp(v: String) = _state.update { it.copy(customerHp = v, kontakDisunting = true) }
-    fun ketikCustomerAlamat(v: String) = _state.update { it.copy(customerAlamat = v, kontakDisunting = true) }
+    fun ketikCustomerNama(v: String) =
+        _state.update { it.copy(customerNama = v, kontakDisunting = it.kontakDisunting.copy(nama = true)) }
+    fun ketikCustomerHp(v: String) =
+        _state.update { it.copy(customerHp = v, kontakDisunting = it.kontakDisunting.copy(hp = true)) }
+    fun ketikCustomerAlamat(v: String) =
+        _state.update { it.copy(customerAlamat = v, kontakDisunting = it.kontakDisunting.copy(alamat = true)) }
     fun hapusPesan() = _state.update { it.copy(error = null) }
 
     /**
@@ -195,7 +198,7 @@ class HomeServiceLaporViewModel @Inject constructor(
                 customerNama = "",
                 customerHp = "",
                 customerAlamat = "",
-                kontakDisunting = false,
+                kontakDisunting = KontakDisunting.NIHIL,
             )
         }
         viewModelScope.launch {
@@ -240,7 +243,7 @@ class HomeServiceLaporViewModel @Inject constructor(
                 customerNama = "",
                 customerHp = "",
                 customerAlamat = "",
-                kontakDisunting = false,
+                kontakDisunting = KontakDisunting.NIHIL,
                 error = null,
             )
         }
@@ -323,7 +326,7 @@ class HomeServiceLaporViewModel @Inject constructor(
                 customerNama = "",
                 customerHp = "",
                 customerAlamat = "",
-                kontakDisunting = false,
+                kontakDisunting = KontakDisunting.NIHIL,
                 // Jalur tanpa-verifikasi ikut dibatalkan: "Ganti" berarti kembali
                 // memilih, dan meninggalkannya menyala membuat layar menampilkan
                 // pencarian sambil diam-diam masih berjanji mengirim tiket tanpa

@@ -207,23 +207,44 @@ internal data class KontakIsian(val nama: String, val hp: String, val alamat: St
  * pencarian — cadangan itu penting untuk transaksi lama yang SPK-nya nihil,
  * karena di jalur itu satu-satunya identitas yang kita punya adalah yang
  * barusan diketik pelapor.
+ *
+ * `disunting` dilacak PER KOLOM, bukan satu bendera untuk bertiga. Versi
+ * pertama memakai satu `Boolean`, dan itu membuang data yang benar: seluruh
+ * form sudah terender saat rincian masih dimuat, jadi pelapor yang mengetik
+ * NAMA lebih dulu menyalakan bendera itu untuk ketiganya — alamat dari SPK
+ * yang mendarat sedetik kemudian ditolak, dan kolom alamat tinggal kosong
+ * sampai ada yang mengisinya tangan. Sentuhan pada satu kolom bukan
+ * pernyataan apa pun tentang dua kolom lainnya.
  */
+/**
+ * Kolom kontak mana saja yang SUDAH disentuh pelapor. Lihat [kontakSetelahLookup].
+ *
+ * `public`, tak seperti tetangganya di berkas ini, karena ia jadi field
+ * `HomeServiceLaporState` yang dibaca layar.
+ */
+data class KontakDisunting(
+    val nama: Boolean = false,
+    val hp: Boolean = false,
+    val alamat: Boolean = false,
+) {
+    companion object {
+        val NIHIL = KontakDisunting()
+    }
+}
+
 internal fun kontakSetelahLookup(
-    disunting: Boolean,
+    disunting: KontakDisunting,
     sekarang: KontakIsian,
     kontakNama: String?,
     kontakHp: String?,
     kontakAlamat: String?,
     cariNama: String,
     cariHp: String,
-): KontakIsian {
-    if (disunting) return sekarang
-    return KontakIsian(
-        nama = kontakNama?.takeIf { it.isNotBlank() } ?: cariNama.trim(),
-        hp = kontakHp?.takeIf { it.isNotBlank() } ?: cariHp.trim(),
-        alamat = kontakAlamat.orEmpty(),
-    )
-}
+): KontakIsian = KontakIsian(
+    nama = if (disunting.nama) sekarang.nama else kontakNama?.takeIf { it.isNotBlank() } ?: cariNama.trim(),
+    hp = if (disunting.hp) sekarang.hp else kontakHp?.takeIf { it.isNotBlank() } ?: cariHp.trim(),
+    alamat = if (disunting.alamat) sekarang.alamat else kontakAlamat.orEmpty(),
+)
 
 /** Gerbang tombol "Kirim komplain" — pembungkus [kurangBuatTiket] supaya layar
  *  dan ViewModel memakai SATU aturan (ViewModel memeriksanya ulang sebelum
