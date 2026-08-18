@@ -107,10 +107,41 @@ class ActivityRegistryTest {
         assertEquals(ActivitySource.RAPORT_REVIEW_PENDING, kartu.source)
         // Nilainya ditulis literal, bukan merujuk konstantanya sendiri: test yang
         // membandingkan konstanta dengan dirinya sendiri selalu hijau.
+        //
+        // Dipangkas 2026-08-18: `manager`, `kepala-cabang`, `hrd` dicabut atas
+        // arahan user (penilaian aktivitas hanya PIC + administrator). Kartu ini
+        // adalah tempat kebocoran itu terlihat — Vina Amelia melihatnya karena
+        // `extra_roles = kepala-cabang`, bukan karena punya menu web.
         assertEquals(
-            setOf("admin", "superadmin", "manager", "kepala-cabang", "pic_raport", "pic-raport", "hrd"),
+            setOf("admin", "superadmin", "pic_raport", "pic-raport"),
             kartu.allowedRoles,
         )
+    }
+
+    @Test
+    fun `peran yang dicabut tak lagi melihat kartu Nilai Aktivitas`() {
+        // Dua jalur harus sama-sama tertutup, dan yang KEDUA paling mudah
+        // tertinggal karena cuma muncul saat HP offline:
+        //   (a) server menjawab kemampuannya false  -> peta kemampuan
+        //   (b) peta belum termuat (offline)        -> daftar role lokal
+        for (peran in listOf("manager", "kepala-cabang", "hrd")) {
+            assertFalse(
+                "$peran masih melihat kartu Nilai Aktivitas lewat peta kemampuan",
+                "raport_review" in
+                    visibleActivityItems(setOf(peran), mapOf("raport.review" to false)).map { it.id },
+            )
+            assertFalse(
+                "$peran masih melihat kartu Nilai Aktivitas saat OFFLINE (cadangan role lokal)",
+                "raport_review" in visibleActivityItems(setOf(peran), null).map { it.id },
+            )
+        }
+        // Kontrol positif: yang masih berhak tetap melihatnya di KEDUA jalur.
+        for (peran in listOf("pic_raport", "pic-raport", "admin", "superadmin")) {
+            assertTrue(
+                "$peran kehilangan kartu Nilai Aktivitas saat offline",
+                "raport_review" in visibleActivityItems(setOf(peran), null).map { it.id },
+            )
+        }
     }
 
     @Test

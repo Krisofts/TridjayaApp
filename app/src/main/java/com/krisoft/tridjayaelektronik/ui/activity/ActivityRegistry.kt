@@ -121,9 +121,20 @@ internal val RAPORT_INPUT_ROLES = ALL_LOGGED_IN
  * `owner` SENGAJA tak ada: ia boleh MEMBACA raport (`RAPORT_VIEW_ALL_ROLES`)
  * tapi ditolak `review_raport`. Dua ejaan `pic_raport`/`pic-raport` sama-sama
  * ditulis karena backend memang mengenali keduanya (`auth.rs`).
+ *
+ * **`manager`, `kepala-cabang`, dan `hrd` DICABUT 2026-08-18** (arahan user:
+ * penilaian aktivitas hanya PIC + administrator). Daftar ini yang menyembunyikan
+ * kartu "Nilai Aktivitas" saat OFFLINE; sisi ONLINE sudah tertutup begitu
+ * server berhenti menjawab `raport.review = true`.
+ *
+ * Kenapa keduanya WAJIB dipangkas bersama: `gateAllows` memakai peta kemampuan
+ * lebih dulu dan berhenti di sana, tapi ia jatuh ke daftar ini kalau peta belum
+ * termuat (`capabilities == null`, yaitu saat offline atau panggilan gagal).
+ * Meninggalkan ketiga peran di sini = kartunya tetap muncul di HP yang belum
+ * berhasil memuat kemampuannya, lalu setiap ketukan dijawab 403.
  */
 internal val RAPORT_REVIEW_ROLES = setOf(
-    "admin", "superadmin", "manager", "kepala-cabang", "pic_raport", "pic-raport", "hrd",
+    "admin", "superadmin", "pic_raport", "pic-raport",
 )
 
 /**
