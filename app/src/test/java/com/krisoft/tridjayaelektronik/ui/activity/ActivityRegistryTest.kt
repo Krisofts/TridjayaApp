@@ -102,7 +102,7 @@ class ActivityRegistryTest {
     @Test
     fun `kartu Nilai Aktivitas memakai kunci raport review`() {
         val kartu = ACTIVITY_ITEMS.first { it.id == "aktivitas_review" }
-        assertEquals("raport.review", kartu.capability)
+        assertEquals("aktivitas.review", kartu.capability)
         assertEquals("aktivitas_review", kartu.navKey)
         assertEquals(ActivitySource.AKTIVITAS_REVIEW_PENDING, kartu.source)
         // Nilainya ditulis literal, bukan merujuk konstantanya sendiri: test yang
@@ -128,7 +128,7 @@ class ActivityRegistryTest {
             assertFalse(
                 "$peran masih melihat kartu Nilai Aktivitas lewat peta kemampuan",
                 "aktivitas_review" in
-                    visibleActivityItems(setOf(peran), mapOf("raport.review" to false)).map { it.id },
+                    visibleActivityItems(setOf(peran), mapOf("aktivitas.review" to false)).map { it.id },
             )
             assertFalse(
                 "$peran masih melihat kartu Nilai Aktivitas saat OFFLINE (cadangan role lokal)",
@@ -241,9 +241,33 @@ class ActivityRegistryTest {
         assertEquals("delivery.control", ACTIVITY_ITEMS.first { it.id == "tarik_unit" }.capability)
     }
 
+    /// Server LAMA (belum menyajikan `aktivitas.review`) tetap menyalakan kartu.
+    ///
+    /// Arah kompatibilitas yang mudah terlupa: aturan `gateAllows` yang lama
+    /// menjaga "server menyempitkan akses" — kunci hilang = false. Tapi APK BARU
+    /// di atas server LAMA juga menghasilkan kunci hilang, dan di sana artinya
+    /// bukan penyempitan melainkan server yang belum tahu ejaan barunya. Tanpa
+    /// cadangan `EJAAN_KUNCI_LAMA`, kartu "Nilai Aktivitas" hilang tanpa satu
+    /// pun pesan — termasuk milik satu-satunya PIC yang berhak memakainya.
+    @Test
+    fun `kunci ejaan lama dipakai saat server belum menyajikan ejaan baru`() {
+        val serverLama = mapOf("raport.review" to true)
+        assertTrue(
+            "server lama harus tetap menyalakan kartu lewat cadangan ejaan kunci",
+            "aktivitas_review" in visibleActivityItems(setOf("pic_raport"), serverLama).map { it.id },
+        )
+        // Dan penyempitan dari server LAMA tetap menang — cadangan ini bukan
+        // pintu belakang ke daftar role lokal.
+        assertFalse(
+            "server lama yang menjawab false harus tetap menyembunyikannya",
+            "aktivitas_review" in
+                visibleActivityItems(setOf("pic_raport"), mapOf("raport.review" to false)).map { it.id },
+        )
+    }
+
     @Test
     fun `peta kemampuan server menang atas daftar role lokal`() {
-        val caps = mapOf("raport.review" to false)
+        val caps = mapOf("aktivitas.review" to false)
         assertFalse("aktivitas_review" in visibleActivityItems(setOf("manager"), caps).map { it.id })
     }
 
