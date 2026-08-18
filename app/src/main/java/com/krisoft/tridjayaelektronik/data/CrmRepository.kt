@@ -20,6 +20,7 @@ import com.krisoft.tridjayaelektronik.data.model.PipelineDto
 import com.krisoft.tridjayaelektronik.data.model.PipelinesData
 import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
 import com.krisoft.tridjayaelektronik.data.remote.CrmApi
+import com.krisoft.tridjayaelektronik.data.remote.ProspekUploadApi
 import com.krisoft.tridjayaelektronik.di.AppScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,9 @@ import retrofit2.Response
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 private const val SUMMARY_FETCH_LIMIT = 300
 private val LEADS_SYNC_INTERVAL_MILLIS = TimeUnit.HOURS.toMillis(5)
@@ -88,6 +92,7 @@ fun pesanTolakProspek(failure: AuthResult.Failure): String {
 @Singleton
 class CrmRepository @Inject constructor(
     private val api: CrmApi,
+    private val prospekUploadApi: ProspekUploadApi,
     private val leadDao: LeadDao,
     private val syncMetaDao: SyncMetaDao,
     private val dashboardCacheDao: DashboardCacheDao,
@@ -404,7 +409,11 @@ class CrmRepository @Inject constructor(
             pendingSync = true,
             minatBarang = draft.minatBarang,
             kategoriProduk = draft.kategoriProduk,
-            keteranganFincoy = draft.keteranganFincoy
+            keteranganFincoy = draft.keteranganFincoy,
+            // Disimpan di baris antrean, bukan cuma dikirim: kalau prospek ini
+            // gagal terkirim sekarang dan menunggu sinyal, buktinya harus ikut
+            // saat pendorongnya mencoba lagi.
+            buktiUrl = draft.buktiUrl
         )
         leadDao.insertAll(listOf(local))
         appScope.launch { syncPendingLeads() }
@@ -433,6 +442,30 @@ class CrmRepository @Inject constructor(
      * berikutnya. Barisnya TIDAK dihapus — isinya hasil kerja orang. Klasifikasinya
      * memakai [sifatGagal] yang sama dengan antrean opname, arah aman ke SEMENTARA.
      */
+    /**
+     * Unggah bukti prospek → path relatif dari server.
+     *
+     * `ByteArray`, bukan streaming: batasnya 8 MB (`MAX_BUKTI_PROSPEK_BYTES`),
+     * jauh di bawah bukti raport VIDEO yang 30 MB dan memang butuh streaming.
+     * Pemanggil WAJIB sudah mengompres — layar mengirim JPEG hasil kompres,
+     * bukan berkas galeri apa adanya.
+     *
+     * Mengembalikan URL APA ADANYA dari server. Jangan menyusunnya sendiri:
+     * server memvalidasi bentuk `/uploads/prospek/<nama>` DAN keberadaan
+     * berkasnya, jadi path karangan ditolak.
+     */
+    suspend fun uploadBuktiProspek(bytes: ByteArray, filename: String): AuthResult<String> = try {
+        val part = MultipartBody.Part.createFormData(
+            "file", filename, bytes.toRequestBody("image/jpeg".toMediaType())
+        )
+        val response = prospekUploadApi.uploadBukti(part)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null && data.url.isNotBlank()) AuthResult.Success(data.url)
+        else parseError(response)
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     suspend fun syncPendingLeads() {
         syncMutex.withLock {
             // Baris yang sudah divonis permanen sengaja TIDAK ikut: mengirimnya lagi
@@ -453,7 +486,13 @@ class CrmRepository @Inject constructor(
                     source = entity.source,
                     estimatedValue = entity.estimatedValue.takeIf { it > 0 },
                     lokasi = entity.lokasi,
-                    assignedTo = entity.assignedTo
+                    assignedTo = entity.assignedTo,
+                    // Ikut dari antrean. Tanpa baris ini, prospek yang dibuat
+                    // saat sinyal putus terkirim TANPA bukti begitu sinyal
+                    // pulih — dan untuk `trainee` itu 400 yang divonis PERMANEN
+                    // oleh `vonisPermanenProspek`, jadi barisnya tak pernah
+                    // dicoba lagi dan pekerjaannya hilang diam-diam.
+                    buktiUrl = entity.buktiUrl
                 )
                 val response = runCatching { api.createProspek(request) }.getOrNull()
                 if (response?.isSuccessful == true) {

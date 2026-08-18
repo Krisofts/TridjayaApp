@@ -24,6 +24,19 @@ data class AktivitasPositionDto(
     val jobdesks: List<String> = emptyList(),
 )
 
+/**
+ * Balasan `GET /api/raport-harian/penempatan-saya`.
+ *
+ * `penempatanId` NULL punya arti sendiri — "orang ini belum punya baris
+ * `kpi_assignments`" — dan itu BUKAN sama dengan "permintaannya belum selesai".
+ * Pemanggil WAJIB memisahkan keduanya lewat `PenempatanSaya`; lihat KDoc-nya
+ * di `ui/raport/RaportPlan.kt` untuk alasan kenapa mencampurnya merusak layar.
+ */
+@Serializable
+data class PenempatanSayaData(
+    val penempatanId: String? = null,
+)
+
 @Serializable
 data class AktivitasDivisionsData(
     val divisions: List<AktivitasPositionDto> = emptyList(),

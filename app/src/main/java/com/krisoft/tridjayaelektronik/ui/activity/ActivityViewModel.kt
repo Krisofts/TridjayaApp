@@ -19,7 +19,7 @@ import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
 import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
 import com.krisoft.tridjayaelektronik.ui.homeservice.saringStatus
-import com.krisoft.tridjayaelektronik.ui.raport.matchAktivitasPosition
+import com.krisoft.tridjayaelektronik.ui.raport.pilihAktivitasUntukInput
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -259,15 +259,27 @@ class ActivityViewModel @Inject constructor(
                 // jumlah yang sudah terkirim tetap benar, cuma penyebutnya yang tak
                 // diketahui — dan kartu bertanda "gagal muat" gara-gara master
                 // aktivitas tak terambil justru menyembunyikan angka yang valid.
-                // `matchAktivitasPosition` dipakai ulang apa adanya (BUKAN matcher
-                // baru) supaya penyebut di kartu ini identik dengan daftar aktivitas
-                // yang user lihat begitu kartunya dibuka.
+                // `pilihAktivitasUntukInput` dipakai ulang apa adanya (BUKAN
+                // matcher baru) supaya penyebut di kartu ini identik dengan
+                // daftar aktivitas yang user lihat begitu kartunya dibuka.
+                // Itu sebabnya ia WAJIB ikut pindah ke penempatan bersama
+                // layar raport: kalau cuma salah satu yang pindah, kartunya
+                // menjanjikan "x/8" sementara layarnya menampilkan 6 kotak.
                 jobs += async {
-                    val r = raportRepository.aktivitasPositions()
+                    // Penempatan diambil BARENG master aktivitas, bukan
+                    // sesudahnya: kartu ini dirender di layar Home yang dibuka
+                    // paling sering, dan satu round-trip tambahan di sini
+                    // terasa di tiap pembukaan.
+                    val (r, penempatan) = coroutineScope {
+                        val pos = async { raportRepository.aktivitasPositions() }
+                        val tempat = async { raportRepository.penempatanSaya() }
+                        pos.await() to tempat.await()
+                    }
                     if (r is AuthResult.Success) {
-                        raportExpected = matchAktivitasPosition(user?.divisi.orEmpty(), r.data)
-                            // `.jobdesks` = nama field DI KABEL, ejaan lama.
-                            ?.jobdesks?.size
+                        raportExpected =
+                            pilihAktivitasUntukInput(user?.divisi.orEmpty(), r.data, penempatan)
+                                // `.jobdesks` = nama field DI KABEL, ejaan lama.
+                                ?.jobdesks?.size
                     }
                 }
             }

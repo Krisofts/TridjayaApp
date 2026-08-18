@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.RaportRepository
+import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
 import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
@@ -108,11 +109,22 @@ class RaportViewModel @Inject constructor(
             val divisi = user?.divisi.orEmpty()
             val today = KlasemenStandings.todayIso()
 
-            // Dua panggilan tak saling bergantung — jalankan bareng.
-            val (positionsResult, todayResult) = coroutineScope {
+            // TIGA panggilan tak saling bergantung — jalankan bareng.
+            //
+            // `penempatanSaya()` ikut fan-out ini, BUKAN berurutan sesudahnya:
+            // ia menentukan daftar aktivitas yang dirender, jadi memanggilnya
+            // belakangan menambah satu round-trip tepat di jalur yang paling
+            // sering dibuka orang tiap pagi.
+            val positionsResult: AuthResult<List<AktivitasPositionDto>>
+            val todayResult: AuthResult<List<RaportItemDto>>
+            val penempatan: PenempatanSaya
+            coroutineScope {
                 val positions = async { repository.aktivitasPositions() }
                 val terkirim = async { repository.raportOfDay(today, user?.id) }
-                positions.await() to terkirim.await()
+                val tempat = async { repository.penempatanSaya() }
+                positionsResult = positions.await()
+                todayResult = terkirim.await()
+                penempatan = tempat.await()
             }
 
             when (positionsResult) {
@@ -121,7 +133,14 @@ class RaportViewModel @Inject constructor(
                     return@launch
                 }
                 is AuthResult.Success -> {
-                    val posisi = matchAktivitasPosition(divisi, positionsResult.data)
+                    // PENEMPATAN, bukan tag. Sampai 2026-08-18 baris ini
+                    // memakai `matchAktivitasPosition(divisi, ...)` sementara
+                    // gerbang absen pulang & KPI sudah memakai penempatan —
+                    // pemegang tag `admin-penjualan,kasir` karena itu melihat 8
+                    // butir KASIR di HP padahal dinilai atas 6 butir ADMIN
+                    // PENJUALAN. Jalur tag tetap dipakai sebagai CADANGAN di
+                    // dalam `pilihAktivitasUntukInput`.
+                    val posisi = pilihAktivitasUntukInput(divisi, positionsResult.data, penempatan)
                     _state.update {
                         it.copy(
                             isLoading = false,

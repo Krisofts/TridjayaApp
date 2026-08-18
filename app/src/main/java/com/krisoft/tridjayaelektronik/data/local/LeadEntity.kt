@@ -54,6 +54,18 @@ data class LeadEntity(
      * yang perlu dibetulkan.
      */
     val syncRejectReason: String? = null,
+    /**
+     * Bukti yang SUDAH terunggah (path server), bukan berkas lokal.
+     *
+     * Disimpan di antrean supaya prospek yang menunggu sinkron tak kehilangan
+     * buktinya — tanpa kolom ini, baris yang dibuat saat sinyal putus akan
+     * terkirim TANPA bukti begitu sinyal pulih, dan untuk `trainee` itu
+     * ditolak 400 yang divonis PERMANEN oleh `vonisPermanenProspek`.
+     *
+     * Unggahannya sendiri menuntut jaringan, jadi kolom ini hanya terisi untuk
+     * prospek yang buktinya sempat terunggah sebelum disimpan.
+     */
+    val buktiUrl: String? = null,
     /** True while a stage move done offline/optimistically hasn't been pushed to the server yet.
      *  Only meaningful for server rows (positive id); temp pending rows sync via the create queue. */
     val stageDirty: Boolean = false,
