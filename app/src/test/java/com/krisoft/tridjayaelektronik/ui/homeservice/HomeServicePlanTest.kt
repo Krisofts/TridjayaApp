@@ -154,12 +154,204 @@ class HomeServicePlanTest {
         assertTrue(bolehAlasan("Unit rusak berat").ok)
     }
 
+    /** Pembungkus supaya tiap test cuma menyebut yang sedang diujinya. Default =
+     *  jalur terverifikasi yang LENGKAP. */
+    private fun kurang(
+        tanpaVerifikasi: Boolean = false,
+        noTransaksi: String? = "TR-1",
+        barisTerpilih: Set<Int> = setOf(1),
+        foto: String? = "/uploads/x.jpg",
+        deskripsi: String? = "rusak",
+        nama: String? = "BUDI",
+        hp: String? = "0812",
+        alamat: String? = "Jl. Mawar 1",
+    ) = kurangBuatTiket(
+        tanpaVerifikasi = tanpaVerifikasi,
+        noTransaksi = noTransaksi,
+        barisTerpilih = barisTerpilih,
+        fotoKwitansiUrl = foto,
+        deskripsi = deskripsi,
+        customerNama = nama,
+        customerHp = hp,
+        customerAlamat = alamat,
+    )
+
     @Test
-    fun `tiket butuh transaksi, foto kwitansi, dan keluhan`() {
-        assertFalse(bolehBuatTiket(null, "/uploads/x.jpg", "rusak").ok)
-        assertFalse(bolehBuatTiket("TR-1", null, "rusak").ok)
-        assertFalse(bolehBuatTiket("TR-1", "/uploads/x.jpg", "  ").ok)
-        assertTrue(bolehBuatTiket("TR-1", "/uploads/x.jpg", "rusak").ok)
+    fun `jalur terverifikasi lengkap boleh dikirim`() {
+        assertEquals(emptyList<String>(), kurang())
+        assertTrue(
+            bolehBuatTiket(
+                tanpaVerifikasi = false,
+                noTransaksi = "TR-1",
+                barisTerpilih = setOf(1),
+                fotoKwitansiUrl = "/uploads/x.jpg",
+                deskripsi = "rusak",
+                customerNama = null,
+                customerHp = null,
+                customerAlamat = "Jl. Mawar 1",
+            ).ok,
+        )
+    }
+
+    @Test
+    fun `barang wajib dicentang — server yang tak menerima pilihan diam-diam memakai barang pertama`() {
+        assertEquals(listOf("barang yang dikomplainkan"), kurang(barisTerpilih = emptySet()))
+    }
+
+    @Test
+    fun `alamat wajib di kedua jalur`() {
+        assertEquals(listOf("alamat konsumen"), kurang(alamat = "   "))
+        assertEquals(listOf("alamat konsumen"), kurang(tanpaVerifikasi = true, noTransaksi = null, alamat = null))
+    }
+
+    @Test
+    fun `foto kwitansi dan keluhan wajib di kedua jalur`() {
+        assertEquals(listOf("foto kwitansi"), kurang(foto = null))
+        assertEquals(listOf("isi keluhan"), kurang(deskripsi = "  "))
+        assertEquals(listOf("foto kwitansi"), kurang(tanpaVerifikasi = true, noTransaksi = null, foto = null))
+        assertEquals(listOf("isi keluhan"), kurang(tanpaVerifikasi = true, noTransaksi = null, deskripsi = null))
+    }
+
+    @Test
+    fun `tanpa verifikasi — nama dan HP wajib, barang TIDAK diminta`() {
+        // Barang memang tak ada untuk dipilih di jalur ini; memintanya =
+        // jalan buntu. Yang wajib justru nama+HP (server menolak tanpanya).
+        assertEquals(
+            emptyList<String>(),
+            kurang(tanpaVerifikasi = true, noTransaksi = null, barisTerpilih = emptySet()),
+        )
+        assertEquals(
+            listOf("nama konsumen", "nomor HP konsumen"),
+            kurang(tanpaVerifikasi = true, noTransaksi = null, barisTerpilih = emptySet(), nama = " ", hp = null),
+        )
+    }
+
+    @Test
+    fun `tanpa transaksi dan tanpa jalur tanpa-verifikasi = data pembelian yang kurang`() {
+        assertEquals(listOf("data pembelian konsumen"), kurang(noTransaksi = null, barisTerpilih = emptySet()))
+    }
+
+    @Test
+    fun `urutan daftar kekurangan sama dengan web`() {
+        // Urutan `kurang` di HomeServiceLaporPage.tsx: foto → (nama, HP |
+        // pembelian | barang) → alamat → keluhan. Pelapor yang berpindah antara
+        // HP dan web harus membaca daftar yang sama persis.
+        assertEquals(
+            listOf("foto kwitansi", "barang yang dikomplainkan", "alamat konsumen", "isi keluhan"),
+            kurang(barisTerpilih = emptySet(), foto = null, deskripsi = null, alamat = null),
+        )
+        assertEquals(
+            listOf("foto kwitansi", "nama konsumen", "nomor HP konsumen", "alamat konsumen", "isi keluhan"),
+            kurang(
+                tanpaVerifikasi = true, noTransaksi = null, barisTerpilih = emptySet(),
+                foto = null, deskripsi = null, nama = null, hp = null, alamat = null,
+            ),
+        )
+    }
+
+    @Test
+    fun `pesan gerbang menyebut SEMUA yang kurang, bukan cuma yang pertama`() {
+        val gate = bolehBuatTiket(
+            tanpaVerifikasi = false,
+            noTransaksi = "TR-1",
+            barisTerpilih = emptySet(),
+            fotoKwitansiUrl = null,
+            deskripsi = "rusak",
+            customerNama = null,
+            customerHp = null,
+            customerAlamat = null,
+        )
+        assertFalse(gate.ok)
+        assertEquals(
+            "Masih perlu: foto kwitansi, barang yang dikomplainkan, alamat konsumen.",
+            gate.alasan,
+        )
+    }
+
+    // ── Kontak sesudah lookup ────────────────────────────────────────────────
+
+    private val kosong = KontakIsian("", "", "")
+
+    @Test
+    fun `kontak transaksi mengisi kolom yang belum disentuh pelapor`() {
+        val hasil = kontakSetelahLookup(
+            disunting = false,
+            sekarang = kosong,
+            kontakNama = "BUDI",
+            kontakHp = "0812",
+            kontakAlamat = "Jl. Mawar 1",
+            cariNama = "bud",
+            cariHp = "",
+        )
+        assertEquals(KontakIsian("BUDI", "0812", "Jl. Mawar 1"), hasil)
+    }
+
+    @Test
+    fun `transaksi tanpa kontak jatuh ke kotak pencarian, bukan dibiarkan kosong`() {
+        // Transaksi lama tanpa SPK: satu-satunya identitas yang kita punya
+        // adalah yang barusan diketik pelapor. Server MEWAJIBKAN alamat, jadi
+        // membiarkan ketiganya kosong berarti tombol mati tanpa bahan.
+        val hasil = kontakSetelahLookup(
+            disunting = false,
+            sekarang = kosong,
+            kontakNama = null,
+            kontakHp = "   ",
+            kontakAlamat = null,
+            cariNama = "  SITI  ",
+            cariHp = "0899",
+        )
+        assertEquals(KontakIsian("SITI", "0899", ""), hasil)
+    }
+
+    @Test
+    fun `ketikan pelapor MENANG atas respons yang telat mendarat`() {
+        // Seluruh form sudah terender saat rincian masih dimuat, jadi alamat
+        // yang sedang diketik bisa dihapus respons yang datang beberapa detik
+        // kemudian kalau aturannya menimpa tanpa syarat.
+        val diketik = KontakIsian("BUDI SANTOSO", "0812", "Jl. Melati 7 RT03")
+        val hasil = kontakSetelahLookup(
+            disunting = true,
+            sekarang = diketik,
+            kontakNama = "BUDI",
+            kontakHp = "0800",
+            kontakAlamat = "Jl. Mawar 1",
+            cariNama = "budi",
+            cariHp = "0812",
+        )
+        assertEquals(diketik, hasil)
+    }
+
+    @Test
+    fun `kontak konsumen SEBELUMNYA tidak menyeberang saat transaksi diganti`() {
+        // `disunting` direset tiap `pilihTransaksi`, jadi isian yang tertinggal
+        // dari konsumen sebelumnya WAJIB kalah dari kontak transaksi baru —
+        // server memenangkan isian klien atas data SPK, dan alamat yang salah
+        // mengirim teknisi ke rumah orang lain.
+        val tertinggal = KontakIsian("BUDI", "0812", "Jl. Mawar 1")
+        val hasil = kontakSetelahLookup(
+            disunting = false,
+            sekarang = tertinggal,
+            kontakNama = "SITI",
+            kontakHp = "0899",
+            kontakAlamat = "Jl. Kenanga 9",
+            cariNama = "",
+            cariHp = "",
+        )
+        assertEquals(KontakIsian("SITI", "0899", "Jl. Kenanga 9"), hasil)
+    }
+
+    @Test
+    fun `jalur tanpa verifikasi membuang alamat warisan transaksi, menahan yang diketik`() {
+        // Dipakai `lanjutTanpaVerifikasi` dengan kontak server serba null.
+        val warisan = KontakIsian("BUDI", "0812", "Jl. Mawar 1")
+        assertEquals(
+            KontakIsian("SITI", "0899", ""),
+            kontakSetelahLookup(false, warisan, null, null, null, "SITI", "0899"),
+        )
+        assertEquals(
+            warisan,
+            kontakSetelahLookup(true, warisan, null, null, null, "SITI", "0899"),
+        )
     }
 
     // ── Format kirim ─────────────────────────────────────────────────────────

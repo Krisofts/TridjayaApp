@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -106,13 +107,31 @@ fun HomeServiceLaporScreen(
                         Spacer(Modifier.height(6.dp))
                         Text(
                             buildString {
-                                append(tiket.namaBarang?.takeIf { it.isNotBlank() } ?: tiket.noTransaksi)
+                                append(
+                                    tiket.namaBarang?.takeIf { it.isNotBlank() }
+                                        ?: tiket.noTransaksi.takeIf { it.isNotBlank() }
+                                        ?: "Barang belum diisi",
+                                )
+                                // Tiket boleh memuat beberapa barang; kartu ini
+                                // memajang yang utama saja, jadi sisanya harus
+                                // dihitung — kalau tidak, tiket 3 barang terbaca
+                                // persis seperti tiket 1 barang.
+                                if (tiket.items.size > 1) append(" +${tiket.items.size - 1} barang lain")
                                 // Status garansi DIHITUNG SERVER dari tanggal beli —
-                                // ditampilkan, bukan diisi pelapor.
-                                when (tiket.dalamGaransi) {
-                                    true -> append(" · masih garansi")
-                                    false -> append(" · di luar garansi")
-                                    null -> Unit
+                                // ditampilkan, bukan diisi pelapor. Pada tiket BELUM
+                                // TERVERIFIKASI server menulis `false` karena tanggal
+                                // belinya memang belum diketahui: itu berarti "belum
+                                // terbukti bergaransi", BUKAN "tidak bergaransi".
+                                // Menuliskan vonis negatifnya di sini akan memberi
+                                // tahu konsumen sesuatu yang belum tentu benar.
+                                if (!tiket.terverifikasi) {
+                                    append(" · belum terverifikasi, CS melengkapi dari foto kwitansi")
+                                } else {
+                                    when (tiket.dalamGaransi) {
+                                        true -> append(" · masih garansi")
+                                        false -> append(" · di luar garansi")
+                                        null -> Unit
+                                    }
                                 }
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -138,7 +157,9 @@ fun HomeServiceLaporScreen(
                 Text(pesan, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
             }
 
-            if (state.noTransaksi == null) {
+            // Sisa form hanya terbuka sesudah pelapor memilih SATU dari dua
+            // jalur: transaksi yang cocok, atau maju tanpa data pembelian.
+            if (state.noTransaksi == null && !state.tanpaVerifikasi) {
                 SeksiCari(
                     nama = state.cariNama,
                     hp = state.cariHp,
@@ -149,22 +170,28 @@ fun HomeServiceLaporScreen(
                     onHp = viewModel::ketikHp,
                     onCari = viewModel::cari,
                     onPilih = viewModel::pilihTransaksi,
+                    onLanjutTanpaVerifikasi = viewModel::lanjutTanpaVerifikasi,
                 )
                 return@Column
             }
 
-            SeksiTransaksi(
-                noTransaksi = state.noTransaksi.orEmpty(),
-                memuat = state.memuatRincian,
-                barang = state.barang,
-                dipilih = state.barangDipilih,
-                serial = state.kontak.serialNumber,
-                onPilih = viewModel::pilihBarang,
-                onGanti = viewModel::gantiTransaksi,
-            )
+            if (state.tanpaVerifikasi) {
+                SeksiTanpaVerifikasi(onCariLagi = viewModel::gantiTransaksi)
+            } else {
+                SeksiTransaksi(
+                    noTransaksi = state.noTransaksi.orEmpty(),
+                    memuat = state.memuatRincian,
+                    barang = state.barang,
+                    terpilih = state.barisTerpilih,
+                    serial = state.kontak.serialNumber,
+                    onToggle = viewModel::toggleBarang,
+                    onGanti = viewModel::gantiTransaksi,
+                )
+            }
 
             KartuKwitansi(
                 url = state.fotoKwitansiUrl,
+                penanda = state.fotoPenanda,
                 mengunggah = state.mengunggah,
                 onJepret = { kamera.launch(uriKwitansi) },
             )
@@ -196,31 +223,49 @@ fun HomeServiceLaporScreen(
             Text(
                 // Isian ini menang atas data hasil pengayaan SPK di server, jadi
                 // perlu dijelaskan — bukan sekadar "opsional".
-                "Terisi otomatis dari data transaksi bila ada. Yang kamu ketik di sini yang dipakai.",
+                if (state.tanpaVerifikasi) {
+                    "Tanpa data pembelian, nama dan nomor HP WAJIB — itu satu-satunya cara CS " +
+                        "menghubungi konsumen ini."
+                } else {
+                    "Terisi otomatis dari data transaksi bila ada. Yang kamu ketik di sini yang dipakai."
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(
                 value = state.customerNama,
                 onValueChange = viewModel::ketikCustomerNama,
-                label = { Text("Nama") },
+                label = { Text(if (state.tanpaVerifikasi) "Nama *" else "Nama") },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = state.customerHp,
                 onValueChange = viewModel::ketikCustomerHp,
-                label = { Text("Nomor HP") },
+                label = { Text(if (state.tanpaVerifikasi) "Nomor HP *" else "Nomor HP") },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = state.customerAlamat,
                 onValueChange = viewModel::ketikCustomerAlamat,
-                label = { Text("Alamat") },
+                // Wajib di KEDUA jalur — server menolak tiket yang alamatnya
+                // tetap kosong sesudah pengayaan SPK, dan teknisi memang
+                // didatangkan ke alamat ini.
+                label = { Text("Alamat kunjungan *") },
+                placeholder = { Text("Teknisi akan mendatangi alamat ini") },
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            val gate = bolehBuatTiket(state.noTransaksi, state.fotoKwitansiUrl, state.deskripsi)
+            val gate = bolehBuatTiket(
+                tanpaVerifikasi = state.tanpaVerifikasi,
+                noTransaksi = state.noTransaksi,
+                barisTerpilih = state.barisTerpilih,
+                fotoKwitansiUrl = state.fotoKwitansiUrl,
+                deskripsi = state.deskripsi,
+                customerNama = state.customerNama,
+                customerHp = state.customerHp,
+                customerAlamat = state.customerAlamat,
+            )
             if (!gate.ok) {
                 Text(
                     gate.alasan.orEmpty(),
@@ -228,9 +273,18 @@ fun HomeServiceLaporScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Galat dirender SEKALI LAGI di sini. Yang di pucuk form berada
+            // jauh di luar layar begitu form terisi penuh, jadi penolakan server
+            // (mis. alamat wajib) terbaca sebagai "tombolnya tidak melakukan
+            // apa-apa" dan pelapor menekannya berulang kali.
+            state.error?.let { pesan ->
+                Text(pesan, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+            }
             ExpressiveFilledButton(
                 onClick = { viewModel.kirim() },
-                enabled = gate.ok && !state.mengirim,
+                // `mengunggah` ikut: menekan Kirim saat kwitansi sedang diganti
+                // akan mengirim tiket tanpa foto (URL lama sudah dibuang).
+                enabled = gate.ok && !state.mengirim && !state.mengunggah,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (state.mengirim) {
@@ -254,6 +308,7 @@ private fun SeksiCari(
     onHp: (String) -> Unit,
     onCari: () -> Unit,
     onPilih: (String) -> Unit,
+    onLanjutTanpaVerifikasi: () -> Unit,
 ) {
     Text("Cari transaksi konsumen", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     OutlinedTextField(
@@ -278,12 +333,31 @@ private fun SeksiCari(
         Text(if (mencari) "Mencari…" else "Cari")
     }
 
+    // Nihil hasil BUKAN jalan buntu (dulu iya, dan komplain konsumen dengan
+    // pembelian lama/di luar alur SPK jadi tak bisa dicatat dari HP sama
+    // sekali). Tawaran ini hanya muncul sesudah pencarian benar-benar SUKSES
+    // dan kosong — `sudahMencari` tidak diset saat pencarian gagal, supaya
+    // jaringan putus tak berubah jadi tiket tak terverifikasi.
     if (sudahMencari && hasil.isEmpty() && !mencari) {
-        Text(
-            "Transaksi tak ditemukan. Coba nomor HP lain, atau ejaan nama yang berbeda.",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Data pembelian atas nama/nomor itu tidak ditemukan. Coba nomor HP lain atau " +
+                        "ejaan nama yang berbeda — atau lanjutkan tanpa data pembelian: tiketnya " +
+                        "ditandai belum terverifikasi supaya CS memeriksanya dari foto kwitansi.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                ExpressiveOutlinedButton(
+                    onClick = onLanjutTanpaVerifikasi,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Lanjut tanpa data pembelian") }
+            }
+        }
     }
     hasil.forEach { transaksi ->
         ClayCard(modifier = Modifier.fillMaxWidth().clickable { onPilih(transaksi.noTransaksi) }) {
@@ -315,15 +389,20 @@ private fun SeksiTransaksi(
     noTransaksi: String,
     memuat: Boolean,
     barang: List<HsTransaksiItemDto>,
-    dipilih: HsTransaksiItemDto?,
+    terpilih: Set<Int>,
     serial: String?,
-    onPilih: (HsTransaksiItemDto) -> Unit,
+    onToggle: (Int) -> Unit,
     onGanti: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(noTransaksi, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            serial?.takeIf { it.isNotBlank() }?.let {
+            // Serial ini milik BARIS PERTAMA transaksi saja (server mengambilnya
+            // dengan `kontak_dari_spk(no_transaksi, items.first())`), jadi ia
+            // hanya sah dipajang sebagai fakta transaksi kalau transaksinya
+            // memang satu barang. Pada transaksi multi-barang ia akan terbaca
+            // seolah berlaku untuk semua yang dicentang.
+            serial?.takeIf { it.isNotBlank() && barang.size <= 1 }?.let {
                 Text(
                     "Serial: $it",
                     style = MaterialTheme.typography.labelSmall,
@@ -340,41 +419,80 @@ private fun SeksiTransaksi(
     }
     if (barang.size > 1) {
         Text(
-            "Pilih barang yang dikomplain",
+            "Centang SEMUA barang yang dikeluhkan — satu tiket boleh memuat lebih dari satu.",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
     barang.forEach { item ->
-        val terpilih = dipilih?.baris == item.baris
+        val dicentang = item.baris in terpilih
         Surface(
-            onClick = { onPilih(item) },
+            onClick = { onToggle(item.baris) },
             shape = RoundedCornerShape(14.dp),
-            color = if (terpilih) {
+            color = if (dicentang) {
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
             } else {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(Modifier.padding(12.dp)) {
-                Text(
-                    item.namaBarang?.takeIf { it.isNotBlank() } ?: item.kodeBarang.orEmpty(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (terpilih) FontWeight.Bold else FontWeight.Normal,
-                )
-                Text(
-                    item.kodeBarang.orEmpty(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(
+                modifier = Modifier.padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = dicentang, onCheckedChange = { onToggle(item.baris) })
+                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                    Text(
+                        item.namaBarang?.takeIf { it.isNotBlank() } ?: item.kodeBarang.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (dicentang) FontWeight.Bold else FontWeight.Normal,
+                    )
+                    Text(
+                        item.kodeBarang.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pengganti seksi transaksi pada jalur tanpa verifikasi. Isinya konsekuensi
+ * yang harus diketahui pelapor SEBELUM mengirim — bukan sekadar penanda:
+ * barang, tanggal beli, cabang, dan status garansi tidak akan terisi, dan CS
+ * yang melengkapinya dari foto kwitansi.
+ */
+@Composable
+private fun SeksiTanpaVerifikasi(onCariLagi: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "Tanpa data pembelian",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Tiket ini ditandai belum terverifikasi. Nama barang, tanggal beli, cabang, dan " +
+                    "status garansi tidak terisi otomatis — CS melengkapinya dari foto kwitansi " +
+                    "sebelum menugaskan teknisi.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            ExpressiveOutlinedButton(onClick = onCariLagi, modifier = Modifier.fillMaxWidth()) {
+                Text("Cari data pembelian lagi")
             }
         }
     }
 }
 
 @Composable
-private fun KartuKwitansi(url: String?, mengunggah: Boolean, onJepret: () -> Unit) {
+private fun KartuKwitansi(url: String?, penanda: String, mengunggah: Boolean, onJepret: () -> Unit) {
     ExpressiveOutlinedButton(
         onClick = onJepret,
         enabled = !mengunggah,
@@ -392,6 +510,16 @@ private fun KartuKwitansi(url: String?, mengunggah: Boolean, onJepret: () -> Uni
                 url != null -> "Kwitansi terunggah — foto ulang"
                 else -> "Foto kwitansi (wajib)"
             }
+        )
+    }
+    // Penanda yang tercetak di watermark foto yang SEDANG terpasang. Tanpa ini
+    // kwitansi milik transaksi/konsumen sebelumnya tak terlihat sama sekali —
+    // label tombol berbunyi sama saja, dan tiket terbit membawa bukti orang lain.
+    if (url != null && penanda.isNotBlank()) {
+        Text(
+            "Terpasang: $penanda",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

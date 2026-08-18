@@ -117,7 +117,7 @@ fun HomeServiceListScreen(
                         )
                     }
                     items(state.items, key = { it.id }) { tiket ->
-                        KartuTiket(tiket = tiket, onClick = { onOpen(tiket.id) })
+                        KartuTiket(tiket = tiket, mode = state.mode, onClick = { onOpen(tiket.id) })
                     }
                     if (state.lainnya.isNotEmpty()) {
                         item(key = "judul-lainnya") {
@@ -133,7 +133,7 @@ fun HomeServiceListScreen(
                             )
                         }
                         items(state.lainnya, key = { "lain-${it.id}" }) { tiket ->
-                            KartuTiket(tiket = tiket, onClick = { onOpen(tiket.id) })
+                            KartuTiket(tiket = tiket, mode = state.mode, onClick = { onOpen(tiket.id) })
                         }
                     }
                 }
@@ -143,7 +143,7 @@ fun HomeServiceListScreen(
 }
 
 @Composable
-private fun KartuTiket(tiket: HsTicketDto, onClick: () -> Unit) {
+private fun KartuTiket(tiket: HsTicketDto, mode: HsMode, onClick: () -> Unit) {
     ClayCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -180,12 +180,54 @@ private fun KartuTiket(tiket: HsTicketDto, onClick: () -> Unit) {
 
             Spacer(Modifier.height(6.dp))
             Text(
-                tiket.namaBarang?.takeIf { it.isNotBlank() } ?: tiket.noTransaksi,
+                buildString {
+                    // Jumlah barang ditulis DI DEPAN, bukan di ekor: barisnya
+                    // `maxLines = 1` + Ellipsis dan nama barang ERP justru
+                    // panjang, jadi ekornya akan terpotong persis pada tiket yang
+                    // paling perlu ditandai. Kolom tunggal `namaBarang` cuma
+                    // SNAPSHOT BARANG PERTAMA (migrasi 214) — tanpa angka ini
+                    // teknisi berangkat membawa persiapan untuk satu unit.
+                    if (tiket.items.size > 1) append("${tiket.items.size} barang · ")
+                    // Tiket tanpa data pembelian menyimpan namaBarang DAN
+                    // noTransaksi sebagai string kosong (server memakai
+                    // `unwrap_or_default`), jadi tanpa cadangan ini judul kartu
+                    // terbit KOSONG — CS men-triase antrian tanpa satu pun
+                    // petunjuk tiket mana yang perlu dilengkapi.
+                    append(
+                        tiket.namaBarang?.takeIf { it.isNotBlank() }
+                            ?: tiket.noTransaksi.takeIf { it.isNotBlank() }
+                            ?: "Barang belum diisi",
+                    )
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            // TIGA keadaan, bukan dua. `terverifikasi` menjawab "cocok dengan
+            // mirror penjualan?" dan server SENGAJA tak pernah menaikkannya saat
+            // CS melengkapi tiket — memakainya sebagai "sudah lengkap?" membuat
+            // peringatan merah menyala selamanya walau CS sudah mengerjakannya.
+            // Kalimat PERINTAH hanya untuk yang bisa menindaklanjuti (triase CS,
+            // tiket belum final); selebihnya cukup FAKTA netral.
+            if (!tiket.terverifikasi) {
+                val sudahDilengkapi = !tiket.dilengkapiAt.isNullOrBlank()
+                val bolehDitindak = mode == HsMode.TRIASE && tiket.status !in HS_STATUS_FINAL
+                Text(
+                    when {
+                        sudahDilengkapi ->
+                            "Dilengkapi CS" + (tiket.dilengkapiNama?.takeIf { it.isNotBlank() }?.let { " oleh $it" } ?: "")
+                        bolehDitindak -> "Belum terverifikasi — cocokkan barang & garansi dari foto kwitansi"
+                        else -> "Belum terverifikasi"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (sudahDilengkapi) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                )
+            }
             Text(
                 tiket.deskripsi,
                 style = MaterialTheme.typography.bodySmall,
