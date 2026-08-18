@@ -113,6 +113,29 @@ object NetworkModule {
      * body omitted". Itu membatalkan seluruh gunanya [UriRequestBody] justru
      * di build yang dipakai menguji fitur ini di HP.
      */
+    /**
+     * Client unggah bukti PROSPEK. Timeout-nya lebih pendek dari raport karena
+     * batasnya 8 MB, bukan 30 MB — tapi tetap jauh di atas 20 detik milik
+     * client bersama, yang tak cukup untuk 8 MB di jaringan cabang.
+     *
+     * `HttpLoggingInterceptor` dibuang dengan alasan yang sama: pada level
+     * `BODY` ia menyalin seluruh badan ke heap hanya untuk mencetak "binary
+     * body omitted".
+     */
+    fun createProspekUploadApi(tokenStore: TokenStore): ProspekUploadApi {
+        val base = authenticatedRetrofit(tokenStore)
+        val uploadClient = (base.callFactory() as OkHttpClient).newBuilder()
+            .writeTimeout(120, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .apply { interceptors().removeAll { it is HttpLoggingInterceptor } }
+            .build()
+        return base.newBuilder()
+            .client(uploadClient)
+            .build()
+            .create(ProspekUploadApi::class.java)
+    }
+
     fun createRaportUploadApi(tokenStore: TokenStore): RaportUploadApi {
         val base = authenticatedRetrofit(tokenStore)
         val uploadClient = (base.callFactory() as OkHttpClient).newBuilder()

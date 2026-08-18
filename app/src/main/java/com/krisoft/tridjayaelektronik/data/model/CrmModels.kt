@@ -96,7 +96,26 @@ data class CreateProspekRequest(
     val source: String? = null,
     val estimatedValue: Double? = null,
     val lokasi: String? = null,
-    val assignedTo: String? = null
+    val assignedTo: String? = null,
+    /**
+     * Path bukti hasil `POST /api/prospek-harian/bukti` — BUKAN path karangan.
+     *
+     * Server memvalidasi bentuknya (`/uploads/prospek/<nama>`, tanpa separator
+     * di dalam nama) DAN keberadaan berkasnya; nilai yang tak lolos dibuang
+     * jadi NULL. Untuk `trainee` bukti WAJIB, karena `closing_terverifikasi`
+     * di scorecard training hanya menghitung closing yang punya bukti.
+     */
+    val buktiUrl: String? = null
+)
+
+/**
+ * Balasan `POST /api/prospek-harian/bukti`. `url` sudah berbentuk
+ * `/uploads/prospek/<nama>` dan dikirim BALIK apa adanya sebagai
+ * [CreateProspekRequest.buktiUrl] — jangan disusun ulang di klien.
+ */
+@Serializable
+data class ProspekUploadData(
+    val url: String = "",
 )
 
 /** Loose response payload of `POST /api/prospek-harian` — we only care that it succeeded (+ id). */
@@ -150,7 +169,13 @@ data class ProspekDraft(
     val estimatedValue: Double?,
     val source: String?,
     val lokasi: String?,
-    val catatan: String?
+    val catatan: String?,
+    /**
+     * Path bukti yang SUDAH terunggah (`/uploads/prospek/<nama>`), bukan URI
+     * berkas lokal. Unggahnya terjadi SEBELUM draft ini dibuat, karena server
+     * memeriksa keberadaan berkasnya saat prospek disimpan.
+     */
+    val buktiUrl: String? = null
 )
 
 @Serializable
