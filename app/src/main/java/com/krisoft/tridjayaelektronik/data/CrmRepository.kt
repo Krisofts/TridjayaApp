@@ -158,22 +158,25 @@ class CrmRepository @Inject constructor(
             // tiap hari, sehingga lead `won` terdorong keluar dan tab **Deal** tampil
             // kosong. Terukur di produksi: 103 sales punya >100 lead (terbanyak 2.176),
             // dan dari 20 sales terberat hanya 0–4 lead `won` yang masuk jendela 100 itu.
-            val assignedToMe = data.items + fetchSisaHalamanLead(data) { page ->
+            val sisaAssigned = fetchSisaHalamanLead(data) { page ->
                 api.listLeads(assignedTo = userId, page = page, limit = LEADS_PAGE_SIZE)
             }
+            val assignedToMe = data.items + sisaAssigned.items
 
             // Lengkapi dengan lead yang user ini INPUT tapi dilempar ke sales lain. Untuk role
             // karyawan server sudah mengembalikannya di panggilan pertama (scope OR di crm-service),
             // tapi role manajerial (crm-manager/admin/manager) memakai filter assignedTo murni —
             // panggilan createdBy ini menambalnya. Kegagalannya tidak menggagalkan sync.
-            val createdByMe = runCatching {
+            val hasilCreatedBy = runCatching {
                 val pertama = api.listLeads(createdBy = userId, page = 1, limit = LEADS_PAGE_SIZE)
                     .takeIf { it.isSuccessful }?.body()?.data
-                    ?: return@runCatching emptyList()
-                pertama.items + fetchSisaHalamanLead(pertama) { page ->
+                    ?: return@runCatching HasilHalaman(emptyList(), lengkap = false)
+                val sisa = fetchSisaHalamanLead(pertama) { page ->
                     api.listLeads(createdBy = userId, page = page, limit = LEADS_PAGE_SIZE)
                 }
-            }.getOrNull().orEmpty()
+                HasilHalaman(pertama.items + sisa.items, lengkap = sisa.lengkap)
+            }.getOrNull() ?: HasilHalaman(emptyList(), lengkap = false)
+            val createdByMe = hasilCreatedBy.items
             val merged = (assignedToMe + createdByMe).distinctBy { it.id }
 
             // Keep offline work a refresh must never clobber: unpushed creates (temp rows), server
@@ -182,7 +185,12 @@ class CrmRepository @Inject constructor(
                 .distinctBy { it.id }
             val keepIds = keepLocal.map { it.id }.toSet()
             leadDao.replaceAll(merged.filter { it.id !in keepIds }.map { it.toEntity() } + keepLocal)
-            syncMetaDao.upsert(SyncMetaEntity(SyncMetaEntity.KEY_LEADS, System.currentTimeMillis()))
+            // Cap waktu HANYA untuk tarikan yang utuh. Hasil parsial tetap
+            // masuk cache (lebih berguna daripada cache basi), tapi tak boleh
+            // mengunci sinkronisasi berikutnya selama lima jam.
+            if (sisaAssigned.lengkap && hasilCreatedBy.lengkap) {
+                syncMetaDao.upsert(SyncMetaEntity(SyncMetaEntity.KEY_LEADS, System.currentTimeMillis()))
+            }
             AuthResult.Success(Unit)
         } catch (e: Exception) {
             AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
@@ -206,7 +214,7 @@ class CrmRepository @Inject constructor(
     private suspend fun fetchSisaHalamanLead(
         halamanPertama: LeadListData,
         minta: suspend (page: Int) -> Response<ApiResponse<LeadListData>>,
-    ): List<LeadDto> {
+    ): HasilHalaman {
         val terkumpul = mutableListOf<LeadDto>()
         var sudah = halamanPertama.items.size
         var page = 2
@@ -214,13 +222,33 @@ class CrmRepository @Inject constructor(
             val items = runCatching {
                 minta(page).takeIf { it.isSuccessful }?.body()?.data?.items
             }.getOrNull().orEmpty()
-            if (items.isEmpty()) break
+            // Halaman kosong = putus. Ia bisa berarti dua hal yang TAK BISA
+            // dibedakan dari sini: server benar-benar habis (padahal `total`
+            // bilang belum), atau halaman itu gagal ditarik. Dua-duanya berarti
+            // yang di tangan BELUM tentu utuh, jadi keduanya dilaporkan TIDAK
+            // lengkap — pemanggilnya yang memutuskan akibatnya.
+            if (items.isEmpty()) return HasilHalaman(terkumpul, lengkap = false)
             terkumpul += items
             sudah += items.size
             page += 1
         }
-        return terkumpul
+        // Berhenti karena `total` tercapai = utuh. Berhenti karena rem
+        // [LEADS_MAX_PAGES] = TIDAK utuh.
+        return HasilHalaman(terkumpul, lengkap = sudah >= halamanPertama.total)
     }
+
+    /**
+     * Hasil penarikan halaman 2..N: isinya, dan apakah ia UTUH.
+     *
+     * `lengkap` ada demi satu hal saja: **cap waktu sync**. Hasil parsial boleh
+     * masuk cache (daftar kurang lengkap lebih berguna daripada cache basi —
+     * lihat KDoc di atas), tapi ia TIDAK boleh dicap sukses. Tanpa pembeda ini,
+     * satu halaman yang gagal di sinyal buruk membuat `syncLeadsIfStale`
+     * menganggap daftarnya segar selama [LEADS_SYNC_INTERVAL_MILLIS] penuh —
+     * pemakainya terkunci dengan daftar terpotong selama lima jam, tanpa galat,
+     * tanpa cara memaksa muat ulang selain menunggu.
+     */
+    private data class HasilHalaman(val items: List<LeadDto>, val lengkap: Boolean)
 
     /** Reads the cached leads list (optionally filtered), no network call. */
     suspend fun cachedLeads(search: String): List<LeadDto> =
@@ -759,7 +787,7 @@ class CrmRepository @Inject constructor(
             // hilang — dan `wonThisMonth` inilah angka "Deal" yang dibaca sales.
             val items = data.items + fetchSisaHalamanLead(data) { page ->
                 api.listLeads(assignedTo = assignedTo, page = page, limit = LEADS_PAGE_SIZE)
-            }
+            }.items
 
             val currentYearMonth = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.US)
                 .format(java.util.Date())

@@ -54,6 +54,16 @@ data class RaportUiState(
     val error: String? = null,
     val posisi: String = "",
     val divisi: String = "",
+    /**
+     * Penempatan KPI yang dipakai memilih daftar aktivitas — kosong kalau
+     * orangnya memang tak punya penempatan (jalur cadangan tag).
+     *
+     * Ada khusus untuk pesan layar-kosong. Sejak daftar aktivitas mengikuti
+     * PENEMPATAN, sebab layar kosong yang paling mungkin adalah penempatan yang
+     * belum punya divisi di master — dan menyebut TAG di pesan itu menyuruh PIC
+     * menambahkan divisi yang salah.
+     */
+    val penempatanId: String = "",
     val aktivitas: List<String> = emptyList(),
     val submitted: Map<Int, RaportItemDto> = emptyMap(),
     /** Berkas terpilih per index aktivitas, belum dikirim. */
@@ -146,6 +156,7 @@ class RaportViewModel @Inject constructor(
                             isLoading = false,
                             error = null,
                             divisi = divisi,
+                            penempatanId = (penempatan as? PenempatanSaya.Ada)?.positionId.orEmpty(),
                             posisi = posisi?.posisi.orEmpty(),
                             // `.jobdesks` = nama field DI KABEL, ejaan lama.
                             aktivitas = posisi?.jobdesks.orEmpty(),
