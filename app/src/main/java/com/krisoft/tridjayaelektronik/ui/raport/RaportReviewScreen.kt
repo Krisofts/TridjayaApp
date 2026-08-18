@@ -369,6 +369,48 @@ private fun BarisAktivitas(
             }
         }
 
+        // Penanda bukti daur-ulang, DITULIS PER DUPLIKAT.
+        //
+        // Diringkas jadi satu kalimat, ia menggabungkan asal yang berbeda: dua
+        // bukti — satu milik orang lain, satu milik sendiri yang sudah
+        // disetujui — akan terbaca "karyawan lain yang sudah disetujui", tuduhan
+        // yang tak dimiliki data mana pun. Bentuk & kalimatnya sengaja sama
+        // dengan `BuktiDuplikatBadge` web: penilai yang membaca dua kalimat
+        // berbeda untuk baris yang sama berhenti mempercayai keduanya.
+        if (item.buktiDuplikat.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            item.buktiDuplikat.forEach { d ->
+                // Gambar ASLI ikut dipajang kecil. Tuduhan tanpa penunjuk
+                // memaksa penilai memilih antara mempercayainya buta atau
+                // mengabaikannya — dua-duanya membuat penandanya tak berguna.
+                // Bukti disajikan terautentikasi, jadi harus lewat AuthedEvidence.
+                evidenceImageUrl(d.asliUrl)?.let { urlAsli ->
+                    Box(Modifier.fillMaxWidth(0.35f)) {
+                        AuthedEvidence(url = urlAsli, token = token)
+                    }
+                    Spacer(Modifier.height(2.dp))
+                }
+                Text(
+                    buildString {
+                        append("Bukti sama dengan unggahan ")
+                        if (d.asliKaryawanId.isNotBlank() && d.asliKaryawanId != item.employeeId) {
+                            append(d.asliKaryawanNama.ifBlank { "karyawan lain" })
+                            append(" (karyawan lain)")
+                        } else {
+                            append("sebelumnya")
+                        }
+                        // Tanggal ikut: tuduhan tanpa penunjuk tak bisa
+                        // diperiksa sendiri oleh yang menerimanya.
+                        d.asliDiunggahAt.takeIf { it.isNotBlank() }?.let { append(" · ${it.replace('T', ' ')}") }
+                        if (d.asliDisetujui) append(" · sudah disetujui")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+
         item.employeeNote?.takeIf { it.isNotBlank() }?.let { catatan ->
             Spacer(Modifier.height(4.dp))
             Text(

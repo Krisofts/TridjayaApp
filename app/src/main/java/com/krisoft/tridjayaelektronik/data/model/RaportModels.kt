@@ -52,10 +52,33 @@ data class RaportItemDto(
     val mode: String = "none",
     val evidenceUrl: String? = null,
     val employeeNote: String? = null,
+    /**
+     * Bukti pada baris ini yang ISINYA sama dengan unggahan terdahulu (sidik
+     * jari piksel server, migrasi 240).
+     *
+     * Server hanya mengirimkannya ke pembaca yang boleh melihat raport SEMUA
+     * orang — karyawan yang membaca raportnya sendiri sengaja tidak diberi
+     * tahu, karena memberitahunya mengajari cara menghindarinya. Absen pada
+     * server lama, jadi default `emptyList()` (bukan `null`).
+     */
+    val buktiDuplikat: List<BuktiDuplikatDto> = emptyList(),
     val reviewStatus: String = "pending",
     val score: Int? = null,
     val reviewerComment: String? = null,
     val reviewedAt: String? = null,
+)
+
+/** Satu bukti yang isinya sama dengan unggahan terdahulu (server: `DuplikatBukti`). */
+@Serializable
+data class BuktiDuplikatDto(
+    val buktiUrl: String = "",
+    /** Berkas yang lebih dulu diunggah. */
+    val asliUrl: String = "",
+    val asliKaryawanId: String = "",
+    val asliKaryawanNama: String = "",
+    val asliDiunggahAt: String = "",
+    /** Baris raport pemilik berkas asli SUDAH disetujui penilai. */
+    val asliDisetujui: Boolean = false,
 )
 
 @Serializable
