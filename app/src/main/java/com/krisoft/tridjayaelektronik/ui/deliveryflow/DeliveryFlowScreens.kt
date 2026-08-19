@@ -2283,15 +2283,16 @@ private fun SetoranKasirAction(job: DeliveryJobDto, vm: DeliveryFlowViewModel, s
     PhotoBox(photoState.deliverPhoto, "Foto bukti (wajib)") { cam.launch(uri) }
     Spacer(Modifier.height(14.dp))
     val hasPhoto = photoState.deliverPhoto != null && photoState.deliverPhotoConfirmed
-    // >= 0, bukan > 0: kredit tanpa uang muka sah punya nominal diterima Rp 0 di titik ini.
-    // Field wajib tetap ditegakkan lewat toDoubleOrNull() != null (kosong -> null -> invalid).
-    val nominalValid = nominal.toDoubleOrNull() != null
+    // Seluruh aturannya (termasuk KENAPA nominal harus > 0, bukan >= 0) hidup di
+    // `SetoranKasirGate.kt` sebagai fungsi murni yang diuji — jangan menyalinnya
+    // balik ke sini.
+    val gate = setoranKasirGate(nominal, hasPhoto)
     ExpressiveFilledButton(
         onClick = { vm.setoranKasir(id, nominal.toDoubleOrNull() ?: 0.0) {} },
-        enabled = !submitting && hasPhoto && nominalValid, modifier = Modifier.fillMaxWidth(),
+        enabled = !submitting && gate.bolehKirim, modifier = Modifier.fillMaxWidth(),
     ) {
         if (submitting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        else Text(if (!hasPhoto) "Ambil foto bukti dulu" else "Konfirmasi Pembayaran")
+        else Text(gate.label)
     }
 }
 
