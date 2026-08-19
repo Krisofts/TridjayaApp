@@ -131,3 +131,66 @@ class AktivitasReviewPlanTest {
         assertEquals("(tanpa nama)", grup.single().nama)
     }
 }
+
+/**
+ * Kalimat lencana bukti daur-ulang.
+ *
+ * Kelas yang dijaga: aturan ini memutuskan apakah seseorang disebut menyalin
+ * milik ORANG LAIN atau milik dirinya sendiri, dan sebelum ini ia hidup di
+ * dalam `@Composable` — 718 test modul hijau tanpa menyentuh satu barisnya.
+ */
+class KalimatDuplikatBuktiTest {
+    @Test
+    fun `id berbeda disebut karyawan lain berikut namanya`() {
+        val kalimat = kalimatDuplikatBukti(
+            asliKaryawanId = "k-2",
+            asliKaryawanNama = "BUDI",
+            asliDiunggahAt = "2026-08-19T10:12:00",
+            asliDisetujui = false,
+            pemilikBarisId = "k-1",
+        )
+        assertEquals("Bukti sama dengan unggahan BUDI (karyawan lain) · 2026-08-19 10:12:00", kalimat)
+    }
+
+    @Test
+    fun `unggahan sendiri tidak pernah disebut karyawan lain`() {
+        val kalimat = kalimatDuplikatBukti(
+            asliKaryawanId = "k-1",
+            asliKaryawanNama = "BUDI",
+            asliDiunggahAt = "",
+            asliDisetujui = true,
+            pemilikBarisId = "k-1",
+        )
+        assertEquals("Bukti sama dengan unggahan sebelumnya · sudah disetujui", kalimat)
+    }
+
+    /**
+     * Server MENYENSOR identitas asli untuk penilai berbatas cabang (id dan URL
+     * dikosongkan). Kalau klien tetap mencetak nama yang tersisa, sensornya
+     * bocor lewat pintu lain — jadi id kosong WAJIB jatuh ke "sebelumnya",
+     * apa pun isi kolom nama.
+     */
+    @Test
+    fun `identitas yang disensor server tidak dipakai menuduh`() {
+        val kalimat = kalimatDuplikatBukti(
+            asliKaryawanId = "",
+            asliKaryawanNama = "karyawan cabang lain",
+            asliDiunggahAt = "2026-08-19T08:00:00",
+            asliDisetujui = false,
+            pemilikBarisId = "k-1",
+        )
+        assertEquals("Bukti sama dengan unggahan sebelumnya · 2026-08-19 08:00:00", kalimat)
+    }
+
+    @Test
+    fun `nama kosong tapi id berbeda tetap terbaca sebagai orang lain`() {
+        val kalimat = kalimatDuplikatBukti(
+            asliKaryawanId = "k-9",
+            asliKaryawanNama = "",
+            asliDiunggahAt = "",
+            asliDisetujui = false,
+            pemilikBarisId = "k-1",
+        )
+        assertEquals("Bukti sama dengan unggahan karyawan lain (karyawan lain)", kalimat)
+    }
+}

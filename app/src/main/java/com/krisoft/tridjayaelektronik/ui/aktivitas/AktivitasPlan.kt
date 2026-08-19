@@ -34,6 +34,113 @@ internal fun matchAktivitasPosition(
         }
 }
 
+/**
+ * Penempatan KPI orang yang sedang login — TIGA keadaan, bukan dua.
+ *
+ * Web memisahkan "belum termuat" (`undefined`) dari "tak punya penempatan"
+ * (`null`) dan keduanya menuntut perilaku BERLAWANAN: yang pertama harus
+ * menunggu, yang kedua harus jatuh ke tag. Kotlin tak punya beda itu pada
+ * `String?`, jadi ia dimodelkan eksplisit — mencampurnya adalah satu-satunya
+ * cara serius merusak layar ini, dan `String?` telanjang mengundangnya.
+ */
+internal sealed interface PenempatanSaya {
+    /** Permintaan belum selesai. Layar JANGAN memutuskan apa pun dulu. */
+    data object BelumTermuat : PenempatanSaya
+
+    /**
+     * Orangnya belum punya baris `kpi_assignments`, ATAU permintaannya gagal.
+     * Keduanya jatuh ke jalur TAG — perilaku sebelum perbaikan ini, jadi
+     * kegagalan jaringan tak memperkenalkan keadaan baru.
+     */
+    data object TidakAda : PenempatanSaya
+
+    data class Ada(val positionId: String) : PenempatanSaya
+}
+
+/**
+ * Normalisasi kunci pencocokan — cerminan `normalizeAktivitasMatchKey` di
+ * `frontend/src/utils/aktivitasDivisiMatch.ts`. Underscore & spasi jadi `-`.
+ */
+internal fun normalizeAktivitasMatchKey(value: String?): String =
+    (value ?: "").trim().lowercase().replace(Regex("[_\\s]+"), "-")
+
+/**
+ * Penempatan KPI yang id-nya TIDAK identik dengan id divisi mana pun di Master
+ * Aktivitas, tapi aktivitasnya memang aktivitas divisi lain.
+ *
+ * **Cerminan `POSISI_KPI_KE_DIVISI_AKTIVITAS`** di web DAN
+ * `POSISI_KPI_KE_DIVISI_AKTIVITAS` di `kinerja-service/src/kpi/domain.rs` —
+ * isinya HARUS sama bertiga. Kalau berbeda, HP menampilkan daftar aktivitas
+ * yang berbeda dari yang menilai orangnya, dan tak ada error yang menandainya.
+ */
+internal val POSISI_KPI_KE_DIVISI_AKTIVITAS: Map<String, String> = mapOf(
+    "sales-1-3-bulan" to "sales",
+    "sales-4-6-bulan" to "sales",
+    "hrd-ga" to "hrd",
+)
+
+private fun kunciDivisi(d: AktivitasPositionDto): List<String> =
+    listOf(d.id, d.posisi).map(::normalizeAktivitasMatchKey).filter { it.isNotBlank() }
+
+/** Hasil pencarian divisi dari PENEMPATAN — tiga cabang, seperti di web. */
+internal sealed interface DivisiDariPenempatan {
+    data object TanpaPenempatan : DivisiDariPenempatan
+    /** Penempatannya ada TAPI tak punya divisi aktivitas. JANGAN jatuh ke tag. */
+    data object PosisiTanpaAktivitas : DivisiDariPenempatan
+    data class Ketemu(val divisi: AktivitasPositionDto) : DivisiDariPenempatan
+}
+
+/**
+ * Cerminan `cariDivisiAktivitasDariPenempatan` di web. Cocok PERSIS saja —
+ * tidak ada pencocokan longgar seperti jalur tag, karena id penempatan itu
+ * nilai terkontrol dari `kpi_positions`, bukan teks bebas yang diketik admin.
+ */
+internal fun cariDivisiDariPenempatan(
+    positionId: String?,
+    positions: List<AktivitasPositionDto>,
+): DivisiDariPenempatan {
+    val posisi = normalizeAktivitasMatchKey(positionId)
+    if (posisi.isBlank()) return DivisiDariPenempatan.TanpaPenempatan
+    val target = POSISI_KPI_KE_DIVISI_AKTIVITAS[posisi] ?: posisi
+    val divisi = positions.firstOrNull { d -> kunciDivisi(d).any { it == target } }
+    return if (divisi != null) DivisiDariPenempatan.Ketemu(divisi)
+    else DivisiDariPenempatan.PosisiTanpaAktivitas
+}
+
+/**
+ * Daftar aktivitas yang harus DITAMPILKAN ke orangnya — cerminan
+ * `pilihDivisiUntukInput` di web.
+ *
+ * **Kenapa ini ada.** Sampai perbaikan ini HP memilih daftar lewat TAG
+ * (`auth_users.divisi`), sementara gerbang absen pulang & penilaian KPI sudah
+ * memakai PENEMPATAN. Akibatnya nyata dan sedang berjalan: pemegang tag
+ * `admin-penjualan,kasir` melihat 8 butir KASIR di HP padahal dinilai atas 6
+ * butir ADMIN PENJUALAN. Ia mengisi yang salah, lalu dinilai kurang.
+ *
+ * Urutannya mengikat:
+ * 1. `BelumTermuat` -> `null`. Menunggu, BUKAN jatuh ke tag — jatuh ke tag
+ *    sekejap lalu berganti membuat kotak isian berkedip dan berpindah isi.
+ * 2. Penempatan ketemu -> pakai itu. Ini jalur normalnya.
+ * 3. Penempatan ADA tapi tanpa divisi aktivitas -> `null`, JANGAN jatuh ke tag.
+ *    Tag akan memberi daftar milik divisi lain, dan mengisi daftar orang lain
+ *    lebih buruk daripada tak punya daftar.
+ * 4. Tak punya penempatan -> jalur TAG lama. Ini cadangan untuk orang yang
+ *    belum punya baris `kpi_assignments`, dan untuk permintaan yang gagal.
+ */
+internal fun pilihAktivitasUntukInput(
+    divisi: String,
+    positions: List<AktivitasPositionDto>,
+    penempatan: PenempatanSaya,
+): AktivitasPositionDto? = when (penempatan) {
+    PenempatanSaya.BelumTermuat -> null
+    PenempatanSaya.TidakAda -> matchAktivitasPosition(divisi, positions)
+    is PenempatanSaya.Ada -> when (val d = cariDivisiDariPenempatan(penempatan.positionId, positions)) {
+        is DivisiDariPenempatan.Ketemu -> d.divisi
+        DivisiDariPenempatan.PosisiTanpaAktivitas -> null
+        DivisiDariPenempatan.TanpaPenempatan -> matchAktivitasPosition(divisi, positions)
+    }
+}
+
 enum class AktivitasRowStatus { BELUM, MENUNGGU, DISETUJUI, DITOLAK }
 
 /** Status satu baris aktivitas dari raport yang sudah terkirim hari itu. */

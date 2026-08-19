@@ -24,6 +24,19 @@ data class AktivitasPositionDto(
     val jobdesks: List<String> = emptyList(),
 )
 
+/**
+ * Balasan `GET /api/raport-harian/penempatan-saya`.
+ *
+ * `penempatanId` NULL punya arti sendiri — "orang ini belum punya baris
+ * `kpi_assignments`" — dan itu BUKAN sama dengan "permintaannya belum selesai".
+ * Pemanggil WAJIB memisahkan keduanya lewat `PenempatanSaya`; lihat KDoc-nya
+ * di `ui/raport/RaportPlan.kt` untuk alasan kenapa mencampurnya merusak layar.
+ */
+@Serializable
+data class PenempatanSayaData(
+    val penempatanId: String? = null,
+)
+
 @Serializable
 data class AktivitasDivisionsData(
     val divisions: List<AktivitasPositionDto> = emptyList(),
@@ -52,10 +65,46 @@ data class AktivitasItemDto(
     val mode: String = "none",
     val evidenceUrl: String? = null,
     val employeeNote: String? = null,
+    /**
+     * Bukti pada baris ini yang ISINYA sama dengan unggahan terdahulu (sidik
+     * jari piksel server, migrasi 240).
+     *
+     * Server hanya mengirimkannya ke pembaca yang boleh melihat raport SEMUA
+     * orang — karyawan yang membaca raportnya sendiri sengaja tidak diberi
+     * tahu, karena memberitahunya mengajari cara menghindarinya. Absen pada
+     * server lama, jadi default `emptyList()` (bukan `null`).
+     */
+    val buktiDuplikat: List<BuktiDuplikatDto> = emptyList(),
+    /**
+     * Baris ini jatuh pada tanggal yang punya pengajuan off (izin/sakit/cuti)
+     * BERSTATUS approved milik karyawannya. Sama seperti `buktiDuplikat`:
+     * server hanya mengirimnya ke pembaca yang boleh melihat raport SEMUA
+     * orang — karyawan yang membaca raportnya sendiri tak pernah menerimanya.
+     *
+     * Penanda, BUKAN pemblokir: baris lama (sebelum gerbang submit
+     * `ensure_bukan_off` ada) dan baris auto-isi "Kirim Prospek" (kredit CRM,
+     * lewat worker bukan submit manual) tetap bisa muncul di sini.
+     */
+    val karyawanSedangOff: Boolean = false,
+    /** `off_requests.kategori` (izin/sakit/cuti/off) milik penanda di atas. */
+    val offKategori: String? = null,
     val reviewStatus: String = "pending",
     val score: Int? = null,
     val reviewerComment: String? = null,
     val reviewedAt: String? = null,
+)
+
+/** Satu bukti yang isinya sama dengan unggahan terdahulu (server: `DuplikatBukti`). */
+@Serializable
+data class BuktiDuplikatDto(
+    val buktiUrl: String = "",
+    /** Berkas yang lebih dulu diunggah. */
+    val asliUrl: String = "",
+    val asliKaryawanId: String = "",
+    val asliKaryawanNama: String = "",
+    val asliDiunggahAt: String = "",
+    /** Baris raport pemilik berkas asli SUDAH disetujui penilai. */
+    val asliDisetujui: Boolean = false,
 )
 
 @Serializable

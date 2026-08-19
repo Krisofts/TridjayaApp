@@ -177,8 +177,18 @@ fun AktivitasScreen(
                             )
                         },
                         title = "Aktivitas belum diatur",
-                        subtitle = "Divisi \"${state.divisi.ifBlank { "-" }}\" belum punya daftar aktivitas " +
-                            "di Master Aktivitas. Minta PIC Aktivitas menambahkannya."
+                        // Yang disebut harus SEBABNYA. Daftar aktivitas kini
+                        // dipilih dari PENEMPATAN KPI; kalau penempatan itu tak
+                        // punya divisi di master, menyebut tag divisi menyuruh
+                        // PIC menambahkan divisi yang sama sekali lain — dan
+                        // orangnya tetap tak bisa mengisi laporan.
+                        subtitle = if (state.penempatanId.isNotBlank()) {
+                            "Penempatan \"${state.penempatanId}\" belum punya daftar aktivitas " +
+                                "di Master Aktivitas. Minta PIC Aktivitas menambahkannya."
+                        } else {
+                            "Divisi \"${state.divisi.ifBlank { "-" }}\" belum punya daftar aktivitas " +
+                                "di Master Aktivitas. Minta PIC Aktivitas menambahkannya."
+                        }
                     )
                 }
 

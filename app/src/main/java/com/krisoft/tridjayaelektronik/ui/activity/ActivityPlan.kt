@@ -46,8 +46,14 @@ data class DailyTask(
 
 /**
  * Kartu antrian: yang berangka besar di atas, yang nol tetap tampil (redup)
- * supaya "semua beres" terbaca dan menu tak terasa hilang. Satu-satunya yang
- * disembunyikan saat kosong adalah Tugas Antar untuk non-driver (spec §6).
+ * supaya "semua beres" terbaca dan menu tak terasa hilang.
+ *
+ * PENGECUALIAN: dua kartu "pekerjaan yang ditugaskan ke saya" — Tugas Antar
+ * ([ActivitySource.DLV_AS_DRIVER]) dan Tugas Tarik Unit
+ * ([ActivitySource.HS_TUGAS_DRIVER]) — disembunyikan saat kosong bagi
+ * non-driver (spec §6). Keduanya bergerbang `spk.pipeline` yang meloloskan
+ * hampir semua orang, jadi tanpa penyempit ini kartunya jadi menu permanen
+ * bagi orang yang tak pernah ditugaskan apa pun.
  */
 internal fun buildQueueCards(
     items: List<ActivityItem>,
@@ -69,8 +75,23 @@ internal fun buildQueueCards(
         )
     }
     .filter { card ->
-        if (card.item.source != ActivitySource.DLV_AS_DRIVER) true
-        else card.failed || driverCardVisible(card.count, effectiveRoles)
+        when (card.item.source) {
+            // DUA kartu "pekerjaan yang ditugaskan ke saya", bukan satu.
+            // Keduanya bergerbang longgar DENGAN SENGAJA (`spk.pipeline`):
+            // kepemilikannya ditentukan SERVER lewat kolom penugasan
+            // (`assigned_driver_id` / `tarik_driver_id`), bukan daftar role —
+            // jadi yang menyempitkannya memang harus angka, bukan gerbang.
+            //
+            // `HS_TUGAS_DRIVER` sempat TIDAK ada di sini, dan itu membuat
+            // janji di registri ("angkanya sendiri yang menyembunyikan kartu
+            // ini") tak pernah ditepati: kartu "Tugas Tarik Unit" tampil untuk
+            // SETIAP akun yang lolos `spk.pipeline` — yaitu semua kecuali
+            // `ai-engineer` — selamanya, walau ia tak pernah ditugaskan sekali
+            // pun. Gerbang longgar tanpa penyempit adalah gerbang terbuka.
+            ActivitySource.DLV_AS_DRIVER, ActivitySource.HS_TUGAS_DRIVER ->
+                card.failed || driverCardVisible(card.count, effectiveRoles)
+            else -> true
+        }
     }
     .sortedByDescending { it.count ?: -1 }
 

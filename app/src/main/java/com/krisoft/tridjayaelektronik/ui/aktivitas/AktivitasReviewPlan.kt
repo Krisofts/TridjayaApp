@@ -121,3 +121,39 @@ internal fun labelStatusReview(status: String): String = when (status) {
     "rejected" -> "Ditolak"
     else -> "Menunggu"
 }
+
+/**
+ * Kalimat lencana "bukti daur-ulang" untuk SATU duplikat.
+ *
+ * Ditarik keluar dari `@Composable` dengan sengaja: selama ia hidup di dalam
+ * fungsi UI, 718 test modul ini hijau tanpa menyentuh satu baris pun aturannya —
+ * dan yang diputuskan di sini adalah apakah seorang karyawan disebut menyalin
+ * milik ORANG LAIN atau milik dirinya sendiri.
+ *
+ * Aturannya:
+ * - `asliKaryawanId` kosong  -> "sebelumnya" (server MENYENSOR identitas untuk
+ *   penilai berbatas cabang; menuduh dengan nama yang sengaja dicabut adalah
+ *   kebocoran yang sama lewat pintu lain).
+ * - id sama dengan pemilik baris -> "sebelumnya" (unggahan dirinya sendiri).
+ * - id berbeda -> nama + "(karyawan lain)".
+ *
+ * Tanggal selalu ikut bila ada: tuduhan tanpa penunjuk tak bisa diperiksa
+ * sendiri oleh yang menerimanya.
+ */
+internal fun kalimatDuplikatBukti(
+    asliKaryawanId: String,
+    asliKaryawanNama: String,
+    asliDiunggahAt: String,
+    asliDisetujui: Boolean,
+    pemilikBarisId: String,
+): String = buildString {
+    append("Bukti sama dengan unggahan ")
+    if (asliKaryawanId.isNotBlank() && asliKaryawanId != pemilikBarisId) {
+        append(asliKaryawanNama.ifBlank { "karyawan lain" })
+        append(" (karyawan lain)")
+    } else {
+        append("sebelumnya")
+    }
+    asliDiunggahAt.takeIf { it.isNotBlank() }?.let { append(" · ${it.replace('T', ' ')}") }
+    if (asliDisetujui) append(" · sudah disetujui")
+}

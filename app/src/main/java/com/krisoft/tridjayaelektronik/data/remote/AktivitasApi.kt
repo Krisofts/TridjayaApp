@@ -4,6 +4,7 @@ import com.krisoft.tridjayaelektronik.data.model.ApiResponse
 import com.krisoft.tridjayaelektronik.data.model.AktivitasDivisionsData
 import com.krisoft.tridjayaelektronik.data.model.AktivitasListData
 import com.krisoft.tridjayaelektronik.data.model.AktivitasUploadData
+import com.krisoft.tridjayaelektronik.data.model.PenempatanSayaData
 import com.krisoft.tridjayaelektronik.data.model.ReviewAktivitasBody
 import com.krisoft.tridjayaelektronik.data.model.ReviewAktivitasResult
 import com.krisoft.tridjayaelektronik.data.model.SubmitAktivitasBody
@@ -52,6 +53,21 @@ interface AktivitasApi {
         /** Cari nama karyawan / aktivitas / cabang / divisi (LIKE di server). */
         @Query("q") q: String? = null,
     ): Response<ApiResponse<AktivitasListData>>
+
+    /**
+     * Penempatan KPI orang yang sedang login.
+     *
+     * Sumber daftar aktivitas yang BENAR sejak 2026-08-18 — gerbang absen
+     * pulang dan penilaian KPI sudah memakai penempatan, sementara HP masih
+     * memakai tag `auth_users.divisi`. Selisihnya nyata: pemegang tag
+     * `admin-penjualan,kasir` melihat 8 butir KASIR padahal dinilai atas 6
+     * butir ADMIN PENJUALAN.
+     *
+     * Kegagalan permintaan ini TIDAK boleh mengosongkan layar — pemanggil
+     * jatuh ke jalur tag (perilaku lama), lihat `pilihAktivitasUntukInput`.
+     */
+    @GET("api/raport-harian/penempatan-saya")
+    suspend fun penempatanSaya(): Response<ApiResponse<PenempatanSayaData>>
 
     @POST("api/raport-harian")
     suspend fun submit(@Body body: SubmitAktivitasBody): Response<ApiResponse<SubmitAktivitasResult>>

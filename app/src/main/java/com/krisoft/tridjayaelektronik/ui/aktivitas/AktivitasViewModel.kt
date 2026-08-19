@@ -8,6 +8,7 @@ import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.AktivitasRepository
 import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +54,16 @@ data class AktivitasUiState(
     val error: String? = null,
     val posisi: String = "",
     val divisi: String = "",
+    /**
+     * Penempatan KPI yang dipakai memilih daftar aktivitas — kosong kalau
+     * orangnya memang tak punya penempatan (jalur cadangan tag).
+     *
+     * Ada khusus untuk pesan layar-kosong. Sejak daftar aktivitas mengikuti
+     * PENEMPATAN, sebab layar kosong yang paling mungkin adalah penempatan yang
+     * belum punya divisi di master — dan menyebut TAG di pesan itu menyuruh PIC
+     * menambahkan divisi yang salah.
+     */
+    val penempatanId: String = "",
     val aktivitas: List<String> = emptyList(),
     val submitted: Map<Int, AktivitasItemDto> = emptyMap(),
     /** Berkas terpilih per index aktivitas, belum dikirim. */
@@ -108,11 +119,22 @@ class AktivitasViewModel @Inject constructor(
             val divisi = user?.divisi.orEmpty()
             val today = KlasemenStandings.todayIso()
 
-            // Dua panggilan tak saling bergantung — jalankan bareng.
-            val (positionsResult, todayResult) = coroutineScope {
+            // TIGA panggilan tak saling bergantung — jalankan bareng.
+            //
+            // `penempatanSaya()` ikut fan-out ini, BUKAN berurutan sesudahnya:
+            // ia menentukan daftar aktivitas yang dirender, jadi memanggilnya
+            // belakangan menambah satu round-trip tepat di jalur yang paling
+            // sering dibuka orang tiap pagi.
+            val positionsResult: AuthResult<List<AktivitasPositionDto>>
+            val todayResult: AuthResult<List<AktivitasItemDto>>
+            val penempatan: PenempatanSaya
+            coroutineScope {
                 val positions = async { repository.aktivitasPositions() }
                 val terkirim = async { repository.raportOfDay(today, user?.id) }
-                positions.await() to terkirim.await()
+                val tempat = async { repository.penempatanSaya() }
+                positionsResult = positions.await()
+                todayResult = terkirim.await()
+                penempatan = tempat.await()
             }
 
             when (positionsResult) {
@@ -121,12 +143,20 @@ class AktivitasViewModel @Inject constructor(
                     return@launch
                 }
                 is AuthResult.Success -> {
-                    val posisi = matchAktivitasPosition(divisi, positionsResult.data)
+                    // PENEMPATAN, bukan tag. Sampai 2026-08-18 baris ini
+                    // memakai `matchAktivitasPosition(divisi, ...)` sementara
+                    // gerbang absen pulang & KPI sudah memakai penempatan —
+                    // pemegang tag `admin-penjualan,kasir` karena itu melihat 8
+                    // butir KASIR di HP padahal dinilai atas 6 butir ADMIN
+                    // PENJUALAN. Jalur tag tetap dipakai sebagai CADANGAN di
+                    // dalam `pilihAktivitasUntukInput`.
+                    val posisi = pilihAktivitasUntukInput(divisi, positionsResult.data, penempatan)
                     _state.update {
                         it.copy(
                             isLoading = false,
                             error = null,
                             divisi = divisi,
+                            penempatanId = (penempatan as? PenempatanSaya.Ada)?.positionId.orEmpty(),
                             posisi = posisi?.posisi.orEmpty(),
                             // `.jobdesks` = nama field DI KABEL, ejaan lama.
                             aktivitas = posisi?.jobdesks.orEmpty(),

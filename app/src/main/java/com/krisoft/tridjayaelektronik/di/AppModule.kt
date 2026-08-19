@@ -25,6 +25,7 @@ import com.krisoft.tridjayaelektronik.data.remote.OffApi
 import com.krisoft.tridjayaelektronik.data.remote.HomeServiceApi
 import com.krisoft.tridjayaelektronik.data.remote.AktivitasApi
 import com.krisoft.tridjayaelektronik.data.remote.AktivitasUploadApi
+import com.krisoft.tridjayaelektronik.data.remote.ProspekUploadApi
 import com.krisoft.tridjayaelektronik.data.remote.InventoryApi
 import com.krisoft.tridjayaelektronik.data.remote.NetworkModule
 import com.krisoft.tridjayaelektronik.data.remote.NotificationsApi
@@ -103,6 +104,11 @@ object AppModule {
     @Singleton
     fun provideAktivitasUploadApi(tokenStore: TokenStore): AktivitasUploadApi =
         NetworkModule.createAktivitasUploadApi(tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideProspekUploadApi(tokenStore: TokenStore): ProspekUploadApi =
+        NetworkModule.createProspekUploadApi(tokenStore)
 
     @Provides
     @Singleton
@@ -207,13 +213,34 @@ object AppModule {
         }
     }
 
+    /**
+     * Bukti prospek pada baris antrean. ALTER eksplisit, BUKAN dibiarkan jatuh
+     * ke `fallbackToDestructiveMigration()` — lihat komentar di builder.
+     */
+    private val MIGRATION_16_17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `leads` ADD COLUMN `buktiUrl` TEXT")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "tridjaya.db")
-            .addMigrations(MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
-            // Local cache only (server is the source of truth) — safe to wipe on schema bumps
-            // that don't have an explicit migration above.
+            .addMigrations(
+                MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16,
+                MIGRATION_16_17,
+            )
+            // KOREKSI 2026-08-18 atas komentar lama ("local cache only — safe to
+            // wipe"): itu SUDAH TIDAK BENAR sejak `leads` mendapat antrean
+            // offline. Tabel itu memegang baris ber-`pendingSync = 1` yang
+            // BELUM pernah sampai ke server, jadi jatuh ke destructive berarti
+            // menghapus prospek yang orangnya sudah ketik dan kira tersimpan —
+            // tanpa pesan apa pun, saat memasang APK baru.
+            //
+            // Entity LAIN memang cache murni. Jadi aturannya sekarang: setiap
+            // perubahan skema yang menyentuh `leads` WAJIB punya Migration
+            // eksplisit di atas. Fallback dipertahankan untuk sisanya.
             .fallbackToDestructiveMigration()
             .build()
 

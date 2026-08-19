@@ -346,6 +346,13 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         // SERVER (`mine` menyaring `tarik_driver_id`), bukan daftar role — jadi
         // gate-nya longgar dan angkanya sendiri yang menyembunyikan kartu ini
         // dari orang yang tak pernah ditugaskan.
+        //
+        // Kalimat terakhir itu sempat TIDAK BENAR: `buildQueueCards` hanya
+        // menyembunyikan `DLV_AS_DRIVER`, sehingga kartu ini tampil permanen
+        // untuk semua pemegang `spk.pipeline` (= semua kecuali `ai-engineer`).
+        // Sekarang `HS_TUGAS_DRIVER` ikut disaring `driverCardVisible`, jadi
+        // janji di atas benar-benar ditepati — dan `ActivityPlanTest`
+        // menguncinya supaya tak lepas lagi.
         capability = "spk.pipeline",
         allowedRoles = SPK_MENU_ROLES,
         backendGuard = "kinerja-service home_service/service.rs list (mine → tarik_driver_id)",

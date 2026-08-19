@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import com.krisoft.tridjayaelektronik.data.model.ApiErrorResponse
 import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
+import com.krisoft.tridjayaelektronik.ui.aktivitas.PenempatanSaya
 import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 import com.krisoft.tridjayaelektronik.data.model.AktivitasListData
 import com.krisoft.tridjayaelektronik.data.model.ReviewAktivitasBody
@@ -42,6 +43,38 @@ class AktivitasRepository @Inject constructor(
         else parseError(response, "Gagal memuat master aktivitas")
     } catch (e: Exception) {
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
+    /**
+     * Penempatan KPI orang yang sedang login — sumber daftar aktivitas yang
+     * BENAR sejak gerbang absen pulang & KPI pindah ke penempatan (2026-08-18).
+     *
+     * **Mengembalikan `PenempatanSaya`, bukan `String?`, dan itu disengaja.**
+     * Ada TIGA keadaan yang menuntut perilaku berbeda, dan `String?` cuma bisa
+     * membawa dua. Lihat KDoc `PenempatanSaya` di `ui/aktivitas/AktivitasPlan.kt`.
+     *
+     * **Kegagalan dipetakan ke [PenempatanSaya.TidakAda], BUKAN dilempar.**
+     * Arahnya sengaja: tanpa penempatan, layar jatuh ke jalur TAG — persis
+     * perilaku sebelum perbaikan ini. Jadi endpoint yang sekejap gagal tak
+     * memperkenalkan keadaan baru, dan yang paling penting: TIDAK membuat
+     * orang kehilangan seluruh kotak isiannya. Sama dengan penanganan web.
+     */
+    // `internal`, bukan publik: ia mengembalikan `PenempatanSaya` yang juga
+    // internal. Menaikkan TIPE-nya jadi publik demi fungsi ini akan membocorkan
+    // model tri-state ke luar modul tanpa ada yang membutuhkannya — pemanggilnya
+    // cuma ViewModel di modul `app`.
+    internal suspend fun penempatanSaya(): PenempatanSaya = try {
+        val response = api.penempatanSaya()
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) {
+            data.penempatanId?.takeIf { it.isNotBlank() }
+                ?.let { PenempatanSaya.Ada(it) }
+                ?: PenempatanSaya.TidakAda
+        } else {
+            PenempatanSaya.TidakAda
+        }
+    } catch (e: Exception) {
+        PenempatanSaya.TidakAda
     }
 
     /**

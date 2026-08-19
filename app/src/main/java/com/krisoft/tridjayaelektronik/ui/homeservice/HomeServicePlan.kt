@@ -141,16 +141,135 @@ internal fun hitungBiaya(items: List<HsSparepartDto>): Double =
 internal fun bolehAlasan(alasan: String?): HsGate =
     if (alasan.isNullOrBlank()) HsGate(false, "Alasan wajib diisi.") else HsGate(true)
 
-/** Bahan minimal pembuatan tiket. Foto kwitansi wajib — server menolak tanpanya. */
-internal fun bolehBuatTiket(
+/**
+ * Apa yang MASIH KURANG sebelum tiket bisa dibuat, dalam urutan yang sama
+ * dengan daftar `kurang` milik web (`HomeServiceLaporPage.tsx:211-229`).
+ * Daftar, bukan satu pesan: form ini punya sembilan isian, dan "tombol mati
+ * tanpa sebab" memaksa pelapor menebak mana yang salah.
+ *
+ * Dua jalur, persis seperti web:
+ *  - TERVERIFIKASI (`noTransaksi` terisi): wajib memilih barang. Server yang
+ *    tidak menerima pilihan TIDAK menolak — ia diam-diam memakai barang
+ *    PERTAMA transaksi (`service.rs:281-284`), jadi tiket bisa menunjuk unit
+ *    yang salah tanpa satu pun galat. Gerbang inilah satu-satunya yang
+ *    mencegahnya.
+ *  - TANPA VERIFIKASI (`noTransaksi` kosong): tak ada barang untuk dipilih,
+ *    tapi nama DAN nomor HP jadi wajib — tanpa jangkar transaksi, tiket tanpa
+ *    keduanya tak bisa ditindaklanjuti siapa pun (server menolaknya di
+ *    `service.rs:367-378`).
+ *
+ * `alamat` wajib di KEDUA jalur. Itu bukan pengetatan buatan app: server
+ * menolak tiket yang alamatnya tetap kosong sesudah pengayaan SPK
+ * (`service.rs:382-387`) — memeriksanya di sini hanya memindahkan penolakan
+ * dari sesudah tombol ditekan ke sebelum pelapor mengetik panjang-panjang.
+ */
+internal fun kurangBuatTiket(
+    tanpaVerifikasi: Boolean,
     noTransaksi: String?,
+    barisTerpilih: Set<Int>,
     fotoKwitansiUrl: String?,
     deskripsi: String?,
-): HsGate = when {
-    noTransaksi.isNullOrBlank() -> HsGate(false, "Pilih transaksi konsumen dulu.")
-    fotoKwitansiUrl.isNullOrBlank() -> HsGate(false, "Foto kwitansi wajib diunggah.")
-    deskripsi.isNullOrBlank() -> HsGate(false, "Tulis keluhan konsumen.")
-    else -> HsGate(true)
+    customerNama: String?,
+    customerHp: String?,
+    customerAlamat: String?,
+): List<String> = buildList {
+    if (fotoKwitansiUrl.isNullOrBlank()) add("foto kwitansi")
+    if (tanpaVerifikasi) {
+        if (customerNama.isNullOrBlank()) add("nama konsumen")
+        if (customerHp.isNullOrBlank()) add("nomor HP konsumen")
+    } else if (noTransaksi.isNullOrBlank()) {
+        add("data pembelian konsumen")
+    } else if (barisTerpilih.isEmpty()) {
+        add("barang yang dikomplainkan")
+    }
+    if (customerAlamat.isNullOrBlank()) add("alamat konsumen")
+    if (deskripsi.isNullOrBlank()) add("isi keluhan")
+}
+
+/** Isian kontak konsumen sesudah rincian transaksi dimuat. */
+internal data class KontakIsian(val nama: String, val hp: String, val alamat: String)
+
+/**
+ * Kontak mana yang dipakai sesudah `lookup` mendarat.
+ *
+ * Dua kesalahan yang saling berlawanan harus dihindari sekaligus, dan itulah
+ * kenapa aturannya ditulis sebagai fungsi murni yang bisa diuji:
+ *  - MEMPERTAHANKAN isian lama (dulu `ifBlank`) membuat kontak konsumen yang
+ *    barusan ditinggalkan menyeberang ke tiket berikutnya — dan server
+ *    memenangkan isian klien atas data SPK, jadi teknisi berangkat ke alamat
+ *    orang lain;
+ *  - MENIMPA tanpa syarat menghapus ketikan pelapor: seluruh form sudah
+ *    terender saat rincian masih dimuat, jadi alamat yang sedang diketik bisa
+ *    dihapus oleh respons yang mendarat beberapa detik kemudian.
+ *
+ * Jalan tengahnya: yang menang adalah SENTUHAN MANUSIA (`disunting`, direset
+ * tiap kali transaksi dipilih), selebihnya data server dengan cadangan kotak
+ * pencarian — cadangan itu penting untuk transaksi lama yang SPK-nya nihil,
+ * karena di jalur itu satu-satunya identitas yang kita punya adalah yang
+ * barusan diketik pelapor.
+ *
+ * `disunting` dilacak PER KOLOM, bukan satu bendera untuk bertiga. Versi
+ * pertama memakai satu `Boolean`, dan itu membuang data yang benar: seluruh
+ * form sudah terender saat rincian masih dimuat, jadi pelapor yang mengetik
+ * NAMA lebih dulu menyalakan bendera itu untuk ketiganya — alamat dari SPK
+ * yang mendarat sedetik kemudian ditolak, dan kolom alamat tinggal kosong
+ * sampai ada yang mengisinya tangan. Sentuhan pada satu kolom bukan
+ * pernyataan apa pun tentang dua kolom lainnya.
+ */
+/**
+ * Kolom kontak mana saja yang SUDAH disentuh pelapor. Lihat [kontakSetelahLookup].
+ *
+ * `public`, tak seperti tetangganya di berkas ini, karena ia jadi field
+ * `HomeServiceLaporState` yang dibaca layar.
+ */
+data class KontakDisunting(
+    val nama: Boolean = false,
+    val hp: Boolean = false,
+    val alamat: Boolean = false,
+) {
+    companion object {
+        val NIHIL = KontakDisunting()
+    }
+}
+
+internal fun kontakSetelahLookup(
+    disunting: KontakDisunting,
+    sekarang: KontakIsian,
+    kontakNama: String?,
+    kontakHp: String?,
+    kontakAlamat: String?,
+    cariNama: String,
+    cariHp: String,
+): KontakIsian = KontakIsian(
+    nama = if (disunting.nama) sekarang.nama else kontakNama?.takeIf { it.isNotBlank() } ?: cariNama.trim(),
+    hp = if (disunting.hp) sekarang.hp else kontakHp?.takeIf { it.isNotBlank() } ?: cariHp.trim(),
+    alamat = if (disunting.alamat) sekarang.alamat else kontakAlamat.orEmpty(),
+)
+
+/** Gerbang tombol "Kirim komplain" — pembungkus [kurangBuatTiket] supaya layar
+ *  dan ViewModel memakai SATU aturan (ViewModel memeriksanya ulang sebelum
+ *  memanggil server; tombol yang tak sengaja hidup tak boleh cukup). */
+internal fun bolehBuatTiket(
+    tanpaVerifikasi: Boolean,
+    noTransaksi: String?,
+    barisTerpilih: Set<Int>,
+    fotoKwitansiUrl: String?,
+    deskripsi: String?,
+    customerNama: String?,
+    customerHp: String?,
+    customerAlamat: String?,
+): HsGate {
+    val kurang = kurangBuatTiket(
+        tanpaVerifikasi = tanpaVerifikasi,
+        noTransaksi = noTransaksi,
+        barisTerpilih = barisTerpilih,
+        fotoKwitansiUrl = fotoKwitansiUrl,
+        deskripsi = deskripsi,
+        customerNama = customerNama,
+        customerHp = customerHp,
+        customerAlamat = customerAlamat,
+    )
+    return if (kurang.isEmpty()) HsGate(true) else HsGate(false, "Masih perlu: ${kurang.joinToString(", ")}.")
 }
 
 // ── Format nilai kirim ──────────────────────────────────────────────────────

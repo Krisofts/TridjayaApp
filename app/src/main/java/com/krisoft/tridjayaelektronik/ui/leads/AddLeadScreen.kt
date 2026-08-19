@@ -1,5 +1,8 @@
 package com.krisoft.tridjayaelektronik.ui.leads
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +31,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Phone
@@ -55,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -66,8 +72,10 @@ import com.krisoft.tridjayaelektronik.data.model.PipelineDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
+import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.util.bacaInfoBerkas
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -79,6 +87,17 @@ fun AddLeadScreen(
     val state by viewModel.uiState.collectAsState()
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     var showAssigneeSheet by remember { mutableStateOf(false) }
+    val resolver = LocalContext.current.contentResolver
+
+    // Photo Picker — TANPA izin apa pun; di bawah Android 11/13 ia turun sendiri
+    // ke SAF. Jangan ditambal `READ_MEDIA_*` (pola sama dengan bukti raport).
+    val buktiPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val (nama, ukuran) = bacaInfoBerkas(resolver, uri)
+        viewModel.onBuktiPicked(uri, nama, ukuran)
+    }
 
     LaunchedEffect(state.createdLeadId) {
         if (state.createdLeadId != null) onLeadCreated()
@@ -339,6 +358,19 @@ fun AddLeadScreen(
                     singleLine = false,
                     modifier = Modifier.fillMaxWidth()
                 )
+                BuktiProspekField(
+                    buktiNama = state.buktiNama,
+                    terlampir = state.buktiUrl != null,
+                    mengunggah = state.mengunggahBukti,
+                    wajib = state.wajibBukti,
+                    error = state.buktiError,
+                    onPilih = {
+                        buktiPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onHapus = viewModel::onBuktiRemoved
+                )
             }
 
             if (state.errorMessage != null) {
@@ -347,7 +379,12 @@ fun AddLeadScreen(
 
             ExpressiveFilledButton(
                 onClick = viewModel::submit,
-                enabled = !state.isSubmitting,
+                // Ikut mati SELAMA bukti diunggah. Tanpa ini, trainee yang menekan
+                // Simpan di tengah unggahan dijawab "Lengkapi dulu: Bukti percakapan"
+                // padahal buktinya SEDANG naik — pesan yang benar secara teknis dan
+                // menyesatkan sepenuhnya. Barisnya sendiri sudah berbunyi
+                // "Mengunggah bukti…", jadi sebab matinya terbaca di layar.
+                enabled = !state.isSubmitting && !state.mengunggahBukti,
                 modifier = Modifier.fillMaxWidth().height(54.dp)
             ) {
                 if (state.isSubmitting) {
@@ -361,6 +398,93 @@ fun AddLeadScreen(
                     Text("Simpan Prospek", fontWeight = FontWeight.Bold)
                 }
             }
+        }
+    }
+}
+
+/**
+ * Lampiran bukti percakapan — cerminan blok "Bukti percakapan" di
+ * `ProspekSubmitForm.tsx` (web).
+ *
+ * Untuk **trainee** ini field WAJIB, dan kewajibannya ditegakkan di
+ * [com.krisoft.tridjayaelektronik.domain.leads.CreateLeadUseCase], bukan di sini:
+ * tombol Simpan sengaja TIDAK dinonaktifkan tanpa bukti. Tombol mati tak pernah
+ * menjelaskan APA yang kurang — sedangkan jalur validasi yang sudah ada
+ * menyebutkan field yang belum diisi, dan ia juga menjaga pintu masuk lain
+ * (antrean offline) yang tak lewat layar ini sama sekali.
+ */
+@Composable
+private fun BuktiProspekField(
+    buktiNama: String,
+    terlampir: Boolean,
+    mengunggah: Boolean,
+    wajib: Boolean,
+    error: String?,
+    onPilih: () -> Unit,
+    onHapus: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        FieldLabel(if (wajib) "Bukti percakapan (wajib selama masa training)" else "Bukti percakapan (opsional)")
+        Spacer(modifier = Modifier.height(8.dp))
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !mengunggah, onClick = onPilih)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                when {
+                    mengunggah -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    terlampir -> Icon(
+                        Icons.Rounded.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    else -> Icon(
+                        Icons.Rounded.Image,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = when {
+                            mengunggah -> "Mengunggah bukti…"
+                            terlampir -> "Terlampir: $buktiNama"
+                            else -> "Lampirkan tangkapan layar percakapan"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!mengunggah) {
+                        Text(
+                            text = if (terlampir) "Ketuk untuk mengganti"
+                            else "Ketuk untuk memilih dari galeri · maksimal 25 MB",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (terlampir && !mengunggah) {
+                    ExpressiveTextButton(onClick = onHapus) {
+                        Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Hapus")
+                    }
+                }
+            }
+        }
+        if (error != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            ExpressiveFormError(message = error)
         }
     }
 }

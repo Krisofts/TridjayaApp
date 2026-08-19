@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.EventBusy
 import androidx.compose.material.icons.rounded.RateReview
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -369,6 +370,77 @@ private fun BarisAktivitas(
             }
         }
 
+        // Penanda bukti daur-ulang, DITULIS PER DUPLIKAT.
+        //
+        // Diringkas jadi satu kalimat, ia menggabungkan asal yang berbeda: dua
+        // bukti — satu milik orang lain, satu milik sendiri yang sudah
+        // disetujui — akan terbaca "karyawan lain yang sudah disetujui", tuduhan
+        // yang tak dimiliki data mana pun. Bentuk & kalimatnya sengaja sama
+        // dengan `BuktiDuplikatBadge` web: penilai yang membaca dua kalimat
+        // berbeda untuk baris yang sama berhenti mempercayai keduanya.
+        if (item.buktiDuplikat.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            item.buktiDuplikat.forEach { d ->
+                // Gambar ASLI ikut dipajang kecil. Tuduhan tanpa penunjuk
+                // memaksa penilai memilih antara mempercayainya buta atau
+                // mengabaikannya — dua-duanya membuat penandanya tak berguna.
+                // Bukti disajikan terautentikasi, jadi harus lewat AuthedEvidence.
+                // `asliUrl` KOSONG untuk penilai berbatas cabang — server
+                // mencabutnya beserta identitas pemiliknya. `evidenceImageUrl`
+                // menjawab null, jadi tak ada gambar yang dicoba dimuat: tanpa
+                // ini yang tampil kotak abu "Bukti gagal dimuat" atas berkas
+                // yang memang tak boleh mereka lihat.
+                evidenceImageUrl(d.asliUrl)?.let { urlAsli ->
+                    Box(Modifier.fillMaxWidth(0.35f)) {
+                        AuthedEvidence(
+                            url = urlAsli,
+                            token = token,
+                            contentDescription = "Bukti unggahan terdahulu yang isinya sama",
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                }
+                Text(
+                    kalimatDuplikatBukti(
+                        asliKaryawanId = d.asliKaryawanId,
+                        asliKaryawanNama = d.asliKaryawanNama,
+                        asliDiunggahAt = d.asliDiunggahAt,
+                        asliDisetujui = d.asliDisetujui,
+                        pemilikBarisId = item.employeeId,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+
+        // Penanda "karyawan ini punya off_requests approved pada tanggal
+        // baris ini" — PENANDA, bukan pemblokir. Bentuk & kalimat sengaja sama
+        // dengan `KaryawanOffBadge` web: baris lama (sebelum gerbang submit
+        // `ensure_bukan_off` ada) dan baris auto-isi "Kirim Prospek" (lewat
+        // worker, bukan submit manual) tetap bisa muncul di sini tanpa
+        // penanda ini, dan penilai yang tak melihatnya menilai seperti hari
+        // kerja biasa — insiden nyata 2026-08-19.
+        if (item.karyawanSedangOff) {
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.EventBusy,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Karyawan sedang ${item.offKategori ?: "off"} pada tanggal ini",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
+        }
+
         item.employeeNote?.takeIf { it.isNotBlank() }?.let { catatan ->
             Spacer(Modifier.height(4.dp))
             Text(
@@ -412,7 +484,11 @@ private fun BarisAktivitas(
 
 /** Bukti raport di-serve terautentikasi — pola `AuthedImage` (Deadstock/Indent). */
 @Composable
-private fun AuthedEvidence(url: String, token: String?) {
+private fun AuthedEvidence(
+    url: String,
+    token: String?,
+    contentDescription: String = "Bukti aktivitas",
+) {
     val context = LocalContext.current
     val request = remember(url, token) {
         ImageRequest.Builder(context)
@@ -427,7 +503,7 @@ private fun AuthedEvidence(url: String, token: String?) {
     ) {
         SubcomposeAsyncImage(
             model = request,
-            contentDescription = "Bukti aktivitas",
+            contentDescription = contentDescription,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         ) {
