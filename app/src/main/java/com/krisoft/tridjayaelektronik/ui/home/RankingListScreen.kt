@@ -41,6 +41,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,11 +107,13 @@ fun RankingListScreen(
                         contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
                     ) {
                         if (viewModel.kind == RankingKind.BRANCH) {
-                            itemsIndexed(state.branches, key = { _, branch -> branch.kodeDealer }) { index, branch ->
+                            val kunciCabang = kunciUnik(state.branches) { it.kodeDealer }
+                            itemsIndexed(state.branches, key = { i, _ -> kunciCabang.getOrElse(i) { "idx_$i" } }) { index, branch ->
                                 BranchRow(rank = index + 1, branch = branch, onClick = { onBranchClick(branch) })
                             }
                         } else {
-                            itemsIndexed(state.sales, key = { _, sales -> sales.sourceCode }) { index, sales ->
+                            val kunciSales = kunciUnik(state.sales) { it.sourceCode }
+                            itemsIndexed(state.sales, key = { i, _ -> kunciSales.getOrElse(i) { "idx_$i" } }) { index, sales ->
                                 SalesRow(rank = index + 1, sales = sales, onClick = { onSalesClick(sales) })
                             }
                         }

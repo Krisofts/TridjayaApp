@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -69,6 +70,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 
 /**
  * Input Serial Number (admin-stok) — **dua pekerjaan, dua pilihan**:
@@ -392,7 +394,8 @@ private fun ProductPickerScreen(
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + navBottom),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filtered, key = { it.first.kode }) { (row, status) ->
+                            val kunciProduk = kunciUnik(filtered) { it.first.kode }
+                            itemsIndexed(filtered, key = { i, _ -> kunciProduk.getOrElse(i) { "idx_$i" } }) { _, (row, status) ->
                                 ProductRow(
                                     row = row,
                                     status = status,

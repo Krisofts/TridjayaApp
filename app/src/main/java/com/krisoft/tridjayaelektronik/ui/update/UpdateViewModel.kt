@@ -109,7 +109,13 @@ class UpdateViewModel @Inject constructor(
         val current = _download.value
         if (current is UpdateDownloadState.Downloading) return
         if (current is UpdateDownloadState.ReadyToInstall) {
-            updateManager.promptInstall(current.fileUri)
+            // `promptInstall` mengembalikan false kalau installer paket tak ada
+            // / ditolak. Dulu ia melempar dan menutup app; sekarang diamnya
+            // harus tetap terlihat, kalau tidak orang menekan tombol berkali-
+            // kali tanpa satu pun tanda bahwa ada yang salah.
+            if (!updateManager.promptInstall(current.fileUri)) {
+                _download.value = UpdateDownloadState.Failed("HP ini tidak punya pemasang paket. Buka berkas APK-nya lewat aplikasi Berkas, atau minta bantuan admin.")
+            }
             return
         }
         unduhanUntukVersi = (_status.value as? UpdateStatus.Available)?.latestVersionCode
@@ -117,8 +123,11 @@ class UpdateViewModel @Inject constructor(
             _download.value = UpdateDownloadState.Downloading(null)
             updateManager.downloadApk { progress -> _download.value = UpdateDownloadState.Downloading(progress) }
                 .onSuccess { uri ->
-                    _download.value = UpdateDownloadState.ReadyToInstall(uri)
-                    updateManager.promptInstall(uri)
+                    _download.value = if (updateManager.promptInstall(uri)) {
+                        UpdateDownloadState.ReadyToInstall(uri)
+                    } else {
+                        UpdateDownloadState.Failed("HP ini tidak punya pemasang paket. Buka berkas APK-nya lewat aplikasi Berkas, atau minta bantuan admin.")
+                    }
                 }
                 .onFailure { error ->
                     _download.value = UpdateDownloadState.Failed(error.message ?: "Gagal mengunduh pembaruan")

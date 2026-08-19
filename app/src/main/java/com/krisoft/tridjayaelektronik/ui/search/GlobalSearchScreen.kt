@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -89,6 +90,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextButton
 import com.krisoft.tridjayaelektronik.ui.theme.FilterPanelChip
 import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 
 /**
  * Global search (the "Cari" tab root) — Rhythm's UniversalSearchScreen style. A bottom-docked
@@ -182,11 +184,12 @@ fun GlobalSearchScreen(
                         // ketukan keyboard, animasi per-item hanya menambah beban frame.
                         if (state.showProducts && state.products.isNotEmpty()) {
                             item(contentType = "header") { ResultSectionHeader(title = "Produk", count = state.products.size) }
-                            items(
+                            val kunciProduk = kunciUnik(state.products) { "${it.kode}|${it.kodeCabang}" }
+                            itemsIndexed(
                                 state.products,
-                                key = { "${it.kode}|${it.kodeCabang}" },
-                                contentType = { "product" }
-                            ) { p ->
+                                key = { i, _ -> kunciProduk.getOrElse(i) { "idx_produk_$i" } },
+                                contentType = { _, _ -> "product" }
+                            ) { _, p ->
                                 val key = "${p.kode}|${p.kodeCabang}"
                                 ProductResultRow(
                                     product = p,
@@ -453,7 +456,8 @@ private fun IdleView(
                 ExpressiveTextButton(onClick = onClearAll) { Text("Hapus Semua") }
             }
         }
-        items(history, key = { it }) { q ->
+        val kunciRiwayat = kunciUnik(history) { it }
+        itemsIndexed(history, key = { i, _ -> kunciRiwayat.getOrElse(i) { "idx_$i" } }) { _, q ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

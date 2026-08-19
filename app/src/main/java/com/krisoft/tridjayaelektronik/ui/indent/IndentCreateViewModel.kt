@@ -99,8 +99,16 @@ class IndentCreateViewModel @Inject constructor(
         _uiState.update { it.copy(keterangan = value) }
     }
 
+    /**
+     * Memilih foto yang SAMA dua kali di pemilih galeri mengirimkan `Uri` yang
+     * identik. Tanpa dedup, dua thumbnail kembar itu menjadi dua kunci
+     * `LazyRow` yang sama dan Compose menjatuhkan app dengan
+     * `IllegalArgumentException: Key ... was already used` — bukan sekadar
+     * duplikat yang jelek di layar. Dedup di sini, BUKAN cuma di kunci daftar,
+     * karena bukti kembar juga akan diunggah dua kali oleh [submit].
+     */
     fun addPhotos(uris: List<Uri>) {
-        _uiState.update { it.copy(photos = it.photos + uris) }
+        _uiState.update { st -> st.copy(photos = (st.photos + uris).distinct()) }
     }
 
     fun removePhoto(uri: Uri) {

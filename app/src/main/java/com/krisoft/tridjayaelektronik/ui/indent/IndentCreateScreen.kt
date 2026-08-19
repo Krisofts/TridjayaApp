@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,6 +61,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFormError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -153,7 +155,8 @@ fun IndentCreateScreen(
             Text("Bukti pengajuan (opsional)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(4.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.photos, key = { it.toString() }) { uri ->
+                val kunciFoto = kunciUnik(state.photos) { it.toString() }
+                itemsIndexed(state.photos, key = { i, _ -> kunciFoto.getOrElse(i) { "idx_$i" } }) { _, uri ->
                     PhotoThumbnail(uri = uri, onRemove = { viewModel.removePhoto(uri) })
                 }
                 item {

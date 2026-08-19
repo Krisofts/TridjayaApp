@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -59,6 +60,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 
 private fun formatRupiah(value: Long): String {
     val text = kotlin.math.abs(value).toString().reversed().chunked(3).joinToString(".").reversed()
@@ -177,7 +179,8 @@ fun DeadstockScreen(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + navBottom),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(filtered, key = { it.kodeBarang }) { item ->
+                                val kunciBaris = kunciUnik(filtered) { it.kodeBarang }
+                                itemsIndexed(filtered, key = { i, _ -> kunciBaris.getOrElse(i) { "idx_$i" } }) { _, item ->
                                     DeadstockRow(item, onClick = { viewModel.selectItem(item) })
                                 }
                             }

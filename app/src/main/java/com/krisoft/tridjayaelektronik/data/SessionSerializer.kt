@@ -44,9 +44,16 @@ object SessionSerializer : Serializer<PersistedSession> {
     override val defaultValue: PersistedSession = PersistedSession()
 
     override suspend fun readFrom(input: InputStream): PersistedSession {
-        val bytes = input.readBytes()
-        if (bytes.isEmpty()) return defaultValue
+        // `input.readBytes()` IKUT di dalam try. Sebelumnya ia berada di luar,
+        // sehingga IOException saat membaca `tridjaya_session.pb` (sektor flash
+        // rusak, berkas terpangkas saat proses dimatikan paksa, izin kacau
+        // sesudah restore) lolos sebagai uncaught exception dan membunuh app
+        // SAAT START — layar putih lalu tertutup, tanpa jalan keluar selain
+        // hapus data. Blob yang tak bisa didekripsi sudah ditangani sejak awal;
+        // yang belum justru kegagalan membacanya.
         return try {
+            val bytes = input.readBytes()
+            if (bytes.isEmpty()) return defaultValue
             val plain = SessionCrypto.decrypt(bytes)
             json.decodeFromString(PersistedSession.serializer(), plain.decodeToString())
         } catch (e: Exception) {
@@ -55,7 +62,18 @@ object SessionSerializer : Serializer<PersistedSession> {
     }
 
     override suspend fun writeTo(t: PersistedSession, output: OutputStream) {
+        // Enkripsi memakai Android Keystore: `SessionCrypto.encrypt` bisa
+        // melempar ProviderException/KeyStoreException di HP yang keystore-nya
+        // rusak (lazim sesudah pindah HP / restore cloud). DataStore memanggil
+        // ini dari coroutine tanpa penangkap, jadi lemparan di sini = force
+        // close. Sesi yang gagal DISIMPAN cuma berarti user harus login lagi
+        // nanti — itu jauh lebih baik daripada app yang tak bisa dibuka.
         val plain = json.encodeToString(PersistedSession.serializer(), t).encodeToByteArray()
-        output.write(SessionCrypto.encrypt(plain))
+        val terenkripsi = try {
+            SessionCrypto.encrypt(plain)
+        } catch (e: Exception) {
+            return
+        }
+        output.write(terenkripsi)
     }
 }

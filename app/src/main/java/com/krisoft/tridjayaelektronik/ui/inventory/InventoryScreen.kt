@@ -504,8 +504,17 @@ private fun InventoryExportSheet(
                         try {
                             exportAndShareXlsx(context, list, buildExportPrefix(filters))
                             onDismiss()
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Gagal membuat file: ${e.message ?: "kesalahan tak terduga"}", Toast.LENGTH_LONG).show()
+                        } catch (t: Throwable) {
+                            // `Throwable`, BUKAN `Exception`. Kegagalan kelas
+                            // yang hilang di API lama (`NoClassDefFoundError`,
+                            // `NoSuchMethodError`) adalah `Error` — `catch (e:
+                            // Exception)` melewatkannya dan app tertutup. Sejak
+                            // core library desugaring dinyalakan penyebab yang
+                            // diketahui sudah hilang, tapi penjaga ini tetap
+                            // dipertahankan: pustaka pihak ketiga bisa membawa
+                            // pemakaian API baru lain kapan saja, dan ekspor
+                            // gagal seharusnya tak pernah setara app tertutup.
+                            Toast.makeText(context, "Gagal membuat file: ${t.message ?: "kesalahan tak terduga"}", Toast.LENGTH_LONG).show()
                         } finally {
                             isExporting = false
                         }

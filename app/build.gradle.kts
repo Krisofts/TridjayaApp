@@ -120,6 +120,18 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+
+        // WAJIB, bukan kenyamanan. minSdk 24 berarti HP Android 7 masih dilayani,
+        // dan di sana `java.time.*` TIDAK ADA di runtime — pemakaiannya melempar
+        // `NoClassDefFoundError` saat kelasnya pertama disentuh. Yang membuat ini
+        // berbahaya: (1) `NoClassDefFoundError` adalah `Error`, jadi `catch (e:
+        // Exception)` di layar TIDAK menangkapnya dan app langsung tertutup;
+        // (2) unit test JVM tak pernah bisa menangkapnya karena jalan di JDK 17
+        // yang punya `java.time` lengkap — gerbangnya hijau, HP-nya mati.
+        // Korban nyata: `org.dhatim:fastexcel` memanggil `java.time.Instant.now()`
+        // tanpa syarat di `Workbook.finish()`, jadi ekspor XLSX Inventaris
+        // menutup app di setiap HP Android 7/7.1.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -134,6 +146,9 @@ android {
 }
 
 dependencies {
+    // Menyediakan java.time/java.util.stream di API < 26 — lihat alasan di compileOptions.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
     implementation("androidx.core:core-ktx:1.15.0")
     // EXIF orientation saat kompres foto bukti indent (IndentCreateViewModel)
     implementation("androidx.exifinterface:exifinterface:1.3.7")

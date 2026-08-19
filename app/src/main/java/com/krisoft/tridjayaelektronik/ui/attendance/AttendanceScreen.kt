@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -80,6 +81,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.krisoft.tridjayaelektronik.data.model.AbsensiRecordDto
 import com.krisoft.tridjayaelektronik.data.model.OffRequestDto
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 import java.util.Date
 import java.util.TimeZone
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
@@ -203,15 +205,16 @@ fun AttendanceScreen(
                                     Text("Riwayat Kehadiran", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                 }
                             }
-                            items(
-                                timeline,
-                                key = {
-                                    when (it) {
-                                        is TimelineEntry.Attendance -> "att_" + it.record.id.ifBlank { it.record.tanggal }
-                                        is TimelineEntry.Off -> "off_" + it.off.id.ifBlank { it.off.tanggal }
-                                    }
+                            val kunciTimeline = kunciUnik(timeline) {
+                                when (it) {
+                                    is TimelineEntry.Attendance -> "att_" + it.record.id.ifBlank { it.record.tanggal }
+                                    is TimelineEntry.Off -> "off_" + it.off.id.ifBlank { it.off.tanggal }
                                 }
-                            ) { entry ->
+                            }
+                            itemsIndexed(
+                                timeline,
+                                key = { i, _ -> kunciTimeline.getOrElse(i) { "idx_$i" } }
+                            ) { _, entry ->
                                 when (entry) {
                                     is TimelineEntry.Attendance -> HistoryRow(entry.record)
                                     is TimelineEntry.Off -> OffHistoryRow(entry.off)

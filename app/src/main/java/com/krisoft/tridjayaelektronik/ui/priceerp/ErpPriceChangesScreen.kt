@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PriceChange
@@ -50,6 +51,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 
 private val NaikColor = Color(0xFFF04438)
 private val TurunColor = Color(0xFF12B76A)
@@ -154,7 +156,8 @@ fun ErpPriceChangesScreen(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + navBottom),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(filtered, key = { "${it.kodeBarang}_${it.kodeCabang}_${it.detectedAt}" }) { item ->
+                                val kunciPerubahan = kunciUnik(filtered) { "${it.kodeBarang}_${it.kodeCabang}_${it.detectedAt}" }
+                                itemsIndexed(filtered, key = { i, _ -> kunciPerubahan.getOrElse(i) { "idx_$i" } }) { _, item ->
                                     PriceChangeRow(item)
                                 }
                             }

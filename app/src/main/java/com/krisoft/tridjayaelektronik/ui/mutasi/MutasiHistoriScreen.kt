@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -49,6 +50,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -153,7 +155,8 @@ fun MutasiHistoriScreen(
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + navBottom),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(filtered, key = { "${it.arah}_${it.noTransaksi}" }) { row ->
+                                val kunciBaris = kunciUnik(filtered) { "${it.arah}_${it.noTransaksi}" }
+                                itemsIndexed(filtered, key = { i, _ -> kunciBaris.getOrElse(i) { "idx_$i" } }) { _, row ->
                                     MutasiRow(row, onClick = { viewModel.selectRow(row) })
                                 }
                             }
@@ -318,7 +321,8 @@ private fun MutasiHistoriDetailScreen(
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + navBottom),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(items, key = { "${it.kodeBarang}_${it.sn}" }) { detail ->
+                            val kunciDetail = kunciUnik(items) { "${it.kodeBarang}_${it.sn}" }
+                            itemsIndexed(items, key = { i, _ -> kunciDetail.getOrElse(i) { "idx_$i" } }) { _, detail ->
                                 DetailBarangRow(detail)
                             }
                         }

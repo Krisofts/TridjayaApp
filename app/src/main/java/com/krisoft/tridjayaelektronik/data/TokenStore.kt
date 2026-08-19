@@ -201,7 +201,7 @@ class TokenStore(private val context: Context) {
         loaded = true
         _sessionState.value = false
         _mustChangePassword.value = false
-        scope.launch { dataStore.updateData { PersistedSession() } }
+        scope.launch { simpanDiamDiam(PersistedSession()) }
     }
 
     /** Pay the seed + legacy-migration cost early, off the main thread (called from Application). */
@@ -217,7 +217,29 @@ class TokenStore(private val context: Context) {
         _mustChangePassword.value = updated.accessToken.isNotBlank() && updated.mustChangePassword
         // Persist the latest mirror. Writing `cache` (not a captured snapshot) makes concurrent
         // persists idempotently converge on the final state — no lost-update or resurrection.
-        scope.launch { dataStore.updateData { cache } }
+        scope.launch { simpanDiamDiam(cache) }
+    }
+
+    /**
+     * Menulis sesi ke DataStore tanpa pernah melempar.
+     *
+     * Dipanggil dari `scope.launch` yang TIDAK punya `CoroutineExceptionHandler`
+     * (grep: nol handler di seluruh app), jadi apa pun yang lolos dari sini
+     * naik sebagai uncaught exception dan MEMBUNUH proses — di background,
+     * tanpa layar yang bisa menampilkan pesan. Yang bisa dilempar nyata:
+     * IOException dari DataStore dan ProviderException/KeyStoreException dari
+     * Android Keystore lewat serializer (lazim di HP hasil restore cloud).
+     *
+     * Gagal menyimpan HANYA berarti mirror di disk tertinggal dari `cache` di
+     * memori: sesi berjalan tetap utuh, paling buruk user login ulang nanti.
+     * Itu harga yang jauh lebih murah daripada app yang tertutup sendiri.
+     */
+    private suspend fun simpanDiamDiam(nilai: PersistedSession) {
+        try {
+            dataStore.updateData { nilai }
+        } catch (e: Exception) {
+            // sengaja ditelan — lihat kdoc
+        }
     }
 
     private fun ensureLoaded() {
