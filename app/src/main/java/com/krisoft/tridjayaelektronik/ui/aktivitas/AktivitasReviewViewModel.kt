@@ -1,9 +1,9 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthResult
-import com.krisoft.tridjayaelektronik.data.RaportRepository
+import com.krisoft.tridjayaelektronik.data.AktivitasRepository
 import com.krisoft.tridjayaelektronik.data.TokenStore
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class RaportReviewUiState(
+data class AktivitasReviewUiState(
     val loading: Boolean = false,
     val error: String? = null,
     /** `yyyy-MM-dd` — PIC sering menilai kiriman KEMARIN, jadi tanggal bisa digeser. */
@@ -22,7 +22,7 @@ data class RaportReviewUiState(
     /** `pending` (bawaan) / `approved` / `rejected` / `all`. */
     val status: String = "pending",
     val cari: String = "",
-    val grup: List<GrupRaport> = emptyList(),
+    val grup: List<GrupAktivitas> = emptyList(),
     /** `total` dari server — bisa LEBIH BESAR dari baris yang termuat. */
     val total: Int = 0,
     /** Id baris yang sedang dikirim putusannya (tombolnya dimatikan). */
@@ -33,17 +33,17 @@ data class RaportReviewUiState(
 
 /**
  * Antrian penilaian PIC raport. Tanpa cache lokal — sama alasan dengan
- * [RaportRepository]: status review dihitung server dan antrian basi membuat
+ * [AktivitasRepository]: status review dihitung server dan antrian basi membuat
  * dua PIC menilai baris yang sama.
  */
 @HiltViewModel
-class RaportReviewViewModel @Inject constructor(
-    private val repository: RaportRepository,
+class AktivitasReviewViewModel @Inject constructor(
+    private val repository: AktivitasRepository,
     private val tokenStore: TokenStore,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(RaportReviewUiState())
-    val state: StateFlow<RaportReviewUiState> = _state.asStateFlow()
+    private val _state = MutableStateFlow(AktivitasReviewUiState())
+    val state: StateFlow<AktivitasReviewUiState> = _state.asStateFlow()
 
     /** Bearer token untuk Coil memuat bukti privat (`AuthedImage`). */
     fun bearerToken(): String? = tokenStore.accessToken

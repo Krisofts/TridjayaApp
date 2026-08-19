@@ -44,8 +44,8 @@ import com.krisoft.tridjayaelektronik.ui.homeservice.HomeServiceDetailScreen
 import com.krisoft.tridjayaelektronik.ui.homeservice.HomeServiceLaporScreen
 import com.krisoft.tridjayaelektronik.ui.homeservice.HomeServiceListScreen
 import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
-import com.krisoft.tridjayaelektronik.ui.raport.RaportReviewScreen
-import com.krisoft.tridjayaelektronik.ui.raport.RaportScreen
+import com.krisoft.tridjayaelektronik.ui.aktivitas.AktivitasReviewScreen
+import com.krisoft.tridjayaelektronik.ui.aktivitas.AktivitasScreen
 import com.krisoft.tridjayaelektronik.ui.serials.SerialInputScreen
 // Berikut masih tinggal di package ui.home (hanya HomeNavHost yang pindah ke
 // ui.activity) — perlu diimpor eksplisit karena tak lagi satu paket.
@@ -70,8 +70,8 @@ private const val ROUTE_OPNAME = "home_opname"
  *  route key `opname_validasi`). Namanya kontrak — jangan diubah lagi. */
 const val ROUTE_OPNAME_VALIDASI = "home_opname_validasi"
 private const val ROUTE_ABSEN = "home_absen"
-private const val ROUTE_RAPORT = "home_raport"
-private const val ROUTE_RAPORT_REVIEW = "home_raport_review"
+private const val ROUTE_AKTIVITAS = "home_aktivitas"
+private const val ROUTE_AKTIVITAS_REVIEW = "home_aktivitas_review"
 // Komplain (Home Service). Empat daftar berbagi SATU layar (`HsMode`), tapi
 // route-nya tetap terpisah supaya deep-link notif bisa menunjuk antrian yang
 // tepat dan tombol back tiap peran tak saling menimpa.
@@ -169,8 +169,18 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "panduan_alur" -> ROUTE_PANDUAN_ALUR
     // Laporan aktivitas: layar karyawan (mengisi) vs antrian PIC (menilai) —
     // dua route, sama pasangannya seperti bukti chat di bawah.
-    "raport" -> ROUTE_RAPORT
-    "raport_review" -> ROUTE_RAPORT_REVIEW
+    //
+    // Ejaan LAMA `raport`/`raport_review` tetap diterima. Bukan hiasan: server
+    // mengirim `route` = navKey di payload push (`delivery_notif::route_for_kind`,
+    // dipetakan `MainActivity` lewat fungsi INI), jadi navKey adalah kontrak
+    // wire — bukan nama internal. Hari ini `route_for_kind` memang belum pernah
+    // memancarkan navKey ber-raport (diperiksa: 22 cabangnya nol), tapi
+    // membiarkan ejaan lama menganga berarti notifikasi lama/antrean yang
+    // sempat tertahan mendarat di `null` alias TIDAK PINDAH LAYAR — gagal
+    // senyap, bukan galat. Pola zero-lockout yang sama dengan
+    // `kacab`->`kepala-cabang` dan `ads-manager`->`digital-team` di rust-shared.
+    "aktivitas", "raport" -> ROUTE_AKTIVITAS
+    "aktivitas_review", "raport_review" -> ROUTE_AKTIVITAS_REVIEW
     // Komplain: satu pintu lapor + tiga antrian peran.
     "hs_lapor" -> ROUTE_HS_LAPOR
     "hs_triase" -> ROUTE_HS_TRIASE
@@ -365,11 +375,11 @@ fun ActivityNavHost(
         composable(ROUTE_ABSEN) {
             AttendanceScreen(onBack = { navController.popBackStack() })
         }
-        composable(ROUTE_RAPORT) {
-            RaportScreen(onBack = { navController.popBackStack() })
+        composable(ROUTE_AKTIVITAS) {
+            AktivitasScreen(onBack = { navController.popBackStack() })
         }
-        composable(ROUTE_RAPORT_REVIEW) {
-            RaportReviewScreen(onBack = { navController.popBackStack() })
+        composable(ROUTE_AKTIVITAS_REVIEW) {
+            AktivitasReviewScreen(onBack = { navController.popBackStack() })
         }
         composable(ROUTE_HS_LAPOR) {
             HomeServiceLaporScreen(

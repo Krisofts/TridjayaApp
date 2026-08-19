@@ -1,4 +1,4 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import android.content.ContentResolver
 import android.net.Uri
@@ -6,9 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
-import com.krisoft.tridjayaelektronik.data.RaportRepository
+import com.krisoft.tridjayaelektronik.data.AktivitasRepository
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.util.PhotoWatermark
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -48,7 +48,7 @@ data class PilihanBukti(
 /** Progres pengiriman satu baris — menggantikan `busyIndex` telanjang. */
 data class KirimProgres(val index: Int, val label: String)
 
-data class RaportUiState(
+data class AktivitasUiState(
     val isLoading: Boolean = true,
     /** Gagal MEMUAT daftar (layar tak bisa dipakai). Beda dari [message]. */
     val error: String? = null,
@@ -65,7 +65,7 @@ data class RaportUiState(
      */
     val penempatanId: String = "",
     val aktivitas: List<String> = emptyList(),
-    val submitted: Map<Int, RaportItemDto> = emptyMap(),
+    val submitted: Map<Int, AktivitasItemDto> = emptyMap(),
     /** Berkas terpilih per index aktivitas, belum dikirim. */
     val pilihan: Map<Int, PilihanBukti> = emptyMap(),
     /** Baris yang sedang diunggah/dikirim, beserta labelnya. */
@@ -102,13 +102,13 @@ data class RaportUiState(
  * seluruhnya.
  */
 @HiltViewModel
-class RaportViewModel @Inject constructor(
-    private val repository: RaportRepository,
+class AktivitasViewModel @Inject constructor(
+    private val repository: AktivitasRepository,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(RaportUiState())
-    val state: StateFlow<RaportUiState> = _state.asStateFlow()
+    private val _state = MutableStateFlow(AktivitasUiState())
+    val state: StateFlow<AktivitasUiState> = _state.asStateFlow()
 
     init { refresh() }
 
@@ -126,7 +126,7 @@ class RaportViewModel @Inject constructor(
             // belakangan menambah satu round-trip tepat di jalur yang paling
             // sering dibuka orang tiap pagi.
             val positionsResult: AuthResult<List<AktivitasPositionDto>>
-            val todayResult: AuthResult<List<RaportItemDto>>
+            val todayResult: AuthResult<List<AktivitasItemDto>>
             val penempatan: PenempatanSaya
             coroutineScope {
                 val positions = async { repository.aktivitasPositions() }
@@ -380,7 +380,7 @@ class RaportViewModel @Inject constructor(
             is AuthResult.Failure -> finish(index, hasil.message)
             is AuthResult.Success -> {
                 setProgres(index, "Menyimpan laporan…")
-                // POLOS, bukan array — sama seperti web (`KaryawanRaportPage.tsx`).
+                // POLOS, bukan array — sama seperti web (`KaryawanAktivitasPage.tsx`).
                 send(index, aktivitas, mode = "video", evidenceUrl = hasil.data)
             }
         }

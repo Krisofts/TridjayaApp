@@ -166,16 +166,16 @@ internal fun buildDailyTasks(
      *  [checkOutAt] di atas TIDAK bisa dipercaya (bukan benar-benar "belum"). */
     absensiFailed: Boolean = false,
     /** Jumlah aktivitas raport yang sudah dikirim hari ini. */
-    raportToday: Int = 0,
+    aktivitasToday: Int = 0,
     /** true = panggilan raport hari ini gagal — sama alasannya dgn [absensiFailed]. */
-    raportFailed: Boolean = false,
+    aktivitasFailed: Boolean = false,
     /**
      * Jumlah aktivitas yang SEHARUSNYA diisi user hari ini (dari master aktivitas
      * yang cocok dengan `divisi`-nya). `null` = TIDAK DIKETAHUI — lihat
-     * [raportAktivitasDetail] kenapa itu bukan kasus pinggiran dan kenapa 0 tak
+     * [aktivitasDetail] kenapa itu bukan kasus pinggiran dan kenapa 0 tak
      * boleh dipakai sebagai sentinel.
      */
-    raportExpected: Int? = null,
+    aktivitasExpected: Int? = null,
     /**
      * Target prospek harian dari server (`GET /prospek-harian/my-target`).
      * `null` = TIDAK DIKETAHUI (panggilan gagal / offline) → kartu jatuh ke
@@ -214,9 +214,9 @@ internal fun buildDailyTasks(
                     detail = prospekTaskDetail(srv, leadsToday),
                 )
             }
-            raportFailed && item.id == "raport" ->
+            aktivitasFailed && item.id == "aktivitas" ->
                 DailyTask(item, done = false, detail = "gagal muat", loadFailed = true)
-            item.id == "raport" -> DailyTask(
+            item.id == "aktivitas" -> DailyTask(
                 item,
                 // "Selesai" TETAP = sudah mengirim minimal satu aktivitas, SENGAJA
                 // tidak dinaikkan jadi "semua aktivitas terisi" walau penyebutnya
@@ -224,8 +224,8 @@ internal fun buildDailyTasks(
                 // karyawan, jadi menaikkannya membuat centang (dan penyebut
                 // [dailyProgressLabel]) berarti dua hal berbeda tergantung apakah
                 // divisi orangnya kebetulan ada di master aktivitas.
-                raportToday > 0,
-                raportAktivitasDetail(raportToday, raportExpected),
+                aktivitasToday > 0,
+                aktivitasDetail(aktivitasToday, aktivitasExpected),
             )
             else -> DailyTask(item, done = false, detail = if (item.comingSoon) "SEGERA" else "belum")
         }
@@ -248,7 +248,7 @@ internal fun buildDailyTasks(
  * "0/0" akan memvonis mereka belum mengerjakan sesuatu yang tak pernah bisa
  * dihitung. Karena itu penyebutnya `Int?`, bukan `Int` ber-sentinel 0.
  */
-internal fun raportAktivitasDetail(terkirim: Int, expected: Int?): String = when {
+internal fun aktivitasDetail(terkirim: Int, expected: Int?): String = when {
     expected != null && expected > 0 -> "$terkirim/$expected aktivitas"
     terkirim > 0 -> "$terkirim aktivitas terkirim"
     else -> "belum"

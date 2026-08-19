@@ -64,7 +64,24 @@ internal fun gateAllows(
     capabilities: Map<String, Boolean>?,
 ): Boolean {
     capability?.let { key ->
-        capabilities?.let { caps -> return caps[key] == true }
+        capabilities?.let { caps ->
+            // Kunci yang diminta dulu; kalau server BELUM mengenalnya, jatuh ke
+            // ejaan LAMA-nya. Ini bukan pelonggaran gate: `EJAAN_KUNCI_LAMA`
+            // memetakan satu-ke-satu ke kunci yang persis sama artinya, dan
+            // nilainya tetap datang dari server.
+            //
+            // Wajib ada karena arah kompatibilitasnya DUA-ARAH. Aturan di doc
+            // atas ("kunci hilang = false, jangan jatuh ke daftar role lokal")
+            // menjaga arah server-menyempitkan-akses. Yang TIDAK dijaga: APK
+            // BARU yang bicara dengan server LAMA — di sana kunci baru memang
+            // belum ada, dan tanpa cadangan ini menunya hilang tanpa satu pun
+            // pesan, termasuk kartu "Nilai Aktivitas" milik satu-satunya PIC.
+            // Cadangan tetap jatuh ke SERVER, bukan ke daftar role lokal, jadi
+            // penyempitan dari server tetap menang.
+            caps[key]?.let { return it }
+            EJAAN_KUNCI_LAMA[key]?.let { lama -> return caps[lama] == true }
+            return false
+        }
     }
     return when {
         effectiveRoles.isEmpty() -> false
@@ -72,6 +89,18 @@ internal fun gateAllows(
         else -> effectiveRoles.any { it in allowedRoles }
     }
 }
+
+/**
+ * Kunci kemampuan ejaan BARU -> ejaan LAMA yang artinya persis sama.
+ *
+ * Fase EKSPAND rename istilah 2026-08-19: server menyajikan KEDUANYA
+ * (`capabilities.rs` `CAPABILITY_ROLES`), jadi peta ini hanya terpakai saat APK
+ * ini dipasang di HP yang servernya belum naik. Dihapus di fase kontrak,
+ * bersama pencabutan ejaan lama di server.
+ */
+internal val EJAAN_KUNCI_LAMA: Map<String, String> = mapOf(
+    "aktivitas.review" to "raport.review",
+)
 
 /** Menu yang memang terbuka untuk semua role yang login — HARUS eksplisit. */
 internal val ALL_LOGGED_IN: Set<String> = setOf("*")

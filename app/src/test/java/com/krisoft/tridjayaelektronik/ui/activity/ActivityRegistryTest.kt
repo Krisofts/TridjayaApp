@@ -51,7 +51,7 @@ class ActivityRegistryTest {
         // jadi login-only, jadi tak ada kunci yang bisa dicerminkan tanpa
         // menyempitkan. Keduanya WAJIB menyebutkan alasannya di `backendGuard`.
         val tanpaKunci = ACTIVITY_ITEMS.filter { it.capability == null }.map { it.id }
-        assertEquals(listOf("raport", "lapor_komplain"), tanpaKunci)
+        assertEquals(listOf("aktivitas", "lapor_komplain"), tanpaKunci)
     }
 
     // ── Item khusus akun uji ─────────────────────────────────────────────────
@@ -62,12 +62,12 @@ class ActivityRegistryTest {
         // terukur: selama pintunya ditutup, KPI `LAPORAN AKTIVITAS` tetap
         // menilai orang atas laporan yang tak bisa mereka isi (60 dari 61 orang
         // di bawah 40%). KPI sengaja TIDAK diubah; yang dibuka pintunya.
-        // Cerminan web: `raportInputVisible = true` di `DashboardLayout.tsx`.
+        // Cerminan web: `aktivitasInputVisible = true` di `DashboardLayout.tsx`.
         val karyawan = visibleActivityItems(setOf("karyawan"), null, akunUji = false).map { it.id }
-        assertTrue("karyawan nyata harus melihat kartu Input Aktivitas", "raport" in karyawan)
+        assertTrue("karyawan nyata harus melihat kartu Input Aktivitas", "aktivitas" in karyawan)
 
         val uji = visibleActivityItems(setOf("karyawan"), null, akunUji = true).map { it.id }
-        assertTrue("akun uji tetap melihatnya", "raport" in uji)
+        assertTrue("akun uji tetap melihatnya", "aktivitas" in uji)
 
         // Yang MASIH dipangkas dari orang nyata hanya kedua kartu opname —
         // pembukaan raport tak boleh diam-diam ikut membuka yang lain.
@@ -79,67 +79,98 @@ class ActivityRegistryTest {
 
     @Test
     fun `Input Aktivitas terlihat dengan role apa pun, uji maupun nyata`() {
-        // `RAPORT_INPUT_ROLES = ALL_LOGGED_IN` dan itu memang cerminan backend:
+        // `AKTIVITAS_INPUT_ROLES = ALL_LOGGED_IN` dan itu memang cerminan backend:
         // `upsert_raport` login-only sejak 2026-08-14. Sejak pintunya dibuka
         // 2026-08-15, akun uji dan orang nyata sama-sama melihatnya — yang
         // dijaga di sini adalah tak ada role yang diam-diam tertinggal.
         listOf("karyawan", "manager", "owner", "kasir", "driver", "hrd", "sales").forEach { role ->
             assertTrue(
                 "akun uji ber-role '$role' kehilangan kartu Input Aktivitas",
-                "raport" in visibleActivityItems(setOf(role), emptyMap(), akunUji = true).map { it.id },
+                "aktivitas" in visibleActivityItems(setOf(role), emptyMap(), akunUji = true).map { it.id },
             )
             assertTrue(
                 "orang nyata ber-role '$role' kehilangan kartu Input Aktivitas",
-                "raport" in visibleActivityItems(setOf(role), emptyMap(), akunUji = false).map { it.id },
+                "aktivitas" in visibleActivityItems(setOf(role), emptyMap(), akunUji = false).map { it.id },
             )
         }
         // Batasnya tetap: profil belum termuat (role kosong) → jangan menebak.
-        assertFalse("raport" in visibleActivityItems(emptySet(), null, akunUji = true).map { it.id })
+        assertFalse("aktivitas" in visibleActivityItems(emptySet(), null, akunUji = true).map { it.id })
     }
 
     // ── Antrian PIC raport ───────────────────────────────────────────────────
 
     @Test
     fun `kartu Nilai Aktivitas memakai kunci raport review`() {
-        val kartu = ACTIVITY_ITEMS.first { it.id == "raport_review" }
-        assertEquals("raport.review", kartu.capability)
-        assertEquals("raport_review", kartu.navKey)
-        assertEquals(ActivitySource.RAPORT_REVIEW_PENDING, kartu.source)
+        val kartu = ACTIVITY_ITEMS.first { it.id == "aktivitas_review" }
+        assertEquals("aktivitas.review", kartu.capability)
+        assertEquals("aktivitas_review", kartu.navKey)
+        assertEquals(ActivitySource.AKTIVITAS_REVIEW_PENDING, kartu.source)
         // Nilainya ditulis literal, bukan merujuk konstantanya sendiri: test yang
         // membandingkan konstanta dengan dirinya sendiri selalu hijau.
+        //
+        // Dipangkas 2026-08-18: `manager`, `kepala-cabang`, `hrd` dicabut atas
+        // arahan user (penilaian aktivitas hanya PIC + administrator). Kartu ini
+        // adalah tempat kebocoran itu terlihat — Vina Amelia melihatnya karena
+        // `extra_roles = kepala-cabang`, bukan karena punya menu web.
         assertEquals(
-            setOf("admin", "superadmin", "manager", "kepala-cabang", "pic_raport", "pic-raport", "hrd"),
+            setOf("admin", "superadmin", "pic_raport", "pic-raport"),
             kartu.allowedRoles,
         )
     }
 
     @Test
+    fun `peran yang dicabut tak lagi melihat kartu Nilai Aktivitas`() {
+        // Dua jalur harus sama-sama tertutup, dan yang KEDUA paling mudah
+        // tertinggal karena cuma muncul saat HP offline:
+        //   (a) server menjawab kemampuannya false  -> peta kemampuan
+        //   (b) peta belum termuat (offline)        -> daftar role lokal
+        for (peran in listOf("manager", "kepala-cabang", "hrd")) {
+            assertFalse(
+                "$peran masih melihat kartu Nilai Aktivitas lewat peta kemampuan",
+                "aktivitas_review" in
+                    visibleActivityItems(setOf(peran), mapOf("aktivitas.review" to false)).map { it.id },
+            )
+            assertFalse(
+                "$peran masih melihat kartu Nilai Aktivitas saat OFFLINE (cadangan role lokal)",
+                "aktivitas_review" in visibleActivityItems(setOf(peran), null).map { it.id },
+            )
+        }
+        // Kontrol positif: yang masih berhak tetap melihatnya di KEDUA jalur.
+        for (peran in listOf("pic_raport", "pic-raport", "admin", "superadmin")) {
+            assertTrue(
+                "$peran kehilangan kartu Nilai Aktivitas saat offline",
+                "aktivitas_review" in visibleActivityItems(setOf(peran), null).map { it.id },
+            )
+        }
+    }
+
+    @Test
     fun `PIC melihat antrian penilaian, karyawan biasa tidak`() {
         val pic = visibleActivityItems(setOf("pic_raport"), null).map { it.id }
-        assertTrue("raport_review" in pic)
+        assertTrue("aktivitas_review" in pic)
         // Sejak 2026-08-15 PIC melihat KEDUANYA: kartu PENGISIAN (dibuka untuk
         // semua) dan kartu PENILAIAN. Yang dijaga di sini tetap sama seperti
         // dulu — `raport_review` tak boleh ikut tergeser oleh perubahan apa pun
         // pada `raport`; reviewer yang kehilangan antriannya membuat raport
         // orang menumpuk tanpa satu pun error.
-        assertTrue("raport" in pic)
+        assertTrue("aktivitas" in pic)
         assertTrue(
             "akun uji PIC harus melihat KEDUANYA",
             visibleActivityItems(setOf("pic_raport"), null, akunUji = true)
                 .map { it.id }
-                .containsAll(listOf("raport", "raport_review")),
+                .containsAll(listOf("aktivitas", "aktivitas_review")),
         )
 
         val karyawan = visibleActivityItems(setOf("karyawan"), null).map { it.id }
-        assertFalse("raport_review" in karyawan)
+        assertFalse("aktivitas_review" in karyawan)
     }
 
     @Test
     fun `owner boleh membaca raport tapi tak boleh menilainya`() {
-        // `RAPORT_VIEW_ALL_ROLES` memuat owner, `RAPORT_REVIEW_ROLES` TIDAK —
+        // `RAPORT_VIEW_ALL_ROLES` memuat owner, `AKTIVITAS_REVIEW_ROLES` TIDAK —
         // kartunya harus ikut aturan yang kedua, kalau tidak owner menekan
         // Setuju lalu dijawab 403.
-        assertFalse("raport_review" in visibleActivityItems(setOf("owner"), null).map { it.id })
+        assertFalse("aktivitas_review" in visibleActivityItems(setOf("owner"), null).map { it.id })
     }
 
     // ── Komplain / Home Service ──────────────────────────────────────────────
@@ -210,10 +241,34 @@ class ActivityRegistryTest {
         assertEquals("delivery.control", ACTIVITY_ITEMS.first { it.id == "tarik_unit" }.capability)
     }
 
+    /// Server LAMA (belum menyajikan `aktivitas.review`) tetap menyalakan kartu.
+    ///
+    /// Arah kompatibilitas yang mudah terlupa: aturan `gateAllows` yang lama
+    /// menjaga "server menyempitkan akses" — kunci hilang = false. Tapi APK BARU
+    /// di atas server LAMA juga menghasilkan kunci hilang, dan di sana artinya
+    /// bukan penyempitan melainkan server yang belum tahu ejaan barunya. Tanpa
+    /// cadangan `EJAAN_KUNCI_LAMA`, kartu "Nilai Aktivitas" hilang tanpa satu
+    /// pun pesan — termasuk milik satu-satunya PIC yang berhak memakainya.
+    @Test
+    fun `kunci ejaan lama dipakai saat server belum menyajikan ejaan baru`() {
+        val serverLama = mapOf("raport.review" to true)
+        assertTrue(
+            "server lama harus tetap menyalakan kartu lewat cadangan ejaan kunci",
+            "aktivitas_review" in visibleActivityItems(setOf("pic_raport"), serverLama).map { it.id },
+        )
+        // Dan penyempitan dari server LAMA tetap menang — cadangan ini bukan
+        // pintu belakang ke daftar role lokal.
+        assertFalse(
+            "server lama yang menjawab false harus tetap menyembunyikannya",
+            "aktivitas_review" in
+                visibleActivityItems(setOf("pic_raport"), mapOf("raport.review" to false)).map { it.id },
+        )
+    }
+
     @Test
     fun `peta kemampuan server menang atas daftar role lokal`() {
-        val caps = mapOf("raport.review" to false)
-        assertFalse("raport_review" in visibleActivityItems(setOf("manager"), caps).map { it.id })
+        val caps = mapOf("aktivitas.review" to false)
+        assertFalse("aktivitas_review" in visibleActivityItems(setOf("manager"), caps).map { it.id })
     }
 
     @Test

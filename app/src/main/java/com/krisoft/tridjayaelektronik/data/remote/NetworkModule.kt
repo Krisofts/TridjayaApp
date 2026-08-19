@@ -100,19 +100,9 @@ object NetworkModule {
     fun createOffApi(tokenStore: TokenStore): OffApi =
         authenticatedRetrofit(tokenStore).create(OffApi::class.java)
 
-    fun createRaportApi(tokenStore: TokenStore): RaportApi =
-        authenticatedRetrofit(tokenStore).create(RaportApi::class.java)
+    fun createAktivitasApi(tokenStore: TokenStore): AktivitasApi =
+        authenticatedRetrofit(tokenStore).create(AktivitasApi::class.java)
 
-    /**
-     * Client khusus unggah bukti raport: badan sampai 30 MB tak akan selesai
-     * dalam 20 detik milik client bersama, jadi ia butuh timeout sendiri.
-     *
-     * `HttpLoggingInterceptor` DIBUANG di sini: pada level `BODY` — yang aktif di build debug — ia
-     * memanggil `requestBody.writeTo(Buffer())` untuk memeriksa isinya, jadi
-     * seluruh video masuk heap dulu HANYA supaya bisa dicetak sebagai "binary
-     * body omitted". Itu membatalkan seluruh gunanya [UriRequestBody] justru
-     * di build yang dipakai menguji fitur ini di HP.
-     */
     /**
      * Client unggah bukti PROSPEK. Timeout-nya lebih pendek dari raport karena
      * batasnya 8 MB, bukan 30 MB — tapi tetap jauh di atas 20 detik milik
@@ -136,7 +126,17 @@ object NetworkModule {
             .create(ProspekUploadApi::class.java)
     }
 
-    fun createRaportUploadApi(tokenStore: TokenStore): RaportUploadApi {
+    /**
+     * Client khusus unggah bukti raport: badan sampai 30 MB tak akan selesai
+     * dalam 20 detik milik client bersama, jadi ia butuh timeout sendiri.
+     *
+     * `HttpLoggingInterceptor` DIBUANG di sini: pada level `BODY` — yang aktif di build debug — ia
+     * memanggil `requestBody.writeTo(Buffer())` untuk memeriksa isinya, jadi
+     * seluruh video masuk heap dulu HANYA supaya bisa dicetak sebagai "binary
+     * body omitted". Itu membatalkan seluruh gunanya [UriRequestBody] justru
+     * di build yang dipakai menguji fitur ini di HP.
+     */
+    fun createAktivitasUploadApi(tokenStore: TokenStore): AktivitasUploadApi {
         val base = authenticatedRetrofit(tokenStore)
         val uploadClient = (base.callFactory() as OkHttpClient).newBuilder()
             .writeTimeout(300, TimeUnit.SECONDS)
@@ -147,7 +147,7 @@ object NetworkModule {
         return base.newBuilder()
             .client(uploadClient)
             .build()
-            .create(RaportUploadApi::class.java)
+            .create(AktivitasUploadApi::class.java)
     }
 
     fun createHomeServiceApi(tokenStore: TokenStore): HomeServiceApi =

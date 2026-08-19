@@ -1,7 +1,7 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import com.krisoft.tridjayaelektronik.data.model.AktivitasPositionDto
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 
 /**
  * Bagian murni layar Input Aktivitas (tanpa Android/Compose) supaya bisa diuji
@@ -10,7 +10,7 @@ import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
 
 /**
  * Posisi aktivitas milik seorang karyawan berdasarkan `divisi`-nya. Port 1:1
- * dari `getPositionMatch` di web (`KaryawanRaportPage.tsx`) supaya daftar
+ * dari `getPositionMatch` di web (`KaryawanAktivitasPage.tsx`) supaya daftar
  * aktivitas di HP sama persis dengan yang dinilai PIC di web.
  *
  * `null` saat tak ada yang cocok — SENGAJA tak jatuh ke posisi pertama: karyawan
@@ -141,14 +141,14 @@ internal fun pilihAktivitasUntukInput(
     }
 }
 
-enum class RaportRowStatus { BELUM, MENUNGGU, DISETUJUI, DITOLAK }
+enum class AktivitasRowStatus { BELUM, MENUNGGU, DISETUJUI, DITOLAK }
 
 /** Status satu baris aktivitas dari raport yang sudah terkirim hari itu. */
-internal fun rowStatus(item: RaportItemDto?): RaportRowStatus = when {
-    item == null -> RaportRowStatus.BELUM
-    item.reviewStatus == "approved" -> RaportRowStatus.DISETUJUI
-    item.reviewStatus == "rejected" -> RaportRowStatus.DITOLAK
-    else -> RaportRowStatus.MENUNGGU
+internal fun rowStatus(item: AktivitasItemDto?): AktivitasRowStatus = when {
+    item == null -> AktivitasRowStatus.BELUM
+    item.reviewStatus == "approved" -> AktivitasRowStatus.DISETUJUI
+    item.reviewStatus == "rejected" -> AktivitasRowStatus.DITOLAK
+    else -> AktivitasRowStatus.MENUNGGU
 }
 
 /**
@@ -158,5 +158,5 @@ internal fun rowStatus(item: RaportItemDto?): RaportRowStatus = when {
  * indexnya di luar daftar sekarang tetap dipegang di peta, tinggal tak punya
  * baris untuk ditempeli.
  */
-internal fun submittedByIndex(items: List<RaportItemDto>): Map<Int, RaportItemDto> =
+internal fun submittedByIndex(items: List<AktivitasItemDto>): Map<Int, AktivitasItemDto> =
     items.associateBy { it.jobdeskIndex }

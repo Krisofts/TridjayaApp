@@ -40,7 +40,7 @@ enum class ActivitySource {
     RAPORT_TODAY,
     /** `GET /raport-harian?tanggal=hari-ini&status=pending` — antrian PIC raport.
      *  Angkanya `total` (bukan `items.size`): server memotong `items` ke `limit`. */
-    RAPORT_REVIEW_PENDING,
+    AKTIVITAS_REVIEW_PENDING,
     /** `GET /home-service` — tiket komplain menunggu triase CS. */
     HS_TRIASE,
     /** `GET /home-service?mine=true` — kunjungan yang ditugaskan ke teknisi ini. */
@@ -112,18 +112,29 @@ data class ActivityItem(
  * Belum ada kunci di `GET /api/me/capabilities` untuk hak kirim, jadi item
  * raport satu-satunya yang ber-`capability = null` (dijaga `ActivityRegistryTest`).
  */
-internal val RAPORT_INPUT_ROLES = ALL_LOGGED_IN
+internal val AKTIVITAS_INPUT_ROLES = ALL_LOGGED_IN
 
 /**
- * Cerminan `capabilities::RAPORT_REVIEW_ROLES` (rust-shared) — cadangan OFFLINE
+ * Cerminan `capabilities::AKTIVITAS_REVIEW_ROLES` (rust-shared) — cadangan OFFLINE
  * saja; sumber utamanya kunci `raport.review` dari `GET /api/me/capabilities`.
  *
  * `owner` SENGAJA tak ada: ia boleh MEMBACA raport (`RAPORT_VIEW_ALL_ROLES`)
  * tapi ditolak `review_raport`. Dua ejaan `pic_raport`/`pic-raport` sama-sama
  * ditulis karena backend memang mengenali keduanya (`auth.rs`).
+ *
+ * **`manager`, `kepala-cabang`, dan `hrd` DICABUT 2026-08-18** (arahan user:
+ * penilaian aktivitas hanya PIC + administrator). Daftar ini yang menyembunyikan
+ * kartu "Nilai Aktivitas" saat OFFLINE; sisi ONLINE sudah tertutup begitu
+ * server berhenti menjawab `raport.review = true`.
+ *
+ * Kenapa keduanya WAJIB dipangkas bersama: `gateAllows` memakai peta kemampuan
+ * lebih dulu dan berhenti di sana, tapi ia jatuh ke daftar ini kalau peta belum
+ * termuat (`capabilities == null`, yaitu saat offline atau panggilan gagal).
+ * Meninggalkan ketiga peran di sini = kartunya tetap muncul di HP yang belum
+ * berhasil memuat kemampuannya, lalu setiap ketukan dijawab 403.
  */
-internal val RAPORT_REVIEW_ROLES = setOf(
-    "admin", "superadmin", "manager", "kepala-cabang", "pic_raport", "pic-raport", "hrd",
+internal val AKTIVITAS_REVIEW_ROLES = setOf(
+    "admin", "superadmin", "pic_raport", "pic-raport",
 )
 
 /**
@@ -237,15 +248,15 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         navKey = "crm",
     ),
     ActivityItem(
-        id = "raport",
+        id = "aktivitas",
         label = "Input aktivitas",
         subtitle = "Laporan aktivitas harian",
         kind = ActivityKind.TUGAS_HARIAN,
         capability = null,
-        allowedRoles = RAPORT_INPUT_ROLES,
+        allowedRoles = AKTIVITAS_INPUT_ROLES,
         backendGuard = "kinerja-service raport.rs KARYAWAN_ROLES (upsert_raport)",
         source = ActivitySource.RAPORT_TODAY,
-        navKey = "raport",
+        navKey = "aktivitas",
         beta = true,
     ),
     ActivityItem(
@@ -349,16 +360,16 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         navKey = "hs_driver",
     ),
     ActivityItem(
-        // Sisi PIC dari kartu "raport" di atas: karyawan mengisi, PIC menilai.
-        id = "raport_review",
+        // Sisi PIC dari kartu "aktivitas" di atas: karyawan mengisi, PIC menilai.
+        id = "aktivitas_review",
         label = "Nilai Aktivitas",
         subtitle = "Laporan karyawan menunggu dinilai",
         kind = ActivityKind.ANTRIAN,
-        capability = "raport.review",
-        allowedRoles = RAPORT_REVIEW_ROLES,
-        backendGuard = "kinerja-service raport.rs REVIEW_ROLES (capabilities::RAPORT_REVIEW_ROLES)",
-        source = ActivitySource.RAPORT_REVIEW_PENDING,
-        navKey = "raport_review",
+        capability = "aktivitas.review",
+        allowedRoles = AKTIVITAS_REVIEW_ROLES,
+        backendGuard = "kinerja-service raport.rs REVIEW_ROLES (capabilities::AKTIVITAS_REVIEW_ROLES)",
+        source = ActivitySource.AKTIVITAS_REVIEW_PENDING,
+        navKey = "aktivitas_review",
     ),
     ActivityItem(
         id = "antrian_pdi",
@@ -534,7 +545,7 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
  * tak putus. Menutup endpoint-nya bersamaan akan mematikan indikator KPI orang
  * yang datanya sudah masuk — kerugian yang tak terlihat sampai gajian.
  *
- * Cerminan web: `raportInputVisible` di `DashboardLayout.tsx` (`isAkunUji`).
+ * Cerminan web: `aktivitasInputVisible` di `DashboardLayout.tsx` (`isAkunUji`).
  * Keduanya harus sepakat, kalau tidak menu hilang di satu sisi saja dan orang
  * mengira app-nya rusak.
  *
@@ -570,10 +581,10 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
 // mengalir ke insentif.
 //
 // KPI SENGAJA TIDAK diubah (keputusan user): indikatornya tetap dihitung apa
-// adanya; yang dibuka hanya pintunya. Cerminan web: `raportInputVisible = true`
+// adanya; yang dibuka hanya pintunya. Cerminan web: `aktivitasInputVisible = true`
 // di `DashboardLayout.tsx` — dua sisi ini WAJIB sepakat.
 //
-// Menutupnya lagi = kembalikan `"raport"` ke set ini DAN balikkan baris web itu.
+// Menutupnya lagi = kembalikan `"aktivitas"` ke set ini DAN balikkan baris web itu.
 private val ITEM_KHUSUS_AKUN_UJI = setOf("opname_cabang", "opname_validasi")
 
 /**
@@ -599,7 +610,7 @@ private val ITEM_KHUSUS_AKUN_UJI = setOf("opname_cabang", "opname_validasi")
  * [OPNAME_HITUNG_MENU_ROLES]** — keluarga akun uji ber-role macam-macam
  * (UJI Sales/PDI/Kasir/Driver), jadi menyempitkan role justru menghilangkan
  * kartu dari akun uji sendiri; itu jebakan yang sama persis dengan
- * `RAPORT_INPUT_ROLES`. Dua saringan ini memang menjawab dua pertanyaan
+ * `AKTIVITAS_INPUT_ROLES`. Dua saringan ini memang menjawab dua pertanyaan
  * berbeda: role = "boleh mengerjakan?", set ini = "sudah dilepas ke siapa?".
  */
 internal val OPNAME_PELAKSANA_NYATA =

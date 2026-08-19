@@ -10,7 +10,7 @@ import retrofit2.http.Part
 
 /**
  * Unggah bukti PROSPEK — dipisah dari [CrmApi] dengan alasan yang sama seperti
- * [RaportUploadApi] dipisah dari [RaportApi]: client bersama ber-timeout 20
+ * [AktivitasUploadApi] dipisah dari [AktivitasApi]: client bersama ber-timeout 20
  * detik, dan bukti sampai 8 MB (`MAX_BUKTI_PROSPEK_BYTES`) tak selesai dalam
  * 20 detik di jaringan cabang. Gagalnya muncul sebagai "tidak bisa terhubung
  * ke server", yang membuat orang menyalahkan sinyal padahal batas waktunya

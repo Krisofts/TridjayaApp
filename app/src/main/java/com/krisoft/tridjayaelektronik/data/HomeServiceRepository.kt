@@ -152,7 +152,7 @@ class HomeServiceRepository @Inject constructor(
     }
 
     /**
-     * `errors[0]` diutamakan (pola `RaportRepository`): validasi modul ini
+     * `errors[0]` diutamakan (pola `AktivitasRepository`): validasi modul ini
      * mengirim `message` generik sementara sebab sebenarnya ("hasil selesai
      * wajib foto", "jadwal harus YYYY-MM-DD…") hanya ada di `errors`.
      */

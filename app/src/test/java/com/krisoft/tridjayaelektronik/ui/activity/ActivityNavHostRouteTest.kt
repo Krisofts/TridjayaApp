@@ -28,7 +28,7 @@ class ActivityNavHostRouteTest {
     @Test
     fun `setiap navKey non-kosong dikenali peta route`() {
         ACTIVITY_ITEMS.forEach { item ->
-            // Tak ada lagi item ber-navKey kosong: sisa terakhir ("raport") kini
+            // Tak ada lagi item ber-navKey kosong: sisa terakhir ("aktivitas") kini
             // punya layarnya sendiri. Item baru tanpa navKey = kartu bisu.
             assertTrue(
                 "Item '${item.id}' punya navKey kosong — kartunya tak akan membuka apa pun",
@@ -104,9 +104,15 @@ class ActivityNavHostRouteTest {
      */
     @Test
     fun `navKey raport dan antrian penilaiannya menunjuk route berbeda`() {
-        assertNotNull(routeForNavKey("raport"))
-        assertNotNull(routeForNavKey("raport_review"))
-        assertTrue(routeForNavKey("raport") != routeForNavKey("raport_review"))
+        assertNotNull(routeForNavKey("aktivitas"))
+        assertNotNull(routeForNavKey("aktivitas_review"))
+        // Ejaan LAMA wajib tetap memetakan ke route yang SAMA: navKey adalah
+        // kontrak wire (server mengirimnya di payload push), jadi mencabutnya
+        // membuat notifikasi lama mendarat di `null` = tidak pindah layar,
+        // tanpa satu pun galat.
+        assertEquals(routeForNavKey("aktivitas"), routeForNavKey("raport"))
+        assertEquals(routeForNavKey("aktivitas_review"), routeForNavKey("raport_review"))
+        assertTrue(routeForNavKey("aktivitas") != routeForNavKey("aktivitas_review"))
     }
 
     /**

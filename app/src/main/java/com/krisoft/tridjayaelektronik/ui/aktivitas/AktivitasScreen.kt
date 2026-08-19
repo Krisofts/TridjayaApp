@@ -1,4 +1,4 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
@@ -86,9 +86,9 @@ import java.io.File
  * `READ_EXTERNAL_STORAGE`.
  */
 @Composable
-fun RaportScreen(
+fun AktivitasScreen(
     onBack: () -> Unit,
-    viewModel: RaportViewModel = hiltViewModel()
+    viewModel: AktivitasViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -184,10 +184,10 @@ fun RaportScreen(
                         // orangnya tetap tak bisa mengisi laporan.
                         subtitle = if (state.penempatanId.isNotBlank()) {
                             "Penempatan \"${state.penempatanId}\" belum punya daftar aktivitas " +
-                                "di master raport. Minta PIC Raport menambahkannya."
+                                "di Master Aktivitas. Minta PIC Aktivitas menambahkannya."
                         } else {
                             "Divisi \"${state.divisi.ifBlank { "-" }}\" belum punya daftar aktivitas " +
-                                "di master raport. Minta PIC Raport menambahkannya."
+                                "di Master Aktivitas. Minta PIC Aktivitas menambahkannya."
                         }
                     )
                 }
@@ -283,7 +283,7 @@ fun RaportScreen(
 }
 
 @Composable
-private fun Ringkasan(state: RaportUiState) {
+private fun Ringkasan(state: AktivitasUiState) {
     Column(modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -316,7 +316,7 @@ private fun Ringkasan(state: RaportUiState) {
 private fun AktivitasRow(
     nomor: Int,
     aktivitas: String,
-    terkirim: RaportItemDto?,
+    terkirim: AktivitasItemDto?,
     pilihan: PilihanBukti?,
     progres: KirimProgres?,
     enabled: Boolean,
@@ -454,7 +454,7 @@ private fun AktivitasRow(
  * Pratinjau gambar staging. Bukti LAMA (`file == null`) SENGAJA tidak dirender
  * lewat jaringan: guard kepemilikan server mencocokkan `bukti_url` persis, jadi
  * baris multi-gambar menjawab 404 untuk karyawan pemiliknya sendiri (lihat KDoc
- * `RaportBuktiPlan.kt`). Kotak berlabel "Terkirim" jujur; gambar rusak tidak.
+ * `AktivitasBuktiPlan.kt`). Kotak berlabel "Terkirim" jujur; gambar rusak tidak.
  */
 @Composable
 private fun PratinjauGambar(
@@ -574,12 +574,12 @@ private fun VideoTerpilih(video: VideoBukti, enabled: Boolean, onHapus: () -> Un
 }
 
 @Composable
-private fun StatusChip(status: RaportRowStatus, terkirim: RaportItemDto?) {
+private fun StatusChip(status: AktivitasRowStatus, terkirim: AktivitasItemDto?) {
     val (label, warna) = when (status) {
-        RaportRowStatus.BELUM -> "Belum dikirim" to MaterialTheme.colorScheme.surfaceContainerHighest
-        RaportRowStatus.MENUNGGU -> "Menunggu review PIC" to MaterialTheme.colorScheme.tertiaryContainer
-        RaportRowStatus.DISETUJUI -> "Disetujui PIC" to MaterialTheme.colorScheme.primaryContainer
-        RaportRowStatus.DITOLAK -> "Ditolak PIC" to MaterialTheme.colorScheme.errorContainer
+        AktivitasRowStatus.BELUM -> "Belum dikirim" to MaterialTheme.colorScheme.surfaceContainerHighest
+        AktivitasRowStatus.MENUNGGU -> "Menunggu review PIC" to MaterialTheme.colorScheme.tertiaryContainer
+        AktivitasRowStatus.DISETUJUI -> "Disetujui PIC" to MaterialTheme.colorScheme.primaryContainer
+        AktivitasRowStatus.DITOLAK -> "Ditolak PIC" to MaterialTheme.colorScheme.errorContainer
     }
     Column {
         Surface(shape = MaterialTheme.shapes.small, color = warna) {
@@ -614,7 +614,7 @@ private fun StatusChip(status: RaportRowStatus, terkirim: RaportItemDto?) {
 @Composable
 private fun AlasanDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
     var alasan by remember { mutableStateOf("") }
-    val cukup = alasan.trim().length >= RaportViewModel.MIN_REASON_LENGTH
+    val cukup = alasan.trim().length >= AktivitasViewModel.MIN_REASON_LENGTH
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Tanpa bukti") },
@@ -630,10 +630,10 @@ private fun AlasanDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
                     value = alasan,
                     onValueChange = { alasan = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = "Alasan (minimal ${RaportViewModel.MIN_REASON_LENGTH} karakter)",
+                    placeholder = "Alasan (minimal ${AktivitasViewModel.MIN_REASON_LENGTH} karakter)",
                     singleLine = false,
                     isError = alasan.isNotBlank() && !cukup,
-                    supportingText = "${alasan.trim().length}/${RaportViewModel.MIN_REASON_LENGTH}",
+                    supportingText = "${alasan.trim().length}/${AktivitasViewModel.MIN_REASON_LENGTH}",
                 )
             }
         },

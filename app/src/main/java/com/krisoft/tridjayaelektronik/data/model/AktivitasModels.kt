@@ -3,10 +3,10 @@ package com.krisoft.tridjayaelektronik.data.model
 import kotlinx.serialization.Serializable
 
 /**
- * Raport harian (laporan aktivitas harian) — kinerja-service `raport.rs` +
+ * Aktivitas harian (laporan aktivitas harian) — kinerja-service `raport.rs` +
  * `jobdesk.rs` lewat gateway `/api/raport-harian` & `/api/jobdesk-divisions`.
  * Semua field camelCase, sama persis dengan yang dipakai web
- * (`store/picRaportStore.ts`).
+ * (`store/picAktivitasStore.ts`).
  *
  * **Istilahnya diganti "jobdesk" → "aktivitas" (2026-08-17), TAPI hanya nama
  * KELAS.** Repo ini nol `@SerialName`, jadi nama PROPERTI di bawah ADALAH nama
@@ -48,9 +48,9 @@ data class AktivitasDivisionsData(
  * hanya memakai keberadaannya, tak mem-parsing isinya.
  */
 @Serializable
-data class RaportItemDto(
+data class AktivitasItemDto(
     val id: String = "",
-    /** Pemilik baris — dipakai klien menyaring ulang, lihat `RaportRepository`. */
+    /** Pemilik baris — dipakai klien menyaring ulang, lihat `AktivitasRepository`. */
     val employeeId: String = "",
     /** Diisi server dari profil karyawan; kolom PIC memakai ini sebagai judul baris. */
     val employeeName: String = "",
@@ -108,8 +108,8 @@ data class BuktiDuplikatDto(
 )
 
 @Serializable
-data class RaportListData(
-    val items: List<RaportItemDto> = emptyList(),
+data class AktivitasListData(
+    val items: List<AktivitasItemDto> = emptyList(),
     /**
      * Jumlah SELURUH baris yang cocok filter, bukan panjang [items] — server
      * memotong `items` ke `limit` (default 100, maks 2000), jadi badge antrian
@@ -122,7 +122,7 @@ data class RaportListData(
 )
 
 /**
- * Putusan PIC atas satu baris raport. Struct server (`ReviewRaportPayload`)
+ * Putusan PIC atas satu baris raport. Struct server (`ReviewAktivitasPayload`)
  * SENGAJA tanpa `rename_all`, jadi ketiga nama ini apa adanya.
  *
  * `score` boleh `null`: server mengisinya sendiri (`rejected` → 0, selain itu
@@ -130,24 +130,24 @@ data class RaportListData(
  * supaya angka yang tampil di app sama dengan yang tersimpan.
  */
 @Serializable
-data class ReviewRaportBody(
+data class ReviewAktivitasBody(
     val status: String,
     val score: Int? = null,
     val comment: String? = null,
 )
 
 @Serializable
-data class ReviewRaportResult(
+data class ReviewAktivitasResult(
     val id: String = "",
     val status: String = "",
     val score: Int? = null,
 )
 
 @Serializable
-data class RaportUploadData(val url: String = "")
+data class AktivitasUploadData(val url: String = "")
 
 @Serializable
-data class SubmitRaportItem(
+data class SubmitAktivitasItem(
     /** NAMA KABEL — tetap ejaan lama, lihat KDoc berkas. */
     val jobdeskIndex: Int,
     /** NAMA KABEL — tetap ejaan lama, lihat KDoc berkas. */
@@ -164,7 +164,7 @@ data class SubmitRaportItem(
  * yang salah = raport nyasar ke tanggal lain.
  */
 @Serializable
-data class SubmitRaportBody(val items: List<SubmitRaportItem>)
+data class SubmitAktivitasBody(val items: List<SubmitAktivitasItem>)
 
 @Serializable
-data class SubmitRaportResult(val saved: Int = 0, val tanggal: String = "")
+data class SubmitAktivitasResult(val saved: Int = 0, val tanggal: String = "")

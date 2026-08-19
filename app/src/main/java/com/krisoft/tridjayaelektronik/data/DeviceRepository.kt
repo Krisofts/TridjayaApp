@@ -22,7 +22,7 @@ private const val JEDA_ULANG_AWAL_MS = 3_000L
 /**
  * Jeda sebelum percobaan berikutnya (0 = sesudah percobaan pertama): 3 dtk,
  * lalu 12 dtk. Fungsi murni supaya jadwalnya bisa diuji tanpa perangkat —
- * pola sama `RaportBuktiPlan`/`OpnameJendela`.
+ * pola sama `AktivitasBuktiPlan`/`OpnameJendela`.
  */
 internal fun jedaUlangMs(percobaan: Int): Long {
     var jeda = JEDA_ULANG_AWAL_MS

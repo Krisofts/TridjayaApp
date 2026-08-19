@@ -10,7 +10,7 @@ import com.krisoft.tridjayaelektronik.data.CrmRepository
 import com.krisoft.tridjayaelektronik.data.DeliveryFlowRepository
 import com.krisoft.tridjayaelektronik.data.HomeServiceRepository
 import com.krisoft.tridjayaelektronik.data.OpnameRepository
-import com.krisoft.tridjayaelektronik.data.RaportRepository
+import com.krisoft.tridjayaelektronik.data.AktivitasRepository
 import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
@@ -19,7 +19,7 @@ import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
 import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
 import com.krisoft.tridjayaelektronik.ui.homeservice.saringStatus
-import com.krisoft.tridjayaelektronik.ui.raport.pilihAktivitasUntukInput
+import com.krisoft.tridjayaelektronik.ui.aktivitas.pilihAktivitasUntukInput
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -58,7 +58,7 @@ class ActivityViewModel @Inject constructor(
     private val absensiRepository: AbsensiRepository,
     private val deliveryRepository: DeliveryFlowRepository,
     private val crmRepository: CrmRepository,
-    private val raportRepository: RaportRepository,
+    private val raportRepository: AktivitasRepository,
     private val homeServiceRepository: HomeServiceRepository,
     private val listIndentUseCase: ListIndentUseCase,
     private val opnameRepository: OpnameRepository,
@@ -129,8 +129,8 @@ class ActivityViewModel @Inject constructor(
         val sources = sourcesToFetch(items)
         var checkInAt: String? = null
         var checkOutAt: String? = null
-        /** `null` = penyebut aktivitas tak diketahui — lihat `raportAktivitasDetail`. */
-        var raportExpected: Int? = null
+        /** `null` = penyebut aktivitas tak diketahui — lihat `aktivitasDetail`. */
+        var aktivitasExpected: Int? = null
         /** `null` = target prospek tak diketahui — lihat `prospekTaskDetail`. */
         var prospekTarget: ProspekTargetDto? = null
         /** `null` = tak ada SPK gantung yang lewat tenggat (atau tak diambil). */
@@ -240,10 +240,10 @@ class ActivityViewModel @Inject constructor(
 
             // Antrian PIC. `.total` (bukan `items.size`) — server memotong `items`
             // ke `limit`, badge tak boleh ikut terpotong (pola DISCOUNT_PENDING).
-            if (ActivitySource.RAPORT_REVIEW_PENDING in sources) jobs += async {
+            if (ActivitySource.AKTIVITAS_REVIEW_PENDING in sources) jobs += async {
                 when (val r = raportRepository.antrianReview(tanggal = todayIso)) {
-                    is AuthResult.Success -> counts[ActivitySource.RAPORT_REVIEW_PENDING] = r.data.total
-                    is AuthResult.Failure -> failed += ActivitySource.RAPORT_REVIEW_PENDING
+                    is AuthResult.Success -> counts[ActivitySource.AKTIVITAS_REVIEW_PENDING] = r.data.total
+                    is AuthResult.Failure -> failed += ActivitySource.AKTIVITAS_REVIEW_PENDING
                 }
             }
 
@@ -276,7 +276,7 @@ class ActivityViewModel @Inject constructor(
                         pos.await() to tempat.await()
                     }
                     if (r is AuthResult.Success) {
-                        raportExpected =
+                        aktivitasExpected =
                             pilihAktivitasUntukInput(user?.divisi.orEmpty(), r.data, penempatan)
                                 // `.jobdesks` = nama field DI KABEL, ejaan lama.
                                 ?.jobdesks?.size
@@ -339,9 +339,9 @@ class ActivityViewModel @Inject constructor(
             // I3 audit 2026-07-28: tanpa ini, gagal jaringan tampil identik dgn
             // "belum absen" → user yang sudah check-in didorong absen lagi.
             absensiFailed = ActivitySource.ABSENSI_TODAY in failed,
-            raportToday = counts[ActivitySource.RAPORT_TODAY] ?: 0,
-            raportFailed = ActivitySource.RAPORT_TODAY in failed,
-            raportExpected = raportExpected,
+            aktivitasToday = counts[ActivitySource.RAPORT_TODAY] ?: 0,
+            aktivitasFailed = ActivitySource.RAPORT_TODAY in failed,
+            aktivitasExpected = aktivitasExpected,
             prospekTarget = prospekTarget,
         )
 

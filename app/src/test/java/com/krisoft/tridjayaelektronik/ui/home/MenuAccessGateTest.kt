@@ -360,7 +360,7 @@ class CapabilityDrivenMenuTest {
         // `auth_users`, baca-saja): dari 11 akun uji, 10 ber-`role` `karyawan`
         // dan satu ber-`role` `owner`; variasinya datang dari kolom `divisi`
         // yang di-fold `effectiveRoles`. Jebakan yang sama sudah dicatat di
-        // `RAPORT_INPUT_ROLES` (ActivityRegistry.kt): mengunci ke role justru
+        // `AKTIVITAS_INPUT_ROLES` (ActivityRegistry.kt): mengunci ke role justru
         // menghilangkan menu dari akun uji sendiri.
         val roleEfektifAkunUjiProduksi = listOf(
             setOf("karyawan", "sales"),           // UJI Sales

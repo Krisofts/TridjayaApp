@@ -1,4 +1,4 @@
-package com.krisoft.tridjayaelektronik.ui.raport
+package com.krisoft.tridjayaelektronik.ui.aktivitas
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,7 +55,7 @@ import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
-import com.krisoft.tridjayaelektronik.data.model.RaportItemDto
+import com.krisoft.tridjayaelektronik.data.model.AktivitasItemDto
 import com.krisoft.tridjayaelektronik.ui.theme.ClayCard
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveEmptyState
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveErrorState
@@ -70,7 +70,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
  * di sini.
  *
  * Barisnya DIKELOMPOKKAN per karyawan (bukan daftar rata) mengikuti alur web
- * `PicRaportDashboardPage`: PIC menilai satu orang sekaligus, dan daftar rata
+ * `PicAktivitasDashboardPage`: PIC menilai satu orang sekaligus, dan daftar rata
  * membuat aktivitas milik orang yang sama tercecer di antara karyawan lain.
  *
  * Tanpa pemutar video di dalam app: baris
@@ -79,9 +79,9 @@ import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
  * jadi URL polos tak bisa diserahkan ke pemutar.
  */
 @Composable
-fun RaportReviewScreen(
+fun AktivitasReviewScreen(
     onBack: () -> Unit,
-    viewModel: RaportReviewViewModel = hiltViewModel(),
+    viewModel: AktivitasReviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     var tolakId by remember { mutableStateOf<String?>(null) }
@@ -168,7 +168,7 @@ fun RaportReviewScreen(
 
 @Composable
 private fun IsiAntrian(
-    state: RaportReviewUiState,
+    state: AktivitasReviewUiState,
     navBottom: androidx.compose.ui.unit.Dp,
     token: String?,
     onMuatUlang: () -> Unit,
@@ -303,7 +303,7 @@ private fun FilterBar(
 
 @Composable
 private fun KartuKaryawan(
-    grup: GrupRaport,
+    grup: GrupAktivitas,
     token: String?,
     memutuskanId: String?,
     onSetuju: (String) -> Unit,
@@ -341,7 +341,7 @@ private fun KartuKaryawan(
 
 @Composable
 private fun BarisAktivitas(
-    item: RaportItemDto,
+    item: AktivitasItemDto,
     token: String?,
     sibuk: Boolean,
     onSetuju: () -> Unit,
