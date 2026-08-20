@@ -1,5 +1,6 @@
 package com.krisoft.tridjayaelektronik.ui.inventory
 
+import android.net.Uri
 import androidx.compose.animation.core.EaseInOutQuart
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -22,6 +23,19 @@ import com.krisoft.tridjayaelektronik.ui.search.GlobalSearchScreen
 const val SEARCH_ROUTE_ROOT = "global_search"
 const val INVENTORY_ROUTE_LIST = "inventory_list"
 private const val ROUTE_DETAIL = "inventory_detail/{kode}/{kodeCabang}"
+
+/**
+ * Merakit rute detail dengan argumen ter-ENCODE.
+ *
+ * `kode` barang datang dari mirror ERP dan diketik manusia di sana — sebagian
+ * memuat `/` (mis. varian "AB/CD"). Tanpa encode, satu garis miring memecah
+ * rute jadi segmen tambahan, pola `inventory_detail/{kode}/{kodeCabang}` tak
+ * lagi cocok, dan `navigate` melempar `IllegalArgumentException: Navigation
+ * destination ... cannot be found` yang MENJATUHKAN app. Spasi & `?` merusaknya
+ * dengan cara yang sama.
+ */
+private fun ruteDetail(kode: String, kodeCabang: String): String =
+    "inventory_detail/${Uri.encode(kode)}/${Uri.encode(kodeCabang)}"
 private const val ROUTE_LEAD_DETAIL = "search_lead_detail/{leadId}"
 
 @Composable
@@ -94,9 +108,11 @@ fun InventoryNavHost(
         composable(SEARCH_ROUTE_ROOT) {
             GlobalSearchScreen(
                 onProductClick = { kode, kodeCabang ->
-                    navController.navigate("inventory_detail/$kode/$kodeCabang") { launchSingleTop = true }
+                    navController.navigate(ruteDetail(kode, kodeCabang)) { launchSingleTop = true }
                 },
                 onLeadClick = { id ->
+                    // `id` bertipe Long — tak ada karakter yang bisa memecah rute,
+                    // jadi tidak perlu (dan tidak bisa) di-encode seperti `kode`.
                     navController.navigate("search_lead_detail/$id") { launchSingleTop = true }
                 },
                 onClose = onCloseSearch
@@ -105,7 +121,7 @@ fun InventoryNavHost(
         composable(INVENTORY_ROUTE_LIST) {
             InventoryScreen(
                 onProductClick = { kode, kodeCabang ->
-                    navController.navigate("inventory_detail/$kode/$kodeCabang") { launchSingleTop = true }
+                    navController.navigate(ruteDetail(kode, kodeCabang)) { launchSingleTop = true }
                 },
                 // Reached via search's "Jelajahi semua barang": pop back to search as usual.
                 // Reached via Home's quick access (search root popped off): nothing left to pop,

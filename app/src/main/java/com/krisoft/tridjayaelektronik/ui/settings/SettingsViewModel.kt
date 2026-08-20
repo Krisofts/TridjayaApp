@@ -119,7 +119,9 @@ class SettingsViewModel @Inject constructor(
         val current = _uiState.value.updateDownload
         if (current is UpdateDownloadState.Downloading) return
         if (current is UpdateDownloadState.ReadyToInstall) {
-            updateManager.promptInstall(current.fileUri)
+            if (!updateManager.promptInstall(current.fileUri)) {
+                _uiState.update { it.copy(updateDownload = UpdateDownloadState.Failed("HP ini tidak punya pemasang paket. Buka berkas APK-nya lewat aplikasi Berkas, atau minta bantuan admin.")) }
+            }
             return
         }
         viewModelScope.launch {
@@ -127,8 +129,16 @@ class SettingsViewModel @Inject constructor(
             updateManager.downloadApk { progress ->
                 _uiState.update { it.copy(updateDownload = UpdateDownloadState.Downloading(progress)) }
             }.onSuccess { uri ->
-                _uiState.update { it.copy(updateDownload = UpdateDownloadState.ReadyToInstall(uri)) }
-                updateManager.promptInstall(uri)
+                val lanjut = updateManager.promptInstall(uri)
+                _uiState.update {
+                    it.copy(
+                        updateDownload = if (lanjut) {
+                            UpdateDownloadState.ReadyToInstall(uri)
+                        } else {
+                            UpdateDownloadState.Failed("HP ini tidak punya pemasang paket. Buka berkas APK-nya lewat aplikasi Berkas, atau minta bantuan admin.")
+                        }
+                    )
+                }
             }.onFailure { error ->
                 _uiState.update { it.copy(updateDownload = UpdateDownloadState.Failed(error.message ?: "Gagal mengunduh pembaruan")) }
             }

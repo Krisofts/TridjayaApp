@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddAPhoto
@@ -77,6 +78,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -414,7 +416,8 @@ fun OpnameDetailScreen(
                                 )
                             }
                         }
-                        items(searchResults, key = { "stock_${it.kodeBarang}" }) { stockItem ->
+                        val kunciStok = kunciUnik(searchResults) { "stock_${it.kodeBarang}" }
+                        itemsIndexed(searchResults, key = { i, _ -> kunciStok.getOrElse(i) { "idx_stock_$i" } }) { _, stockItem ->
                             StockSearchRow(
                                 item = stockItem,
                                 unitCount = unitsByCode[stockItem.kodeBarang.uppercase()]?.size ?: 0,
@@ -540,7 +543,8 @@ fun OpnameDetailScreen(
                                 )
                             }
                         } else {
-                            items(coverageList, key = { "coverage_${it.kodeBarang}" }) { stockItem ->
+                            val kunciCoverage = kunciUnik(coverageList) { "coverage_${it.kodeBarang}" }
+                            itemsIndexed(coverageList, key = { i, _ -> kunciCoverage.getOrElse(i) { "idx_coverage_$i" } }) { _, stockItem ->
                                 StockSearchRow(
                                     item = stockItem,
                                     unitCount = unitsByCode[stockItem.kodeBarang.uppercase()]?.size ?: 0,
@@ -599,7 +603,8 @@ fun OpnameDetailScreen(
                                 )
                             }
                         } else {
-                            items(state.units, key = { "unit_${it.serialNumber}" }) { unit ->
+                            val kunciUnit = kunciUnik(state.units) { "unit_${it.serialNumber}" }
+                            itemsIndexed(state.units, key = { i, _ -> kunciUnit.getOrElse(i) { "idx_unit_$i" } }) { _, unit ->
                                 ScannedUnitRow(
                                     unit = unit,
                                     // Pemilik sesi boleh menghapus unit siapa pun;

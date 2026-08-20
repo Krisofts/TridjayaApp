@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +36,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveOutlinedButton
 import com.krisoft.tridjayaelektronik.ui.theme.ScrollableCenter
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaCollapsibleHeader
 import com.krisoft.tridjayaelektronik.ui.theme.TridjayaPullRefresh
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 
 @Composable
 fun TransactionListScreen(
@@ -77,7 +79,8 @@ fun TransactionListScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
                         ) {
-                            items(state.items, key = { it.noTransaksi }) { tx ->
+                            val kunciTx = kunciUnik(state.items) { it.noTransaksi }
+                            itemsIndexed(state.items, key = { i, _ -> kunciTx.getOrElse(i) { "idx_$i" } }) { _, tx ->
                                 TransactionRow(tx = tx, showSalesName = viewModel.kind == RankingKind.BRANCH)
                             }
                             if (state.canLoadMore) {

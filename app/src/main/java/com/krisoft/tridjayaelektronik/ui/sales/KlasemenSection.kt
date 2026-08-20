@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +56,7 @@ import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveFilledButton
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveInlineError
 import com.krisoft.tridjayaelektronik.ui.theme.ExpressiveTextField
 import com.krisoft.tridjayaelektronik.ui.theme.SkeletonCard
+import com.krisoft.tridjayaelektronik.util.kunciUnik
 
 // Warna medali emas/perak/perunggu untuk peringkat 1-3.
 private val MEDAL_GOLD = Color(0xFFF6B10A)
@@ -160,7 +162,8 @@ fun LazyListScope.klasemenSection(
             }
         }
         else -> {
-            items(items = filtered, key = { "klasemen_${it.name}" }) { row ->
+            val kunciKlasemen = kunciUnik(filtered) { "klasemen_${it.name}" }
+            itemsIndexed(items = filtered, key = { i, _ -> kunciKlasemen.getOrElse(i) { "idx_$i" } }) { _, row ->
                 KlasemenRowCard(row = row, metric = state.metric)
             }
         }

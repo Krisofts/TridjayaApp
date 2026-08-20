@@ -180,11 +180,22 @@ class UpdateManager @Inject constructor(
      *  result). Requires `REQUEST_INSTALL_PACKAGES` (manifest) — the OS handles the "allow
      *  installs from this app" prompt itself the first time it's needed, we don't request it
      *  explicitly. */
-    fun promptInstall(fileUri: Uri) {
+    fun promptInstall(fileUri: Uri): Boolean {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(fileUri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        context.startActivity(intent)
+        // ActivityNotFoundException kalau HP tak punya penangan installer paket
+        // (ROM ringkas, profil kerja yang melarangnya, installer dinonaktifkan),
+        // dan SecurityException kalau izin URI FileProvider ditolak. Keduanya
+        // dilempar SINKRON dari `startActivity` — tanpa penjaga ini, satu
+        // ketukan "Perbarui" menutup app, dan karena unduhan otomatis berulang
+        // tiap Activity lahir, orangnya terjebak di lingkaran buka-tutup.
+        return try {
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 }
