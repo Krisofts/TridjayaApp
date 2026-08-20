@@ -185,6 +185,23 @@ class AuthRepository @Inject constructor(
     /** Profil dari cache sesi (sinkron, tanpa network) — untuk render instan sebelum refresh. */
     val cachedUser get() = tokenStore.cachedProfile()
 
+    /**
+     * Identitas token akses yang SEDANG dipakai (hash, bukan tokennya) — bahan
+     * kunci latch `ui/home/PenyegarKemampuan`.
+     *
+     * Ada karena peta `GET /api/me/capabilities` dihitung server dari klaim
+     * TOKEN, sedangkan [cachedUser] bisa lebih baru dari token (profil ditulis
+     * `GET /auth/profile` tanpa rotasi token). Mengunci latch pada profil SAJA
+     * membekukannya seumur proses; menyertakan nilai ini membuat rotasi token
+     * berikutnya membukanya. Lihat [sidikToken].
+     *
+     * Sinkron seperti [cachedUser] dan dengan alasan yang sama: mirror
+     * [TokenStore] sudah di-seed `warmUp()` dari `TridjayaApplication` jauh
+     * sebelum ViewModel mana pun lahir, jadi tak ada `runBlocking` yang benar-
+     * benar berjalan di sini.
+     */
+    val sidikTokenAkses: String get() = sidikToken(tokenStore.accessToken)
+
     /** Reactive login state — flips to false on logout or when a background refresh fails. */
     val sessionState: StateFlow<Boolean> get() = tokenStore.sessionState
 

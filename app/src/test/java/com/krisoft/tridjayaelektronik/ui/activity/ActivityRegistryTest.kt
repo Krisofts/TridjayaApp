@@ -43,7 +43,7 @@ class ActivityRegistryTest {
     }
 
     @Test
-    fun `hanya raport yang boleh tanpa kunci kemampuan`() {
+    fun `hanya aktivitas dan lapor komplain yang boleh tanpa kunci kemampuan`() {
         // raport: hak `upsert_raport` belum punya kunci di /api/me/capabilities.
         // inventory/cari_semua PINDAH ke QUICK_ACCESS_MENUS 2026-07-30 (lihat
         // MenuAccessGateTest.kt) — bukan lagi milik registri ini.

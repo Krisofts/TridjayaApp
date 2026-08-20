@@ -14,9 +14,12 @@ import com.krisoft.tridjayaelektronik.data.AktivitasRepository
 import com.krisoft.tridjayaelektronik.data.SpkTodayCounter
 import com.krisoft.tridjayaelektronik.data.model.DeliveryStatusKey
 import com.krisoft.tridjayaelektronik.data.model.ProspekTargetDto
+import com.krisoft.tridjayaelektronik.data.model.UserDto
 import com.krisoft.tridjayaelektronik.domain.indent.ListIndentUseCase
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
+import com.krisoft.tridjayaelektronik.ui.home.PenyegarKemampuan
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
+import com.krisoft.tridjayaelektronik.ui.home.sidikAkses
 import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
 import com.krisoft.tridjayaelektronik.ui.homeservice.saringStatus
 import com.krisoft.tridjayaelektronik.ui.aktivitas.pilihAktivitasUntukInput
@@ -71,10 +74,25 @@ class ActivityViewModel @Inject constructor(
     private var capabilities: Map<String, Boolean>? = null
     private var lastLoadedAtMs: Long = 0L
 
+    /** Lihat [segarkanKemampuan]. */
+    private val penyegarKemampuan = PenyegarKemampuan(
+        identitasToken = { authRepository.sidikTokenAkses },
+        ambil = { authRepository.capabilities() },
+    )
+
     /**
-     * F2 audit final-fix-3 (2026-07-28): penghitung generasi — `init` memicu DUA
+     * F2 audit final-fix-3 (2026-07-28): penghitung generasi — dulu `init` memicu DUA
      * `load()` fan-out (refresh(force=true) awal + susulan setelah peta capabilities
-     * tiba), tanpa pengait urutan sama sekali. Kalau fan-out pertama kebetulan
+     * tiba), tanpa pengait urutan sama sekali.
+     *
+     * ASAL-USUL ITU SUDAH BERUBAH (2026-08-20): `init` tak lagi mengambil peta
+     * kemampuan, jadi tak ada lagi "fan-out kedua dari `init`". Penggantinya
+     * `load() -> segarkanKemampuan() -> load()`, yang bisa berulang KAPAN SAJA
+     * sidik akses atau identitas token berubah — bukan lagi terbatas dua kali dan
+     * bukan lagi terbatas di `init`. Penghitung ini karena itu makin diperlukan,
+     * bukan makin tidak. Jangan mencari `launch` kedua di `init`; ia tak ada.
+     *
+     * Alasan aslinya tetap berlaku: kalau fan-out pertama kebetulan
      * SELESAI belakangan, penulisan `_uiState.value = ActivityUiState(...)` PENUH
      * (bukan `.copy()`) bisa mundur ke versi `capabilities = null`. Generation
      * counter dipilih ketimbang `Job.cancel()`: `load()` selalu jalan sampai akhir
@@ -85,20 +103,12 @@ class ActivityViewModel @Inject constructor(
     private var loadGeneration: Long = 0L
 
     init {
+        // Peta kemampuan TIDAK lagi diambil di sini: `load()` sendiri yang
+        // memintanya lewat [segarkanKemampuan] setiap kali SIDIK AKSES user
+        // berbeda dari yang terakhir berhasil diambil. Pengambilan pertama tetap
+        // terjadi (sidik awal `null` selalu berbeda), bedanya ia kini juga
+        // terjadi LAGI saat hak akses orangnya berubah di tengah sesi.
         refresh(force = true)
-        // I2 audit 2026-07-28: dulu di-await DI DALAM `load()`, memblokir SELURUH
-        // layar (termasuk HARI INI & PINTASAN yang sengaja tak butuh jaringan)
-        // sampai timeout OkHttp saat sinyal jelek. Pola sama `HomeViewModel.init`:
-        // coroutine TERPISAH — render duluan dgn `capabilities = null` (gate jatuh
-        // ke `allowedRoles`, sudah didukung `gateAllows`), lalu muat ulang PENUH
-        // begitu peta tiba supaya item yang baru terbuka ikut fan-out (bukan
-        // tertinggal tanpa angka).
-        viewModelScope.launch {
-            authRepository.capabilities()?.let { caps ->
-                capabilities = caps
-                load()
-            }
-        }
     }
 
     /**
@@ -120,6 +130,10 @@ class ActivityViewModel @Inject constructor(
 
         val user = authRepository.cachedUser
         val roles = effectiveRoles(user)
+        // Peta kemampuan disegarkan dari sini, bukan sekali di `init` — tanpa ini
+        // `roles` boleh berubah sesukanya, gerbangnya tetap memakai peta jam 08:00.
+        // Tidak di-await: lihat [segarkanKemampuan].
+        segarkanKemampuan(user)
         val items = visibleActivityItems(roles, capabilities, akunUji(user?.name, user?.nik))
         val todayIso = KlasemenStandings.todayIso()
 
@@ -365,6 +379,49 @@ class ActivityViewModel @Inject constructor(
             spkToday = spkTodayCounter.todayCount(todayIso),
             panduanVisible = panduanAlurVisible(roles, capabilities),
         )
+    }
+
+    /**
+     * Ambil ulang peta kemampuan bila kunci latch berbeda dari yang terakhir
+     * berhasil diambil — SIDIK AKSES [user] berubah, ATAU token berotasi (lihat
+     * [com.krisoft.tridjayaelektronik.ui.home.kunciLatchKemampuan]) — lalu muat
+     * ulang PENUH dengan peta baru itu.
+     *
+     * **Kenapa perlu.** Gerbang menu di sini dinilai `visibleActivityItems(roles,
+     * capabilities, …)`, dan `gateAllows` MENDAHULUKAN peta kemampuan lalu
+     * fail-closed. `capabilities_for` di server mengisi SEMUA kunci dengan
+     * boolean eksplisit, jadi cabang cadangan berbasis role tak pernah tersentuh
+     * saat online: 22 dari 24 item registri sepenuhnya ditentukan peta itu
+     * (hanya `aktivitas` & `lapor_komplain` yang ber-`capability = null`).
+     * Menyegarkan `role`/`roles`/`page_grants` saja (perbaikan `sesiSetelahRefresh`)
+     * karena itu belum mengubah satu pun menu — petanya harus ikut disegarkan.
+     *
+     * **Coroutine TERPISAH, bukan `await` di dalam `load()`** — I2 audit
+     * 2026-07-28: mengambilnya inline memblokir SELURUH layar (termasuk HARI INI
+     * & PINTASAN yang sengaja tak butuh jaringan) sampai timeout OkHttp saat
+     * sinyal jelek. Layar dirender duluan dengan peta yang ada (atau `null` →
+     * gerbang jatuh ke `allowedRoles`), lalu dimuat ulang PENUH begitu peta baru
+     * tiba supaya item yang baru terbuka ikut fan-out — bukan tampil tanpa angka.
+     *
+     * Muat-ulang itu aman terhadap urutan: [loadGeneration] membuat panggilan
+     * TERAKHIR yang menang, apa pun urutan selesainya.
+     *
+     * Penjaga badai-request dan penjaga peta-baik ada di [PenyegarKemampuan] —
+     * baca KDoc-nya sebelum mengubah pemicu di sini.
+     */
+    private fun segarkanKemampuan(user: UserDto?) {
+        val sidik = sidikAkses(user)
+        viewModelScope.launch {
+            val peta = penyegarKemampuan.segarkan(sidik) ?: return@launch
+            // Rotasi token membuka latch tiap ~15 menit, dan jawabannya hampir
+            // selalu peta yang isinya SAMA. Tanpa perbandingan nilai ini, tiap
+            // rotasi memicu satu fan-out penuh belasan endpoint yang tak
+            // mengubah satu piksel pun. Yang berhak memicu muat-ulang adalah
+            // perubahan ISI peta, bukan kejadian pengambilannya.
+            if (peta == capabilities) return@launch
+            capabilities = peta
+            load()
+        }
     }
 
     private companion object {

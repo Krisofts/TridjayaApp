@@ -22,7 +22,12 @@ import kotlinx.serialization.json.Json as KJson
 
 object NetworkModule {
 
-    private val json = KJson {
+    /**
+     * `internal`, bukan `private`: unit test memakai INSTANS INI untuk mengunci perilaku
+     * converter yang benar-benar dipakai Retrofit. Menyalin konfigurasinya ke dalam test
+     * berarti test-nya menguji salinan yang bisa melenceng diam-diam dari yang asli.
+     */
+    internal val json = KJson {
         ignoreUnknownKeys = true
         coerceInputValues = true
         explicitNulls = false
@@ -276,7 +281,11 @@ private class TokenRefresher(
             return null
         }
 
-        tokenStore.updateTokens(body.data.accessToken, body.data.refreshToken, body.data.expiresIn)
+        // Token BARU + PROFIL segar sekaligus. `body.data.user` dulu dibuang di sini, dan
+        // karena refresh inilah satu-satunya panggilan yang berjalan terus sepanjang sesi,
+        // itu berarti role/roles/pageGrants/divisi tak pernah berubah sampai orangnya
+        // logout lalu login lagi. Satu panggilan, bukan dua — lihat `sesiSetelahRefresh`.
+        tokenStore.updateSession(body.data)
         return body.data.accessToken
     }
 }

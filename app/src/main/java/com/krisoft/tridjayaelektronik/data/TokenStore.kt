@@ -132,13 +132,17 @@ class TokenStore(private val context: Context) {
         )
     }
 
-    /** New rotated tokens from `/auth/refresh` (profile untouched). */
-    fun updateTokens(accessToken: String, refreshToken: String, expiresInSeconds: Int) = mutate {
-        it.copy(
-            accessToken = accessToken,
-            refreshToken = refreshToken,
-            accessTokenExpiresAtMillis = expiryFrom(expiresInSeconds)
-        )
+    /**
+     * Hasil `/auth/refresh`: token baru **dan** profil segar dalam SATU mutasi.
+     *
+     * Sengaja menggantikan `updateTokens()` yang dulu hanya menyentuh token dan membuang
+     * `SessionData.user` — lihat [sesiSetelahRefresh] untuk alasan lengkapnya (role tak
+     * pernah ter-update tanpa logout, plus keadaan setengah jadi kalau ditulis dua kali).
+     * Jangan menambahkan kembali penulis token-saja: dari `/auth/refresh` selalu ada
+     * profil yang ikut, dan memisahkannya membuka lagi jendela yang baru ditutup ini.
+     */
+    fun updateSession(session: SessionData) = mutate {
+        sesiSetelahRefresh(it, session, expiryFrom(session.expiresIn))
     }
 
     /** Refreshed profile (no token change). */

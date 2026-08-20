@@ -110,7 +110,16 @@ data class ActivityItem(
  * bukan `karyawan`.
  *
  * Belum ada kunci di `GET /api/me/capabilities` untuk hak kirim, jadi item
- * raport satu-satunya yang ber-`capability = null` (dijaga `ActivityRegistryTest`).
+ * `aktivitas` ber-`capability = null`.
+ *
+ * **Ia BUKAN satu-satunya — kalimat itu sudah basi sejak 2026-08-15.**
+ * `lapor_komplain` ikut dinolkan hari itu karena jalur pelaporan kinerja-service
+ * jadi login-only, sehingga tak ada kunci yang bisa dicerminkan tanpa
+ * menyempitkan. Hitungan yang berlaku sekarang: dari **24** entri
+ * [ACTIVITY_ITEMS], **2** ber-`capability = null` (`aktivitas`,
+ * `lapor_komplain`) dan 22 sisanya ditentukan sepenuhnya oleh peta kemampuan
+ * server. Daftar dua itu dikunci `ActivityRegistryTest`, jadi menambah item
+ * tanpa kunci akan memerahkan test — bukan diam-diam memperbesar angka ini.
  */
 internal val AKTIVITAS_INPUT_ROLES = ALL_LOGGED_IN
 
