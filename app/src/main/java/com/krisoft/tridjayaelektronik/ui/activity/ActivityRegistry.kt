@@ -149,9 +149,9 @@ data class ActivityItem(
  * **Ia BUKAN satu-satunya — kalimat itu sudah basi sejak 2026-08-15.**
  * `lapor_komplain` ikut dinolkan hari itu karena jalur pelaporan kinerja-service
  * jadi login-only, sehingga tak ada kunci yang bisa dicerminkan tanpa
- * menyempitkan. Hitungan yang berlaku sekarang: dari **26** entri
+ * menyempitkan. Hitungan yang berlaku sekarang: dari **27** entri
  * [ACTIVITY_ITEMS], **3** ber-`capability = null` (`aktivitas`,
- * `lapor_komplain`, `pemasangan_ac`) dan 23 sisanya ditentukan sepenuhnya oleh peta
+ * `lapor_komplain`, `pemasangan_ac`) dan 24 sisanya ditentukan sepenuhnya oleh peta
  * kemampuan
  * server. Daftar tiga itu dikunci `ActivityRegistryTest`, jadi menambah item
  * tanpa kunci akan memerahkan test — bukan diam-diam memperbesar angka ini.
@@ -451,6 +451,30 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         backendGuard = "rust-shared capabilities.rs VERTEL_ROLES (inventory vertel.rs boleh_vertel)",
         source = ActivitySource.VERTEL_SISA,
         navKey = "vertel",
+    ),
+    /**
+     * Ekspor laporan verifikator ke Excel (VERTEL + Home Service + Pemasangan
+     * AC). Gate-nya SAMA dengan kartu VERTEL (`vertel.manage`), sengaja: ia
+     * memang laporan pekerjaan jabatan yang sama, dan kunci kedua cuma menambah
+     * ejaan yang bisa melenceng.
+     *
+     * `source = NONE`: kartunya tak punya angka. Menghitungnya berarti menarik
+     * ketiga sumber tiap kali layar Activity dibuka — puluhan permintaan untuk
+     * sebuah lencana.
+     *
+     * **PDI TIDAK termasuk** (keputusan user 2026-08-24) — alasannya di
+     * `ui/laporan/LaporanPlan.kt`.
+     */
+    ActivityItem(
+        id = "laporan_verifikator",
+        label = "Laporan (Excel)",
+        subtitle = "VERTEL, komplain, pemasangan AC",
+        kind = ActivityKind.AKSI,
+        capability = "vertel.manage",
+        allowedRoles = VERTEL_MENU_ROLES,
+        backendGuard = "rust-shared capabilities.rs VERTEL_ROLES (laporan memakai gate yang sama)",
+        source = ActivitySource.NONE,
+        navKey = "laporan_verifikator",
     ),
     ActivityItem(
         id = "tarik_unit",

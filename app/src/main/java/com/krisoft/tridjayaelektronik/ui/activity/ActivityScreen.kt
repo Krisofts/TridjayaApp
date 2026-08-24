@@ -318,6 +318,7 @@ private fun activityVisual(id: String): Pair<ImageVector, Color> = when (id) {
     // sewarna "tugas_home_service".
     "pemasangan_ac" -> Icons.Rounded.AcUnit to Color(0xFF0BA5EC)
     "vertel" -> Icons.Rounded.PhoneInTalk to Color(0xFF7A5AF8)
+    "laporan_verifikator" -> Icons.Rounded.Download to Color(0xFF0E9384)
     else -> Icons.Rounded.Bolt to MaterialTheme.colorScheme.primary
 }
 
