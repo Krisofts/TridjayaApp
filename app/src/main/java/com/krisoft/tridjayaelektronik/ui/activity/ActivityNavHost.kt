@@ -513,7 +513,13 @@ fun ActivityNavHost(
             )
         }
         composable(ROUTE_DLV_PDI) {
-            DeliveryQueueScreen("Antri PDI", DeliveryStatusKey.PENDING_PDI, onBack = { navController.popBackStack() },
+            // `cabangFilter` HANYA di sini (2026-08-24): antrian PDI adalah satu-
+            // satunya yang dilaporkan terlalu panjang, karena admin/manager
+            // menerima antrian SELURUH perusahaan sementara PDI itu kerja fisik
+            // yang cuma bisa dilakukan di cabang tempat unitnya berada. Layar
+            // tahap lain sengaja dibiarkan apa adanya.
+            DeliveryQueueScreen("Antri PDI", DeliveryStatusKey.PENDING_PDI, cabangFilter = true,
+                onBack = { navController.popBackStack() },
                 onOpen = { id -> navController.navigate(dlvDetailRoute(id)) { launchSingleTop = true } })
         }
         composable(ROUTE_DLV_AKI) {

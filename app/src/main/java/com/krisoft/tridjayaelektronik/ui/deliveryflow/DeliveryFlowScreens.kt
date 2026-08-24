@@ -335,6 +335,23 @@ fun DeliveryQueueScreen(
      * pendek lalu menyimpulkan sudah beres.
      */
     periodeFilter: Boolean = false,
+    /**
+     * Baris chip "Semua / Toko saya / Cabang lain" di atas daftar — dipasang di
+     * **Antri PDI**. Default `false` supaya layar pemakai lain tak berubah.
+     *
+     * Boleh di sini padahal [periodeFilter] dilarang di antrian kerja, dan
+     * alasannya berdiri sendiri: saringan periode menyembunyikan pekerjaan yang
+     * MASIH tanggung jawab orang yang sama, sedangkan saringan cabang
+     * memisahkan pekerjaan yang memang bukan miliknya — PDI adalah kerja fisik
+     * atas unit yang ada DI cabang itu. Penjagaannya (chip cuma muncul saat
+     * daftarnya bercampur, dan saringan diabaikan saat chip tak muncul) hidup di
+     * `CabangFilter.kt`, bukan di sini.
+     *
+     * **Jangan menyalakannya bersama [reorderable]**: manifest driver memakai
+     * indeks daftar untuk panah naik/turun, dan daftar yang tersaring membuat
+     * indeks itu menunjuk baris yang salah.
+     */
+    cabangFilter: Boolean = false,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     viewModel: DeliveryFlowViewModel = hiltViewModel()
@@ -363,6 +380,21 @@ fun DeliveryQueueScreen(
     // jadi `null` di sini = konteks belum/gagal termuat = jangan pernah memvonis
     // sebuah klaim kedaluwarsa.
     val ttlKlaimJam = state.deliveryContext?.pdiClaimTtlHours
+
+    // Saringan cabang. `SEMUA` sebagai default DISENGAJA: antrian kerja tak boleh
+    // memulai hidupnya dalam keadaan tersaring — petugas yang membuka layar dan
+    // langsung melihat daftar pendek tak punya cara tahu ada tumpukan lain.
+    // Angka di tiap chip yang mengundangnya menyaring, bukan keadaan awal.
+    var saringCabang by remember { mutableStateOf(CabangSaring.SEMUA) }
+    val hasilCabang = if (cabangFilter) {
+        // Cabang saya datang dari `GET /delivery/context` (fail-soft): `null` di
+        // sini = belum/gagal termuat, dan `saringPerCabang` menjawabnya dengan
+        // menyembunyikan chip + menampilkan seluruh daftar.
+        saringPerCabang(groups, state.deliveryContext?.kodeDealer, saringCabang)
+    } else {
+        null
+    }
+    val groupsTampil = hasilCabang?.terlihat ?: groups
 
     val terbitkanLangsung = status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && viewModel.access.note
 
@@ -396,6 +428,12 @@ fun DeliveryQueueScreen(
               // lalu mendapat nol hasil tak punya jalan kembali ke "Semua" dan
               // membacanya sebagai data yang hilang.
               if (periodeFilter) PeriodeFilterRow(dipilih = periode, onPilih = { periode = it })
+              // Alasan penempatan DI LUAR `when` sama persis dengan baris periode di
+              // atas: chip yang ikut hilang saat daftar kosong meninggalkan orang
+              // yang menyaring tanpa jalan kembali.
+              if (hasilCabang?.tampilkanChip == true) {
+                  CabangFilterRow(dipilih = saringCabang, hasil = hasilCabang, onPilih = { saringCabang = it })
+              }
               Box(modifier = Modifier.weight(1f)) {
                 when {
                 state.loading && state.items.isEmpty() ->
@@ -441,7 +479,7 @@ fun DeliveryQueueScreen(
                             // lihat `moveLoadSpk`, yang meratakan grup jadi urutan
                             // id. Justru inilah yang menjamin unit satu SPK selalu
                             // berdampingan; penggeseran per unit yang lama tidak.
-                            itemsIndexed(groups, key = { _, g -> g.kode }) { index, grup ->
+                            itemsIndexed(groupsTampil, key = { _, g -> g.kode }) { index, grup ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(modifier = Modifier.weight(1f)) {
                                         SpkRingkasCard(grup, viewModel.currentUserId, ttlKlaimJam) { onOpen(grup.jobs.first().id) }
@@ -450,14 +488,14 @@ fun DeliveryQueueScreen(
                                         IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = true) }, enabled = index > 0) {
                                             Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Naikkan urutan")
                                         }
-                                        IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = false) }, enabled = index < groups.size - 1) {
+                                        IconButton(onClick = { viewModel.moveLoadSpk(grup.kode, up = false) }, enabled = index < groupsTampil.size - 1) {
                                             Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Turunkan urutan")
                                         }
                                     }
                                 }
                             }
                         } else {
-                            items(groups, key = { it.kode }) { grup ->
+                            items(groupsTampil, key = { it.kode }) { grup ->
                                 SpkRingkasCard(
                                     grup = grup,
                                     currentUserId = viewModel.currentUserId,
