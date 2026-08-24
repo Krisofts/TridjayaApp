@@ -17,6 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.krisoft.tridjayaelektronik.ui.acinstall.AcInstallScreen
+import com.krisoft.tridjayaelektronik.ui.laporan.LaporanScreen
 import com.krisoft.tridjayaelektronik.ui.vertel.VertelScreen
 import com.krisoft.tridjayaelektronik.ui.attendance.AttendanceScreen
 import com.krisoft.tridjayaelektronik.ui.deadstock.DeadstockScreen
@@ -90,6 +91,9 @@ private const val ROUTE_PEMASANGAN_AC = "home_pemasangan_ac"
 
 /** VERTEL — verifikasi telepon konsumen transaksi kemarin. */
 private const val ROUTE_VERTEL = "home_vertel"
+
+/** Ekspor laporan verifikator ke Excel. */
+private const val ROUTE_LAPORAN = "home_laporan_verifikator"
 
 private fun hsDetailRoute(id: String) = "home_hs_detail/${Uri.encode(id)}"
 private const val ROUTE_GAJI = "home_gaji"
@@ -198,6 +202,7 @@ internal fun routeForNavKey(navKey: String): String? = when (navKey) {
     "hs_driver" -> ROUTE_HS_DRIVER
     "pemasangan_ac" -> ROUTE_PEMASANGAN_AC
     "vertel" -> ROUTE_VERTEL
+    "laporan_verifikator" -> ROUTE_LAPORAN
     // Bukti chat harian: layar karyawan (kirim) vs antrian kepala cabang (periksa).
     "indent" -> ROUTE_INDENT
     // Daftar sesi opname cabang (petugas yang ikut menghitung). Route-nya SUDAH
@@ -421,6 +426,9 @@ fun ActivityNavHost(
         }
         composable(ROUTE_VERTEL) {
             VertelScreen(onBack = { navController.popBackStack() })
+        }
+        composable(ROUTE_LAPORAN) {
+            LaporanScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = ROUTE_HS_DETAIL,

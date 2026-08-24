@@ -44,6 +44,16 @@ class AcInstallRepository @Inject constructor(
         AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
     }
 
+    /** Seluruh pengajuan (bahan laporan). Lihat catatan batas 300 di [AcInstallApi.daftar]. */
+    suspend fun daftar(status: String? = null): AuthResult<List<AcInstallTaskDto>> = try {
+        val response = api.daftar(status)
+        val data = response.body()?.data
+        if (response.isSuccessful && data != null) AuthResult.Success(data)
+        else parseError(response, "Gagal memuat daftar pemasangan AC")
+    } catch (e: Exception) {
+        AuthResult.Failure("network_error", e.message ?: "Tidak bisa terhubung ke server")
+    }
+
     suspend fun terima(id: String): AuthResult<AcInstallTaskDto> =
         aksi("Gagal menerima tugas") { api.terima(id, AcInstallResponBody()) }
 

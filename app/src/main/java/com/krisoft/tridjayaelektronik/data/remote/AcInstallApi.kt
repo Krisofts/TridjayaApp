@@ -41,6 +41,22 @@ interface AcInstallApi {
     ): Response<ApiResponse<List<AcInstallTaskDto>>>
 
     /**
+     * SELURUH pengajuan pemasangan (bukan cuma tugas saya) — bahan laporan.
+     *
+     * Guard-nya `boleh_ajukan || boleh_jadwalkan`, jadi verifikator lolos lewat
+     * `acinstall.schedule`. Cakupan cabangnya global untuk role itu.
+     *
+     * **TAK ADA parameter tanggal**, dan server MEMOTONG ke 300 terbaru saat
+     * `status` kosong. Penyaringan periode karena itu terjadi di KLIEN, dan
+     * pemotongan 300 itu harus dilaporkan di laporannya — lihat
+     * `LaporanPlan.AC_BATAS_SERVER`.
+     */
+    @GET("api/inventory/delivery/pemasangan-ac")
+    suspend fun daftar(
+        @Query("status") status: String? = null,
+    ): Response<ApiResponse<List<AcInstallTaskDto>>>
+
+    /**
      * Menerima penugasan. Otorisasinya **KEPEMILIKAN TUGAS**
      * (`petugas_ditugaskan`), bukan jabatan — anggota tim lama yang bukan
      * teknisi tetap berhak menjawab.

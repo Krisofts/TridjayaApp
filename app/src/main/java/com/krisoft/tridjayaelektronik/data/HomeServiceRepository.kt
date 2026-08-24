@@ -48,8 +48,11 @@ class HomeServiceRepository @Inject constructor(
         jenis: String? = null,
         mine: Boolean? = null,
         limit: Int = 200,
+        /** Halaman 1-basis. Dipakai ekspor laporan, yang harus menyapu lebih dari
+         *  satu halaman; layar antrian tetap memakai default. */
+        page: Int = 1,
     ): AuthResult<HsListData> = try {
-        val response = api.list(status = status, jenis = jenis, mine = mine, limit = limit)
+        val response = api.list(status = status, jenis = jenis, mine = mine, page = page, limit = limit)
         val data = response.body()?.data
         if (response.isSuccessful && data != null) AuthResult.Success(data)
         else parseError(response, "Gagal memuat daftar komplain")
