@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.krisoft.tridjayaelektronik.data.STATUS_DRAFT
 import com.krisoft.tridjayaelektronik.data.AbsensiRepository
 import com.krisoft.tridjayaelektronik.data.AcInstallRepository
+import com.krisoft.tridjayaelektronik.data.VertelRepository
 import com.krisoft.tridjayaelektronik.data.AuthRepository
 import com.krisoft.tridjayaelektronik.data.AuthResult
 import com.krisoft.tridjayaelektronik.data.CrmRepository
@@ -20,6 +21,7 @@ import com.krisoft.tridjayaelektronik.domain.indent.ListIndentUseCase
 import com.krisoft.tridjayaelektronik.domain.sales.KlasemenStandings
 import com.krisoft.tridjayaelektronik.ui.home.PenyegarKemampuan
 import com.krisoft.tridjayaelektronik.ui.acinstall.butuhJawabanSaya
+import com.krisoft.tridjayaelektronik.ui.vertel.sisaVertel
 import com.krisoft.tridjayaelektronik.ui.home.effectiveRoles
 import com.krisoft.tridjayaelektronik.ui.home.sidikAkses
 import com.krisoft.tridjayaelektronik.ui.homeservice.HsMode
@@ -66,6 +68,7 @@ class ActivityViewModel @Inject constructor(
     private val raportRepository: AktivitasRepository,
     private val homeServiceRepository: HomeServiceRepository,
     private val acInstallRepository: AcInstallRepository,
+    private val vertelRepository: VertelRepository,
     private val listIndentUseCase: ListIndentUseCase,
     private val opnameRepository: OpnameRepository,
     private val spkTodayCounter: SpkTodayCounter,
@@ -269,6 +272,16 @@ class ActivityViewModel @Inject constructor(
             // alasannya di `AcInstallPlan.butuhJawabanSaya`. Hanya ditembak kalau
             // itemnya memang tampil (yaitu: pemegang jabatan teknisi), jadi tak ada
             // ongkos request untuk karyawan lain.
+            // VERTEL. Angkanya SISA (`total - sudahDitelepon`), bukan `total` —
+            // yang sudah dicatat bukan lagi pekerjaan. Tanggalnya TIDAK dikirim:
+            // "kemarin" ditentukan server menurut WIB.
+            if (ActivitySource.VERTEL_SISA in sources) jobs += async {
+                when (val r = vertelRepository.daftar()) {
+                    is AuthResult.Success -> counts[ActivitySource.VERTEL_SISA] = sisaVertel(r.data.ringkasan)
+                    is AuthResult.Failure -> failed += ActivitySource.VERTEL_SISA
+                }
+            }
+
             if (ActivitySource.AC_INSTALL_TUGAS in sources) jobs += async {
                 when (val r = acInstallRepository.tugasSaya()) {
                     is AuthResult.Success ->

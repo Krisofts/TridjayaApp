@@ -164,6 +164,10 @@ object NetworkModule {
     fun createAcInstallApi(tokenStore: TokenStore): AcInstallApi =
         authenticatedRetrofit(tokenStore).create(AcInstallApi::class.java)
 
+    /** VERTEL. Menumpang wildcard gateway yang sama dengan pemasangan AC. */
+    fun createVertelApi(tokenStore: TokenStore): VertelApi =
+        authenticatedRetrofit(tokenStore).create(VertelApi::class.java)
+
     fun createDeviceApi(tokenStore: TokenStore): DeviceApi =
         authenticatedRetrofit(tokenStore).create(DeviceApi::class.java)
 

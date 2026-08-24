@@ -74,6 +74,13 @@ enum class ActivitySource {
      */
     AC_INSTALL_TUGAS,
 
+    /**
+     * `GET /inventory/delivery/vertel` — transaksi KEMARIN yang perlu
+     * diverifikasi lewat telepon/WA. Angkanya `total - sudahDitelepon`
+     * (`sisaVertel`), BUKAN `total`: yang sudah dicatat bukan lagi pekerjaan.
+     */
+    VERTEL_SISA,
+
     /** `GET /inventory/opname?status=draft` — sesi opname yang sedang berjalan
      *  di CABANG petugas. Server-lah yang men-scope-nya ke cabang akun
      *  (`list_opname`), bukan parameter dari app. */
@@ -142,9 +149,9 @@ data class ActivityItem(
  * **Ia BUKAN satu-satunya — kalimat itu sudah basi sejak 2026-08-15.**
  * `lapor_komplain` ikut dinolkan hari itu karena jalur pelaporan kinerja-service
  * jadi login-only, sehingga tak ada kunci yang bisa dicerminkan tanpa
- * menyempitkan. Hitungan yang berlaku sekarang: dari **25** entri
+ * menyempitkan. Hitungan yang berlaku sekarang: dari **26** entri
  * [ACTIVITY_ITEMS], **3** ber-`capability = null` (`aktivitas`,
- * `lapor_komplain`, `pemasangan_ac`) dan 22 sisanya ditentukan sepenuhnya oleh peta
+ * `lapor_komplain`, `pemasangan_ac`) dan 23 sisanya ditentukan sepenuhnya oleh peta
  * kemampuan
  * server. Daftar tiga itu dikunci `ActivityRegistryTest`, jadi menambah item
  * tanpa kunci akan memerahkan test — bukan diam-diam memperbesar angka ini.
@@ -195,6 +202,42 @@ internal val AKTIVITAS_REVIEW_ROLES = setOf(
 /** `homeservice.dispatch` — triase CS (tugaskan teknisi / minta tarik / batalkan).
  *  `"cs"` dilepas dengan alasan yang sama seperti di [HS_LAPOR_ROLES]. */
 internal val HS_DISPATCH_ROLES = setOf("admin", "superadmin", "manager", "delivery-control")
+
+/**
+ * Cadangan OFFLINE kartu VERTEL. Sumber utamanya kunci `vertel.manage` dari
+ * `GET /api/me/capabilities`; daftar ini hanya dipakai saat peta itu belum
+ * termuat.
+ *
+ * **`cs` SENGAJA TIDAK DITULIS di sini walau `capabilities::VERTEL_ROLES`
+ * memuatnya** — keputusan yang persis sama, dan dengan alasan yang persis sama,
+ * seperti [HS_DISPATCH_ROLES]. rust-shared menyatakan sendiri bahwa role
+ * literal `cs` belum ada di sistem: ia SLUG hasil lipatan `divisi_access_slugs`
+ * (migrasi 223) untuk jabatan VERIFICATOR DAN REPORTING, bukan role yang
+ * pernah tersimpan di kolom role. Menulisnya di cadangan lokal menghasilkan
+ * baris yang tak akan pernah cocok, dan itulah yang dijaga test
+ * `tidak ada role salah ketik` (ia MEMERAHKAN build saat ejaan itu masuk —
+ * lihat riwayat commit ini).
+ *
+ * **Konsekuensinya diterima sadar:** saat peta kemampuan belum termuat
+ * (offline / panggilan gagal), verifikator TIDAK melihat kartunya; hanya
+ * `admin`/`superadmin` yang tembus lewat daftar ini. Ongkosnya nol nyata —
+ * VERTEL adalah daftar kerja LIVE dari server, jadi kartunya pun tak membawa ke
+ * mana-mana tanpa jaringan. Yang mahal justru kebalikannya: menulis ejaan mati
+ * di sini menciptakan ilusi bahwa cadangannya bekerja.
+ *
+ * Verifikator sungguhan lolos lewat kunci `vertel.manage`, sama seperti CS
+ * lolos lewat `homeservice.dispatch`.
+ *
+ * `admin`/`superadmin` memang cadangan yang dimaksud server juga: verifikator
+ * berjumlah satu-dua orang untuk 13 cabang, jadi cuti satu orang tak boleh
+ * menghentikan verifikasi harian.
+ *
+ * **`manager`/`owner` TIDAK masuk, dan jangan ditambahkan** — ini pekerjaan
+ * harian, bukan papan pantau. Kalau kelak mereka perlu MEMBACA rekapnya, server
+ * sudah menyiapkan kemampuan terpisah (`vertel.report`); membaca laporan dan
+ * menelepon konsumen adalah dua wewenang yang berbeda.
+ */
+internal val VERTEL_MENU_ROLES = setOf("admin", "superadmin")
 
 // [HS_TASK_ROLES] PINDAH ke `ui/home/QuickAccessMenus.kt` (lihat impor di atas).
 
@@ -387,6 +430,27 @@ internal val ACTIVITY_ITEMS: List<ActivityItem> = listOf(
         source = ActivitySource.AC_INSTALL_TUGAS,
         navKey = "pemasangan_ac",
         jabatan = JABATAN_PETUGAS_PEMASANGAN,
+    ),
+    /**
+     * VERTEL — verifikasi telepon konsumen yang bertransaksi kemarin
+     * (migrasi 257). Pekerjaan HARIAN jabatan VERIFICATOR DAN REPORTING.
+     *
+     * Berbeda dari `pemasangan_ac` tepat di titik yang paling mudah dicampur:
+     * di sini gate KEMAMPUAN sudah cukup dan `jabatan` TIDAK dipakai. Jabatan
+     * verifikator melipat jadi slug role `cs` (`divisi_access_slugs`, migrasi
+     * 223), jadi `vertel.manage` memang menyaring orang yang benar — sementara
+     * `teknisi` ber-`akses_slugs = '[]'` dan tak melipat jadi apa pun.
+     */
+    ActivityItem(
+        id = "vertel",
+        label = "Verifikasi Telepon",
+        subtitle = "Telepon konsumen transaksi kemarin",
+        kind = ActivityKind.ANTRIAN,
+        capability = "vertel.manage",
+        allowedRoles = VERTEL_MENU_ROLES,
+        backendGuard = "rust-shared capabilities.rs VERTEL_ROLES (inventory vertel.rs boleh_vertel)",
+        source = ActivitySource.VERTEL_SISA,
+        navKey = "vertel",
     ),
     ActivityItem(
         id = "tarik_unit",

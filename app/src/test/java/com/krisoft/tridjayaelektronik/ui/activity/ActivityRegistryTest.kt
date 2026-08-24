@@ -116,6 +116,92 @@ class ActivityRegistryTest {
         assertFalse("pemasangan_ac" in ids)
     }
 
+    // ── VERTEL (jabatan verifikator, lewat slug role `cs`) ───────────────────
+
+    /**
+     * Bedanya dengan `pemasangan_ac` justru yang paling mudah tercampur: di sini
+     * gate KEMAMPUAN sudah benar dan `jabatan` TIDAK dipakai, karena jabatan
+     * VERIFICATOR DAN REPORTING melipat jadi slug role `cs`
+     * (`divisi_access_slugs`, migrasi 223) — sementara `teknisi` tidak melipat
+     * jadi apa pun.
+     */
+    @Test
+    fun `kartu vertel dinilai lewat kemampuan, bukan jabatan`() {
+        val kartu = ACTIVITY_ITEMS.first { it.id == "vertel" }
+        assertEquals("vertel.manage", kartu.capability)
+        assertNull(kartu.jabatan)
+    }
+
+    /**
+     * Verifikator lolos lewat KUNCI KEMAMPUAN, bukan lewat daftar role lokal —
+     * lihat [VERTEL_MENU_ROLES] soal kenapa `cs` tak ditulis di sana.
+     */
+    @Test
+    fun `verifikator melihat kartu vertel lewat kunci kemampuan`() {
+        val ids = visibleActivityItems(setOf("cs"), mapOf("vertel.manage" to true)).map { it.id }
+        assertTrue("vertel" in ids)
+    }
+
+    /**
+     * Ejaan mati yang sama dengan yang sudah dijaga untuk komplain: role literal
+     * `cs` belum ada di sistem (ia slug hasil lipatan divisi, migrasi 223), jadi
+     * menulisnya di cadangan lokal adalah baris yang tak akan pernah cocok.
+     * Ditemukan justru oleh `tidak ada role salah ketik` saat kartu ini
+     * ditambahkan.
+     */
+    @Test
+    fun `role cs tak ditulis di cadangan offline vertel`() {
+        assertFalse("cs" in VERTEL_MENU_ROLES)
+        assertFalse("cs" in ACTIVITY_ITEMS.first { it.id == "vertel" }.allowedRoles)
+    }
+
+    /**
+     * Konsekuensi yang diterima sadar: tanpa peta kemampuan (offline),
+     * verifikator TIDAK melihat kartunya. Ongkosnya nol nyata — VERTEL adalah
+     * daftar LIVE dari server, jadi kartunya pun tak membawa ke mana-mana tanpa
+     * jaringan.
+     */
+    @Test
+    fun `tanpa peta kemampuan hanya admin yang tembus ke vertel`() {
+        assertFalse("vertel" in visibleActivityItems(setOf("cs"), null).map { it.id })
+        assertTrue("vertel" in visibleActivityItems(setOf("admin"), null).map { it.id })
+    }
+
+    /**
+     * `manager`/`owner` sengaja TIDAK masuk `VERTEL_ROLES`: ini pekerjaan
+     * harian, bukan papan pantau. Kalau kelak mereka perlu membaca rekapnya,
+     * server sudah menyiapkan kemampuan terpisah (`vertel.report`).
+     */
+    @Test
+    fun `manager dan owner tidak melihat kartu vertel`() {
+        listOf("manager", "owner").forEach { role ->
+            assertFalse(role in VERTEL_MENU_ROLES)
+            val ids = visibleActivityItems(setOf(role), null).map { it.id }
+            assertFalse("role $role seharusnya tak melihat vertel", "vertel" in ids)
+        }
+    }
+
+    /**
+     * Cadangan offline = `capabilities::VERTEL_ROLES` DIKURANGI ejaan mati `cs`.
+     * Selisih itu disengaja dan dikunci di sini supaya tak "dirapikan" balik
+     * jadi salinan persis daftar server.
+     */
+    @Test
+    fun `cadangan role vertel adalah daftar server tanpa ejaan mati`() {
+        assertEquals(setOf("admin", "superadmin"), VERTEL_MENU_ROLES)
+    }
+
+    /**
+     * Fail-closed: peta kemampuan yang ADA tapi tak memuat kuncinya berarti
+     * server menyempitkan akses, dan klien tak boleh diam-diam jatuh balik ke
+     * daftar role lokal yang basi.
+     */
+    @Test
+    fun `peta kemampuan tanpa kunci vertel menutup kartunya walau role cocok`() {
+        val ids = visibleActivityItems(setOf("cs"), mapOf("homeservice.task" to true)).map { it.id }
+        assertFalse("vertel" in ids)
+    }
+
     // ── Item khusus akun uji ─────────────────────────────────────────────────
 
     @Test
