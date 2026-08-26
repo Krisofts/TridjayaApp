@@ -115,6 +115,20 @@ internal val KNOWN_ROLES: Set<String> = setOf(
     "agent", "hrd", "pic_raport", "pic-raport", "crm-manager", "ads-manager",
     "ai-engineer", "pdi", "kasir", "driver", "delivery-control",
     "indent-approver", "discount-approver", "aki-approver",
+    // `cs` = slug hasil LIPATAN divisi, bukan role kolom `auth_users.role`.
+    // Dibuktikan di rust-shared `auth.rs`: `"verificator-dan-reporting" =>
+    // vec!["cs"]`, dan `UserPublic::roles()` (auth-service `domain.rs`)
+    // melipat SETIAP divisi lewat `divisi_access_slugs` ke daftar role efektif
+    // — daftar yang persis dibaca `effectiveRoles(user)` di sini.
+    //
+    // Sempat DIANGGAP ejaan mati (2026-08-24) atas dasar catatan lama "belum
+    // ada role literal `cs` di sistem". Catatan itu benar untuk kolom role
+    // PRIMARY dan HANYA untuk itu; ia tak pernah berlaku untuk slug lipatan.
+    // Akibat salah baca itu nyata: cadangan offline kartu VERTEL kehilangan
+    // satu-satunya ejaan yang mengenali verifikator, sehingga saat peta
+    // kemampuan gagal termuat kartunya hilang justru dari orang yang fiturnya
+    // dibuat untuknya.
+    "cs",
 )
 
 /** `is_pipeline_actor` (inventory-service delivery.rs) meloloskan semua role

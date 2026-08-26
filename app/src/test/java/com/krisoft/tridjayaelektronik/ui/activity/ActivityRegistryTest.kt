@@ -134,7 +134,7 @@ class ActivityRegistryTest {
 
     /**
      * Verifikator lolos lewat KUNCI KEMAMPUAN, bukan lewat daftar role lokal —
-     * lihat [VERTEL_MENU_ROLES] soal kenapa `cs` tak ditulis di sana.
+     * lewat kunci kemampuan; cadangan role hanya dipakai saat peta belum termuat.
      */
     @Test
     fun `verifikator melihat kartu vertel lewat kunci kemampuan`() {
@@ -143,27 +143,29 @@ class ActivityRegistryTest {
     }
 
     /**
-     * Ejaan mati yang sama dengan yang sudah dijaga untuk komplain: role literal
-     * `cs` belum ada di sistem (ia slug hasil lipatan divisi, migrasi 223), jadi
-     * menulisnya di cadangan lokal adalah baris yang tak akan pernah cocok.
-     * Ditemukan justru oleh `tidak ada role salah ketik` saat kartu ini
-     * ditambahkan.
+     * `cs` WAJIB ada di cadangan VERTEL — ia slug hasil lipatan divisi
+     * (`"verificator-dan-reporting" => vec!["cs"]` di rust-shared `auth.rs`,
+     * dilipat `UserPublic::roles()`), jadi satu-satunya ejaan yang mengenali
+     * verifikator di `effectiveRoles`.
+     *
+     * Test ini ADA karena kebalikannya pernah ditulis: 2026-08-24 `cs` dilepas
+     * dengan alasan "ejaan mati" yang disalin dari catatan komplain — catatan
+     * yang benar untuk role PRIMARY dan hanya untuk itu.
      */
     @Test
-    fun `role cs tak ditulis di cadangan offline vertel`() {
-        assertFalse("cs" in VERTEL_MENU_ROLES)
-        assertFalse("cs" in ACTIVITY_ITEMS.first { it.id == "vertel" }.allowedRoles)
+    fun `role cs WAJIB ada di cadangan offline vertel`() {
+        assertTrue("cs" in VERTEL_MENU_ROLES)
+        assertTrue("cs" in ACTIVITY_ITEMS.first { it.id == "vertel" }.allowedRoles)
     }
 
     /**
-     * Konsekuensi yang diterima sadar: tanpa peta kemampuan (offline),
-     * verifikator TIDAK melihat kartunya. Ongkosnya nol nyata — VERTEL adalah
-     * daftar LIVE dari server, jadi kartunya pun tak membawa ke mana-mana tanpa
-     * jaringan.
+     * Peta kemampuan yang GAGAL DIMUAT bukan hal yang sama dengan offline, dan
+     * di situlah cadangan ini bekerja: verifikator harus tetap melihat kartunya,
+     * bukan kehilangannya sementara admin tetap punya.
      */
     @Test
-    fun `tanpa peta kemampuan hanya admin yang tembus ke vertel`() {
-        assertFalse("vertel" in visibleActivityItems(setOf("cs"), null).map { it.id })
+    fun `tanpa peta kemampuan verifikator tetap melihat vertel`() {
+        assertTrue("vertel" in visibleActivityItems(setOf("cs"), null).map { it.id })
         assertTrue("vertel" in visibleActivityItems(setOf("admin"), null).map { it.id })
     }
 
@@ -181,14 +183,10 @@ class ActivityRegistryTest {
         }
     }
 
-    /**
-     * Cadangan offline = `capabilities::VERTEL_ROLES` DIKURANGI ejaan mati `cs`.
-     * Selisih itu disengaja dan dikunci di sini supaya tak "dirapikan" balik
-     * jadi salinan persis daftar server.
-     */
+    /** Cadangan offline WAJIB sama persis dengan `capabilities::VERTEL_ROLES`. */
     @Test
-    fun `cadangan role vertel adalah daftar server tanpa ejaan mati`() {
-        assertEquals(setOf("admin", "superadmin"), VERTEL_MENU_ROLES)
+    fun `cadangan role vertel sama persis dengan daftar server`() {
+        assertEquals(setOf("cs", "admin", "superadmin"), VERTEL_MENU_ROLES)
     }
 
     /**
