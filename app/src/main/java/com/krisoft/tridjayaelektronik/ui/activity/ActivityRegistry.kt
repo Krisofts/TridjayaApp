@@ -204,40 +204,32 @@ internal val AKTIVITAS_REVIEW_ROLES = setOf(
 internal val HS_DISPATCH_ROLES = setOf("admin", "superadmin", "manager", "delivery-control")
 
 /**
- * Cadangan OFFLINE kartu VERTEL. Sumber utamanya kunci `vertel.manage` dari
- * `GET /api/me/capabilities`; daftar ini hanya dipakai saat peta itu belum
- * termuat.
+ * Cadangan OFFLINE kartu VERTEL — dipakai hanya saat peta `GET /api/me/capabilities`
+ * belum termuat. Sumber utamanya tetap kunci `vertel.manage`.
  *
- * **`cs` SENGAJA TIDAK DITULIS di sini walau `capabilities::VERTEL_ROLES`
- * memuatnya** — keputusan yang persis sama, dan dengan alasan yang persis sama,
- * seperti [HS_DISPATCH_ROLES]. rust-shared menyatakan sendiri bahwa role
- * literal `cs` belum ada di sistem: ia SLUG hasil lipatan `divisi_access_slugs`
- * (migrasi 223) untuk jabatan VERIFICATOR DAN REPORTING, bukan role yang
- * pernah tersimpan di kolom role. Menulisnya di cadangan lokal menghasilkan
- * baris yang tak akan pernah cocok, dan itulah yang dijaga test
- * `tidak ada role salah ketik` (ia MEMERAHKAN build saat ejaan itu masuk —
- * lihat riwayat commit ini).
+ * **Sama persis dengan `capabilities::VERTEL_ROLES`, termasuk `cs` — dan `cs`
+ * itu WAJIB ada.** Ia bukan role kolom `auth_users.role` melainkan SLUG hasil
+ * lipatan divisi: rust-shared `auth.rs` memetakan
+ * `"verificator-dan-reporting" => vec!["cs"]`, dan `UserPublic::roles()`
+ * (auth-service `domain.rs`) melipat setiap divisi lewat fungsi itu ke daftar
+ * role efektif yang dikirim ke app. Jadi `cs` justru SATU-SATUNYA ejaan yang
+ * mengenali verifikator di `effectiveRoles`.
  *
- * **Konsekuensinya diterima sadar:** saat peta kemampuan belum termuat
- * (offline / panggilan gagal), verifikator TIDAK melihat kartunya; hanya
- * `admin`/`superadmin` yang tembus lewat daftar ini. Ongkosnya nol nyata —
- * VERTEL adalah daftar kerja LIVE dari server, jadi kartunya pun tak membawa ke
- * mana-mana tanpa jaringan. Yang mahal justru kebalikannya: menulis ejaan mati
- * di sini menciptakan ilusi bahwa cadangannya bekerja.
+ * **Riwayat yang jangan diulang.** 2026-08-24 `cs` DILEPAS dari daftar ini
+ * dengan alasan "role literal `cs` belum ada di sistem", disalin dari catatan
+ * [HS_DISPATCH_ROLES]. Catatan itu benar untuk role PRIMARY dan hanya untuk
+ * itu — ia tak pernah berlaku untuk slug lipatan. Akibatnya: begitu peta
+ * kemampuan gagal termuat, kartu VERTEL hilang dari verifikator sementara
+ * admin tetap melihatnya, tanpa satu pun pesan. Alasan pelepasan waktu itu
+ * ("VERTEL daftar live, kartu offline tak berguna") juga tak menutupi kasus
+ * sebenarnya: peta yang GAGAL DIMUAT bukan hal yang sama dengan offline.
  *
- * Verifikator sungguhan lolos lewat kunci `vertel.manage`, sama seperti CS
- * lolos lewat `homeservice.dispatch`.
- *
- * `admin`/`superadmin` memang cadangan yang dimaksud server juga: verifikator
- * berjumlah satu-dua orang untuk 13 cabang, jadi cuti satu orang tak boleh
- * menghentikan verifikasi harian.
- *
- * **`manager`/`owner` TIDAK masuk, dan jangan ditambahkan** — ini pekerjaan
- * harian, bukan papan pantau. Kalau kelak mereka perlu MEMBACA rekapnya, server
- * sudah menyiapkan kemampuan terpisah (`vertel.report`); membaca laporan dan
- * menelepon konsumen adalah dua wewenang yang berbeda.
+ * `manager`/`owner` TETAP tidak masuk, dan ini bukan kelalaian yang sama:
+ * server memang tak memberi mereka `vertel.manage`. Ini pekerjaan harian,
+ * bukan papan pantau; kalau kelak mereka perlu membaca rekapnya, server sudah
+ * menyiapkan kemampuan terpisah (`vertel.report`).
  */
-internal val VERTEL_MENU_ROLES = setOf("admin", "superadmin")
+internal val VERTEL_MENU_ROLES = setOf("cs", "admin", "superadmin")
 
 // [HS_TASK_ROLES] PINDAH ke `ui/home/QuickAccessMenus.kt` (lihat impor di atas).
 
