@@ -352,6 +352,23 @@ fun DeliveryQueueScreen(
      * indeks itu menunjuk baris yang salah.
      */
     cabangFilter: Boolean = false,
+    /**
+     * Baris chip "Semua / Lewat tenggat / Belum 24 jam" di atas daftar —
+     * dipasang di **Konfirmasi Pembayaran** (SPK Gantung), layar divisi kasir.
+     * Default `false` supaya layar pemakai lain tak berubah.
+     *
+     * Boleh di sini padahal [periodeFilter] dilarang di antrian kerja, dan
+     * alasannya berdiri sendiri: saringan periode menyembunyikan tunggakan LAMA
+     * di balik "hari ini", sedangkan saringan ini membelah daftar dengan tenggat
+     * yang SAMA seperti kartu Activity dan embernya yang menonjol justru berisi
+     * yang tertua. Penjagaannya (chip cuma muncul saat daftarnya bercampur, dan
+     * saringan diabaikan saat chip tak muncul) hidup di `GantungFilter.kt`.
+     *
+     * Hanya masuk akal di tahap yang `deliveredAt`-nya sudah terisi. Menyalakannya
+     * di tahap sebelum serah terima menghasilkan satu ember kosong permanen —
+     * tak ada galat, chip-nya cuma tak pernah muncul.
+     */
+    gantungFilter: Boolean = false,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     viewModel: DeliveryFlowViewModel = hiltViewModel()
@@ -394,7 +411,28 @@ fun DeliveryQueueScreen(
     } else {
         null
     }
-    val groupsTampil = hasilCabang?.terlihat ?: groups
+    val groupsCabang = hasilCabang?.terlihat ?: groups
+
+    // Saringan umur untuk antrian SPK Gantung. `SEMUA` sebagai default DISENGAJA,
+    // alasannya sama dengan saringan cabang di atas: antrian kerja tak boleh
+    // memulai hidupnya dalam keadaan tersaring.
+    //
+    // Jamnya dibaca SEKALI per daftar yang termuat (`remember(state.items)`),
+    // bukan tiap recomposition: pembelah embernya adalah waktu, jadi membaca
+    // `System.currentTimeMillis()` langsung di badan komposisi membuat sebuah SPK
+    // bisa berpindah ember di tengah guliran — tanpa satu pun perbuatan petugas.
+    // Tiap muat ulang menghasilkan `state.items` baru, jadi jamnya ikut segar.
+    var saringGantung by remember { mutableStateOf(GantungSaring.SEMUA) }
+    val nowGantung = remember(state.items) { System.currentTimeMillis() }
+    val hasilGantung = if (gantungFilter) {
+        // Disusun DI ATAS hasil saringan cabang, bukan `groups` mentah, supaya
+        // angka di chip selalu menyebut daftar yang benar-benar sedang berlaku
+        // kalau kelak kedua saringan dinyalakan di satu layar.
+        saringPerGantung(groupsCabang, nowGantung, saringGantung)
+    } else {
+        null
+    }
+    val groupsTampil = hasilGantung?.terlihat ?: groupsCabang
 
     val terbitkanLangsung = status == DeliveryStatusKey.PENDING_DELIVERY_NOTE && viewModel.access.note
 
@@ -433,6 +471,12 @@ fun DeliveryQueueScreen(
               // yang menyaring tanpa jalan kembali.
               if (hasilCabang?.tampilkanChip == true) {
                   CabangFilterRow(dipilih = saringCabang, hasil = hasilCabang, onPilih = { saringCabang = it })
+              }
+              // Sama seperti dua baris di atas: DI LUAR `when`, supaya kasir yang
+              // menyaring ke satu ember lalu mengosongkannya tetap punya jalan
+              // kembali ke "Semua".
+              if (hasilGantung?.tampilkanChip == true) {
+                  GantungFilterRow(dipilih = saringGantung, hasil = hasilGantung, onPilih = { saringGantung = it })
               }
               Box(modifier = Modifier.weight(1f)) {
                 when {
