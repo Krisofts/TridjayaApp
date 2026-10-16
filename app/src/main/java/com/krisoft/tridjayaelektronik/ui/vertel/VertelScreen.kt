@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Chat
@@ -30,6 +32,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -108,6 +111,7 @@ private fun VertelIsi(
     onCatat: (VertelBarisDto, String, String, Boolean, String, () -> Unit) -> Unit,
 ) {
     var dialogUntuk by remember { mutableStateOf<VertelBarisDto?>(null) }
+    var saring by remember { mutableStateOf(VertelSaring.SEMUA) }
 
     dialogUntuk?.let { baris ->
         DialogCatat(
@@ -149,42 +153,89 @@ private fun VertelIsi(
                             )
                         },
                         title = "Tak ada transaksi untuk diverifikasi.",
-                        // Kalimat kedua penting: daftar ini hanya selengkap
-                        // worker mirror `erp_mirror_sales`, dan mirror yang basi
-                        // tampil sebagai layar kosong TANPA error apa pun.
                         subtitle = "Kalau kamu yakin kemarin ada penjualan, mungkin data " +
                             "penjualan dari GS belum tersalin — laporkan ke admin.",
                     )
                 }
 
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item(key = "ringkasan") { KartuRingkasan(data.tanggal, data.ringkasan) }
-                    state.actionError?.let { pesan ->
-                        item(key = "galat") {
-                            Text(
-                                pesan,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.clickable { onBersihkanGalat() },
+                else -> {
+                    val filterHasil = saringVertel(data.baris, saring)
+                    val ringkasanTampil = if (saring == VertelSaring.SEMUA) {
+                        data.ringkasan
+                    } else {
+                        ringkasDari(filterHasil.terlihat)
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp + navBottom,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        item(key = "ringkasan") { KartuRingkasan(data.tanggal, ringkasanTampil) }
+                        if (filterHasil.tampilkanChip) {
+                            item(key = "filter") {
+                                VertelFilterRow(
+                                    dipilih = saring,
+                                    hasil = filterHasil,
+                                    onPilih = { saring = it },
+                                )
+                            }
+                        }
+                        state.actionError?.let { pesan ->
+                            item(key = "galat") {
+                                Text(
+                                    pesan,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.clickable { onBersihkanGalat() },
+                                )
+                            }
+                        }
+                        items(filterHasil.terlihat, key = { it.noTransaksi + "|" + it.tanggal }) { baris ->
+                            KartuBaris(
+                                baris = baris,
+                                onTelepon = { telUri(baris)?.let(onBuka) },
+                                onWa = { waUri(baris)?.let(onBuka) },
+                                onCatat = { dialogUntuk = baris },
                             )
                         }
                     }
-                    items(data.baris, key = { it.noTransaksi + "|" + it.tanggal }) { baris ->
-                        KartuBaris(
-                            baris = baris,
-                            onTelepon = { telUri(baris)?.let(onBuka) },
-                            onWa = { waUri(baris)?.let(onBuka) },
-                            onCatat = { dialogUntuk = baris },
-                        )
-                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun VertelFilterRow(
+    dipilih: VertelSaring,
+    hasil: VertelFilterHasil,
+    onPilih: (VertelSaring) -> Unit,
+) {
+    Row(
+        Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        VertelSaring.entries.forEach { s ->
+            val aktif = s == dipilih
+            FilterChip(
+                selected = aktif,
+                onClick = { onPilih(s) },
+                label = {
+                    Text(
+                        labelChipVertel(s, hasil),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (aktif) FontWeight.Bold else FontWeight.Medium,
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+            )
         }
     }
 }
