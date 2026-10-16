@@ -3,6 +3,7 @@ package com.krisoft.tridjayaelektronik.ui.vertel
 import com.krisoft.tridjayaelektronik.data.model.VertelBarisDto
 import com.krisoft.tridjayaelektronik.data.model.VertelHasil
 import com.krisoft.tridjayaelektronik.data.model.VertelKanal
+import com.krisoft.tridjayaelektronik.data.model.VertelPanggilanDto
 import com.krisoft.tridjayaelektronik.data.model.VertelRingkasanDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -172,5 +173,94 @@ class VertelPlanTest {
     @Test
     fun `sudah dicatat dibaca dari ada tidaknya panggilan`() {
         assertFalse(sudahDicatat(baris()))
+    }
+
+    // ── saringan status ─────────────────────────────────────────────────────
+
+    private val panggilanBiasa = VertelPanggilanDto(
+        kanal = VertelKanal.TELEPON, hasil = VertelHasil.TERHUBUNG,
+    )
+    private val panggilanKomplain = VertelPanggilanDto(
+        kanal = VertelKanal.TELEPON, hasil = VertelHasil.TERHUBUNG, adaKomplain = true,
+    )
+
+    private fun campuran(): List<VertelBarisDto> = listOf(
+        baris().copy(noTransaksi = "A"),
+        baris().copy(noTransaksi = "B", panggilan = panggilanBiasa),
+        baris().copy(noTransaksi = "C", panggilan = panggilanKomplain),
+        baris().copy(noTransaksi = "D"),
+    )
+
+    @Test
+    fun `chip ditampilkan saat daftar bercampur belum dan sudah`() {
+        val h = saringVertel(campuran(), VertelSaring.SEMUA)
+        assertTrue(h.tampilkanChip)
+        assertEquals(4, h.jumlahSemua)
+        assertEquals(2, h.jumlahBelum)
+        assertEquals(2, h.jumlahSudah)
+        assertEquals(1, h.jumlahKomplain)
+    }
+
+    @Test
+    fun `chip disembunyikan saat semua belum dicatat`() {
+        val semuaBelum = listOf(baris().copy(noTransaksi = "X"), baris().copy(noTransaksi = "Y"))
+        val h = saringVertel(semuaBelum, VertelSaring.BELUM)
+        assertFalse(h.tampilkanChip)
+        assertEquals(2, h.terlihat.size)
+    }
+
+    @Test
+    fun `chip disembunyikan saat semua sudah dicatat`() {
+        val semuaSudah = listOf(
+            baris().copy(noTransaksi = "X", panggilan = panggilanBiasa),
+            baris().copy(noTransaksi = "Y", panggilan = panggilanBiasa),
+        )
+        val h = saringVertel(semuaSudah, VertelSaring.SUDAH)
+        assertFalse(h.tampilkanChip)
+        assertEquals(2, h.terlihat.size)
+    }
+
+    @Test
+    fun `saring BELUM hanya menampilkan yang belum dicatat`() {
+        val h = saringVertel(campuran(), VertelSaring.BELUM)
+        assertEquals(2, h.terlihat.size)
+        assertTrue(h.terlihat.all { it.panggilan == null })
+    }
+
+    @Test
+    fun `saring SUDAH hanya menampilkan yang sudah dicatat`() {
+        val h = saringVertel(campuran(), VertelSaring.SUDAH)
+        assertEquals(2, h.terlihat.size)
+        assertTrue(h.terlihat.all { it.panggilan != null })
+    }
+
+    @Test
+    fun `saring KOMPLAIN hanya menampilkan yang ada komplain`() {
+        val h = saringVertel(campuran(), VertelSaring.KOMPLAIN)
+        assertEquals(1, h.terlihat.size)
+        assertEquals("C", h.terlihat.first().noTransaksi)
+    }
+
+    @Test
+    fun `saring SEMUA menampilkan seluruh baris`() {
+        val h = saringVertel(campuran(), VertelSaring.SEMUA)
+        assertEquals(4, h.terlihat.size)
+    }
+
+    @Test
+    fun `saringan diabaikan saat chip tak ditampilkan`() {
+        val semuaBelum = listOf(baris().copy(noTransaksi = "X"), baris().copy(noTransaksi = "Y"))
+        val h = saringVertel(semuaBelum, VertelSaring.SUDAH)
+        assertFalse(h.tampilkanChip)
+        assertEquals(2, h.terlihat.size)
+    }
+
+    @Test
+    fun `label chip menyertakan angka`() {
+        val h = saringVertel(campuran(), VertelSaring.SEMUA)
+        assertEquals("Semua (4)", labelChipVertel(VertelSaring.SEMUA, h))
+        assertEquals("Belum dicatat (2)", labelChipVertel(VertelSaring.BELUM, h))
+        assertEquals("Sudah dicatat (2)", labelChipVertel(VertelSaring.SUDAH, h))
+        assertEquals("Komplain (1)", labelChipVertel(VertelSaring.KOMPLAIN, h))
     }
 }

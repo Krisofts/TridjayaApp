@@ -131,3 +131,66 @@ internal fun kanalDefault(baris: VertelBarisDto): String =
 
 /** Sudah pernah dicatat? Dipakai memilih gaya kartu + label tombol. */
 internal fun sudahDicatat(baris: VertelBarisDto): Boolean = baris.panggilan != null
+
+// ---------------------------------------------------------------------------
+// Saringan status
+// ---------------------------------------------------------------------------
+
+/** Pilihan chip saringan. Urutan enum = urutan tampil. */
+enum class VertelSaring(val label: String) {
+    SEMUA("Semua"),
+    BELUM("Belum dicatat"),
+    SUDAH("Sudah dicatat"),
+    KOMPLAIN("Komplain"),
+}
+
+data class VertelFilterHasil(
+    val tampilkanChip: Boolean,
+    val jumlahSemua: Int,
+    val jumlahBelum: Int,
+    val jumlahSudah: Int,
+    val jumlahKomplain: Int,
+    val terlihat: List<VertelBarisDto>,
+)
+
+/**
+ * Saring [baris] menurut [saring].
+ *
+ * Chip ditampilkan selama ada CAMPURAN (belum + sudah) — sama seperti
+ * [saringPerGantung]: chip yang tampil di daftar seragam cuma menambah noise.
+ * Saat chip tak ditampilkan, saringannya DIABAIKAN (pencegah kebuntuan:
+ * verifikator memilih "Belum", lalu selesai semuanya — layar kosong tanpa
+ * jalan kembali).
+ */
+internal fun saringVertel(
+    baris: List<VertelBarisDto>,
+    saring: VertelSaring,
+): VertelFilterHasil {
+    val belum = baris.filter { it.panggilan == null }
+    val sudah = baris.filter { it.panggilan != null }
+    val komplain = baris.filter { it.panggilan?.adaKomplain == true }
+    val bercampur = belum.isNotEmpty() && sudah.isNotEmpty()
+
+    val terlihat = when {
+        !bercampur -> baris
+        saring == VertelSaring.BELUM -> belum
+        saring == VertelSaring.SUDAH -> sudah
+        saring == VertelSaring.KOMPLAIN -> komplain
+        else -> baris
+    }
+    return VertelFilterHasil(
+        tampilkanChip = bercampur,
+        jumlahSemua = baris.size,
+        jumlahBelum = belum.size,
+        jumlahSudah = sudah.size,
+        jumlahKomplain = komplain.size,
+        terlihat = terlihat,
+    )
+}
+
+internal fun labelChipVertel(saring: VertelSaring, hasil: VertelFilterHasil): String = when (saring) {
+    VertelSaring.SEMUA -> "${saring.label} (${hasil.jumlahSemua})"
+    VertelSaring.BELUM -> "${saring.label} (${hasil.jumlahBelum})"
+    VertelSaring.SUDAH -> "${saring.label} (${hasil.jumlahSudah})"
+    VertelSaring.KOMPLAIN -> "${saring.label} (${hasil.jumlahKomplain})"
+}
